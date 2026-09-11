@@ -1,46 +1,54 @@
-error: ErFormat only formats; use derive(Er) for `wrap` and `crate` options
-  --> tests/fail/format_only.rs:10:12
+error: use derive(Er) for `wrap` and `crate` options
+  --> tests/fail/format_only.rs:11:12
    |
-10 | pub struct Wrapped;
+11 | pub struct Wrapped;
    |            ^^^^^^^
 
-error: ErFormat only formats; use derive(Er) for `wrap` and `crate` options
-  --> tests/fail/format_only.rs:14:12
+error: use derive(Er) for `wrap` and `crate` options
+  --> tests/fail/format_only.rs:15:12
    |
-14 | pub struct RuntimePath;
+15 | pub struct RuntimePath;
    |            ^^^^^^^^^^^
 
-error: ErFormat has no constructors; remove `#[er(exact)]` or use derive(Er)
-  --> tests/fail/format_only.rs:18:5
-   |
-18 | /     #[er(exact)]
-19 | |     pub value: u8,
-   | |_________________^
-
 error[E0599]: no associated function or constant named `new` found for struct `Data` in the current scope
-  --> tests/fail/format_only.rs:25:19
+  --> tests/fail/format_only.rs:26:19
    |
- 4 | pub struct Data {
+ 5 | pub struct Data {
    | --------------- associated function or constant `new` not found for this struct
 ...
-25 |     let _ = Data::new(7);
+26 |     let _ = Data::new(7);
    |                   ^^^ associated function or constant not found in `Data`
 
-error[E0277]: the trait bound `Data: std::error::Error` is not satisfied
-  --> tests/fail/format_only.rs:26:17
+error[E0599]: no variant, associated function, or constant named `missing` found for enum `NoVariants` in the current scope
+  --> tests/fail/format_only.rs:27:25
    |
-26 |     needs_error(Data { value: 7 });
+19 | pub enum NoVariants {
+   | ------------------- variant, associated function, or constant `missing` not found for this enum
+...
+27 |     let _ = NoVariants::missing();
+   |                         ^^^^^^^ variant, associated function, or constant not found in `NoVariants`
+   |
+help: there is a variant with a similar name
+   |
+27 -     let _ = NoVariants::missing();
+27 +     let _ = NoVariants::Missing;
+   |
+
+error[E0277]: the trait bound `Data: std::error::Error` is not satisfied
+  --> tests/fail/format_only.rs:28:17
+   |
+28 |     needs_error(Data { value: 7 });
    |     ----------- ^^^^^^^^^^^^^^^^^ unsatisfied trait bound
    |     |
    |     required by a bound introduced by this call
    |
 help: the trait `std::error::Error` is not implemented for `Data`
-  --> tests/fail/format_only.rs:4:1
+  --> tests/fail/format_only.rs:5:1
    |
- 4 | pub struct Data {
+ 5 | pub struct Data {
    | ^^^^^^^^^^^^^^^
 note: required by a bound in `needs_error`
-  --> tests/fail/format_only.rs:22:28
+  --> tests/fail/format_only.rs:23:28
    |
-22 | pub fn needs_error(_: impl std::error::Error) {}
+23 | pub fn needs_error(_: impl std::error::Error) {}
    |                            ^^^^^^^^^^^^^^^^^ required by this bound in `needs_error`

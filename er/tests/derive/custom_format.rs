@@ -17,10 +17,7 @@ pub struct ConnectEr {
 pub struct LoginEr;
 #[test]
 pub fn nested_data() {
-    let connection = Connection {
-        host: "ComputerKatten".into(),
-        password: "secret".into(),
-    };
+    let connection = Connection::new("ComputerKatten", "secret");
     let tree = ConnectEr::new(connection).er();
 
     let expected =

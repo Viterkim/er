@@ -46,3 +46,57 @@ pub fn position_overflow() -> syn::Result<()> {
     }
     Ok(())
 }
+
+#[test]
+pub fn std_error_options() -> syn::Result<()> {
+    for options in [
+        quote!(std_error),
+        quote!(output = top, std_error, std_error),
+        quote!(output = top, std_error = true),
+        quote!(output = report, std_error()),
+    ] {
+        let item = syn::parse2(quote! {
+            #[er(wrap(#options))]
+            struct Example;
+        })?;
+        assert!(crate::generate::expand(&item).is_err());
+    }
+    for options in [
+        quote!(output = top, std_error),
+        quote!(std_error, output = report),
+    ] {
+        let item = syn::parse2(quote! {
+            #[er(wrap(#options))]
+            struct Example;
+        })?;
+        crate::generate::expand(&item)?;
+    }
+    Ok(())
+}
+
+#[test]
+pub fn no_constructors_options() -> syn::Result<()> {
+    for source in [
+        "#[er(no_constructors, no_constructors)] struct Data;",
+        "#[er(no_constructors = true)] struct Data;",
+        "#[er(no_constructors())] struct Data;",
+    ] {
+        let item = syn::parse_str(source)?;
+        assert!(crate::generate::expand(&item).is_err(), "{source}");
+        assert!(crate::format::expand(&item).is_err(), "{source}");
+    }
+    for source in [
+        "struct Data { #[er(no_constructors)] value: u8 }",
+        "enum Data { #[er(no_constructors)] Value }",
+    ] {
+        let item = syn::parse_str(source)?;
+        for result in [crate::generate::expand(&item), crate::format::expand(&item)] {
+            assert_eq!(
+                result.err().map(|error| error.to_string()).as_deref(),
+                Some("put `no_constructors` on the struct or enum"),
+                "{source}"
+            );
+        }
+    }
+    Ok(())
+}

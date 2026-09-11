@@ -1,3 +1,4 @@
+use crate::generate::constructors::constructors;
 use crate::input::{Input, bounds::format_generics};
 use crate::names::binding;
 use proc_macro2::TokenStream;
@@ -12,22 +13,18 @@ pub fn expand(item: &DeriveInput) -> Result<TokenStream> {
     if input.options.wrap.is_some() || input.options.er_path.is_some() {
         return Err(Error::new_spanned(
             &item.ident,
-            "ErFormat only formats; use derive(Er) for `wrap` and `crate` options",
+            "use derive(Er) for `wrap` and `crate` options",
         ));
-    }
-
-    for field in input.cases.iter().flat_map(|case| &case.fields) {
-        if field.options.exact {
-            return Err(Error::new_spanned(
-                field.item,
-                "ErFormat has no constructors; remove `#[er(exact)]` or use derive(Er)",
-            ));
-        }
     }
 
     let generics = format_generics(&input)?;
     let formatter = binding(&input.const_names, "__er_f");
-    Ok(implementations(&input, &generics, &formatter))
+    let formatting = implementations(&input, &generics, &formatter);
+    let constructors = constructors(&input)?;
+    Ok(quote! {
+        #formatting
+        #constructors
+    })
 }
 
 pub fn implementations(input: &Input<'_>, generics: &Generics, formatter: &Ident) -> TokenStream {

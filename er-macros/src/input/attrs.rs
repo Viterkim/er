@@ -23,6 +23,7 @@ pub enum WrapOutput {
 pub struct WrapOptions {
     pub name: Option<Ident>,
     pub output: Option<WrapOutput>,
+    pub std_error: bool,
 }
 
 #[derive(Default)]
@@ -30,6 +31,7 @@ pub struct ContainerOptions {
     pub er_path: Option<Path>,
     pub wrap: Option<WrapOptions>,
     pub format: Option<LitStr>,
+    pub no_constructors: bool,
 }
 
 pub fn er_attributes(attributes: &[Attribute]) -> impl Iterator<Item = &Attribute> {
@@ -53,8 +55,8 @@ pub fn require_list(attribute: &Attribute, expected: &str) -> Result<()> {
 }
 
 pub fn container(attributes: &[Attribute]) -> Result<ContainerOptions> {
-    const EXPECTED: &str =
-        "expected `#[er(format = \"...\")]`, `#[er(crate = ...)]`, or `#[er(wrap)]`";
+    const EXPECTED: &str = "expected `#[er(format = \"...\")]`, `#[er(crate = ...)]`, \
+        `#[er(wrap)]`, or `#[er(no_constructors)]`";
 
     let mut options = ContainerOptions::default();
 
@@ -62,6 +64,17 @@ pub fn container(attributes: &[Attribute]) -> Result<ContainerOptions> {
         require_list(attribute, EXPECTED)?;
 
         attribute.parse_nested_meta(|meta| {
+            if meta.path.is_ident("no_constructors") {
+                if options.no_constructors {
+                    return Err(meta.error("`no_constructors` is set more than once"));
+                }
+                if !meta.input.is_empty() && !meta.input.peek(syn::token::Comma) {
+                    return Err(meta.error("`no_constructors` takes no value"));
+                }
+                options.no_constructors = true;
+                return Ok(());
+            }
+
             if meta.path.is_ident("format") {
                 if options.format.is_some() {
                     return Err(meta.error("`format` is set more than once"));
@@ -142,8 +155,23 @@ pub fn wrap(meta: &syn::meta::ParseNestedMeta<'_>) -> Result<WrapOptions> {
             return Ok(());
         }
 
-        Err(inner.error("expected `name = ...` or `output = ...`"))
+        if inner.path.is_ident("std_error") {
+            if options.std_error {
+                return Err(inner.error("`std_error` is set more than once"));
+            }
+            if inner.input.peek(syn::token::Eq) || inner.input.peek(syn::token::Paren) {
+                return Err(inner.error("`std_error` takes no value"));
+            }
+            options.std_error = true;
+            return Ok(());
+        }
+
+        Err(inner.error("expected `name = ...`, `output = ...`, or `std_error`"))
     })?;
+
+    if options.std_error && options.output.is_none() {
+        return Err(meta.error("`std_error` requires `output = top` or `output = report`"));
+    }
 
     Ok(options)
 }
@@ -153,6 +181,9 @@ pub fn variant(attributes: &[Attribute]) -> Result<Option<LitStr>> {
     for attribute in er_attributes(attributes) {
         require_list(attribute, "expected `#[er(format = \"...\")]`")?;
         attribute.parse_nested_meta(|meta| {
+            if meta.path.is_ident("no_constructors") {
+                return Err(meta.error("put `no_constructors` on the struct or enum"));
+            }
             if !meta.path.is_ident("format") {
                 return Err(meta.error(
                     "expected `format = \"...\"`; put `skip`, `censor`, or `exact` on a field, \
@@ -197,6 +228,8 @@ pub fn field(attributes: &[Attribute]) -> Result<FieldOptions> {
                 FieldMode::Censor
             } else if meta.path.is_ident("format") {
                 return Err(meta.error("put `format = \"...\"` on the struct or enum variant"));
+            } else if meta.path.is_ident("no_constructors") {
+                return Err(meta.error("put `no_constructors` on the struct or enum"));
             } else if meta.path.is_ident("wrap") || meta.path.is_ident("crate") {
                 return Err(meta.error(
                     "`wrap` and `crate` are type options; put them on the struct or enum, \

@@ -23,9 +23,9 @@ where
     if nodes.is_empty() {
         Ok(())
     } else {
-        let error = parent();
-        let mut tree = ErTree::from(error);
-        tree.nodes = nodes;
-        Err(tree)
+        Err(ErTree {
+            nodes,
+            ..ErTree::from(parent())
+        })
     }
 }

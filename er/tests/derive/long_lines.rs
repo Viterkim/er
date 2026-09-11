@@ -2,6 +2,7 @@ use er::*;
 use std::fmt;
 
 #[derive(Default, ErFormat)]
+#[er(no_constructors)]
 pub struct Wide {
     pub field0: u8,
     pub field1: u8,

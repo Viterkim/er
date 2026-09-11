@@ -59,10 +59,10 @@ pub fn early_return() {
 #[derive(Er)]
 pub struct ChildErr(pub u8);
 #[test]
-pub fn er_from() -> Result<(), ErReport<ChildErr>> {
+pub fn er_from_val() -> Result<(), ErReport<ChildErr>> {
     let calls = Cell::new(0);
     let input: Result<u8, u8> = Ok(7);
-    let result: Er<u8, ChildErr> = input.er_from(|value| {
+    let result: Er<u8, ChildErr> = input.er_from_val(|value| {
         calls.set(calls.get() + 1);
         ChildErr(value)
     });
@@ -72,7 +72,7 @@ pub fn er_from() -> Result<(), ErReport<ChildErr>> {
 
     let result: Result<(), u8> = Err(7);
     let _expected_line = line!() + 1;
-    let error = result.er_from(ChildErr).unwrap_err();
+    let error = result.er_from_val(ChildErr).unwrap_err();
 
     assert_eq!(error.top.0, 7);
     assert!(error.nodes.is_empty());
@@ -107,7 +107,7 @@ pub fn local_roots() {
     assert!(missing.er(local_error).unwrap_err().nodes.is_empty());
 
     let status: Result<(), u8> = Err(7);
-    let mapped = status.er_from(|attempts| LocalErr::new(Cell::new(attempts), "mapped"));
+    let mapped = status.er_from_val(|attempts| LocalErr::new(Cell::new(attempts), "mapped"));
 
     assert_eq!(mapped.unwrap_err().top.attempts.get(), 7);
 

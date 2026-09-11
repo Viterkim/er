@@ -37,7 +37,7 @@ impl<T, E> ErResult for Result<T, E> {
     }
 
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_from<A, F>(self, error: F) -> Er<T, A>
+    fn er_from_val<A, F>(self, error: F) -> Er<T, A>
     where
         A: Error + 'static,
         F: FnOnce(E) -> A,

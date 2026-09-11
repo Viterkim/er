@@ -155,7 +155,7 @@ Backtraces can be enabled though. [Printing](https://docs.rs/anyhow/1.0.104/anyh
 
 You can still downcast to the original error, context can be even be struct. The return type just doesn't name your operation's error. [Context](https://docs.rs/anyhow/1.0.104/anyhow/trait.Context.html)
 
-Also `anyhow::Error` doesn't impl Error because of a trait overlap or its gonna break its generic From<E> conversion. (I don't mind this, Er doesn't impl it on ErTree neither btw, to enforce report/top).
+Also `anyhow::Error` doesn't impl Error because of a trait overlap or its gonna break its generic From<E> conversion. (ER DOES THE SAME SHIT with tree/report/top, `.opaque_err()` is the explicit way out where you then can't search the sub errors).
 
 ## SNAFU (0.9.2)
 
@@ -739,32 +739,26 @@ PortEr { input: "aint_even_a_number_cmon_man" } @ examples/er_context.rs:8:35
 `- invalid digit found in string @ examples/er_context.rs:8:35
 ```
 
-Add a field, pass the input. The derive writes the constructors and formatting, no impls to do by hand. No macro over the function either.
+Now there's some bullshit you also have to learn for Er (some for good reason).
 
-Give each function its own error type and you have to do the `.er(...)` step between them. Reuse the same type and `?` can pass it up unchanged. Nobody can force you to put useful info in a field.
+Returning `Er<T, E>` means the caller is in Er world now. On public boundries make a normal error and convert. [Checkout the example](examples.md#public-error).
 
-But Er has its own stuff to learn:
+The tree has no Display, Debug, or Error. Pick `.er_report()` or `.er_top()`, then Display and Debug do the same. (Designed this way, to avoid mistakes).
 
-The tree has no Display, Debug, or Error. Pick `.er_report()` or `.er_top()`, then Display and Debug do the same (like the nightly report, except explicit).
-
-Local data is fine in the root. Moving it into a boxed child needs `Send + Sync + 'static`. (Probably #1 thing that could be confusing).
+Local data is fine in the root. Moving it into a boxed child needs `Send + Sync + 'static`.
 
 No backtraces (i prefer explicit context, hot take i know).
 
-No attachment hooks (i think this is a structure issue, i don't want the errors to be global magic contraptions).
-
 No cloning the live tree built in. Snapshots can be cloned, but save text and structure, not the original error types.
 
-The fact that Er is more code because of the macro, you could argue 'just use thiserror or derive more for the macros', but i feel like that misses the point. It has to be easy and all in one and opinionated with good defaults.
+`.opaque_err()` gives you a standard Error but hides the tree from ordinary error finds.
 
-Returning `Er` means the caller uses Er too. Wrap is for foreign traits, it's 100% for internal errors and code (which i think 95% of code).
+If you NEED Error on the Wrap itself, [Wrap with `std_error`](macros.md#wrap-with-error) does that, and needs `.er_from_wrap(...)` on the way back. This is without a doubt the worst thing about Er, but i can't come up with anything better, i hope you will never need it and can forgive me. (ONLY used for implementing a foreign trait on a wrapper which NEEDS to implement `Error` itself).
 
-Wrap with output, and owned top/report, need [`.er_tree().er(...)`](examples.md#wrap-and-back) when coming back. Skip recovery and the outer search can't see their tree.
-
-If a foreign error prints its source AND returns it from `source()`, the report can repeat that text. Er doesn't guess which bits to remove. [Standard Error guidance](https://doc.rust-lang.org/std/error/trait.Error.html#error-source), so that sucks.
-
-`er_find` walks the original sources too, no text copies. `er_all!` collects failures as children. [Examples](examples.md)
+If a foreign error prints its source AND returns it from `source()`, the report can repeat that text. Er doesn't guess which bits to remove. [Standard Error guidance](https://doc.rust-lang.org/std/error/trait.Error.html#error-source).
 
 ## Biased?
 
-Yes and obviously i only care about a subset of error handling in rust, but i mean... ye... Thanks for reading, and if you don't agree with me that's probably good, I have some stupid opinions.
+Yes and obviously i only care about a subset of error handling in rust.
+
+Thanks for reading, and if you don't agree with me that's probably good, I have some stupid opinions.

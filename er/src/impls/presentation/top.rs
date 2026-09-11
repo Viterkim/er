@@ -1,6 +1,8 @@
 use crate::lines;
 use crate::render::write_top;
-use crate::{ErNodes, ErSources, ErTop, ErTopRef, ErTree, IntoErTree, Layout, LineError};
+use crate::{
+    ErNodes, ErSources, ErTop, ErTopRef, ErTree, IntoErNode, IntoErTree, Layout, LineError,
+};
 use core::{error::Error, fmt};
 
 impl<'a, E> ErTopRef<'a, E> {
@@ -68,8 +70,6 @@ impl<E: fmt::Display> fmt::Debug for ErTopRef<'_, E> {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl<E: Error + 'static> Error for ErTopRef<'_, E> {}
-
 impl<E> ErTop<E> {
     pub fn layout(self, layout: Layout) -> Self {
         Self { layout, ..self }
@@ -143,4 +143,8 @@ impl<E: fmt::Display> fmt::Debug for ErTop<E> {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl<E: Error + 'static> Error for ErTop<E> {}
+impl<E: Error + Send + Sync + 'static> IntoErNode for ErTop<E> {
+    fn into_er_node(self) -> crate::ErNode {
+        self.tree.into_er_node()
+    }
+}

@@ -7,13 +7,16 @@ use er::*;
 pub struct InnerErr;
 
 #[derive(Er)]
+pub struct OuterErr;
+
+#[derive(Er)]
 pub struct AppErr;
 pub fn failing() -> Er<(), AppErr> {
     Err(ErTree::new(AppErr, [InnerErr.er()]))
 }
 
 #[test]
-pub fn views() {
+pub fn views() -> fmt::Result {
     let error = failing().unwrap_err();
     let top = error.er_top();
     let report = error.er_report();
@@ -22,8 +25,8 @@ pub fn views() {
     assert!(report.to_string().contains("InnerErr"));
     assert_eq!(format!("{top}"), format!("{top:?}"));
     assert_eq!(format!("{report}"), format!("{report:?}"));
-    assert!(top.source().is_none());
-    assert!(report.source().is_none());
+    assert!(Error::source(&top.opaque_err()).is_none());
+    assert!(Error::source(&report.opaque_err()).is_none());
 
     assert_eq!(top.single_line().layout, Layout::SingleLine);
     assert_eq!(report.single_line().layout, Layout::SingleLine);
@@ -39,7 +42,6 @@ pub fn views() {
     let expected = report.to_string();
 
     let owned = error.into_er_report();
-    assert!(owned.source().is_none());
 
     let owned: ErTop<_> = owned.tree.into();
     assert_eq!(owned.to_string(), "AppErr");
@@ -51,8 +53,37 @@ pub fn views() {
     assert_eq!(owned.to_string(), expected);
     assert_eq!(owned.layout, Layout::Multiline);
 
-    let boxed: Box<dyn Error + Send + Sync> = Box::new(owned);
-    assert!(boxed.source().is_none());
+    let error = owned.opaque_err();
+    assert_eq!(error.to_string(), expected);
+    assert_eq!(format!("{error:?}"), expected);
+    assert!(error.source().is_none());
+    let outer = Err::<(), _>(error)
+        .er(OuterErr::new)
+        .err()
+        .ok_or(fmt::Error)?;
+    assert!(!outer.er_contains::<AppErr>());
+    assert!(!outer.er_contains::<InnerErr>());
+    assert_eq!(outer.nodes[0].error.to_string(), expected);
+    let adapter = outer
+        .er_find::<ErAsError<ErReport<AppErr>>>()
+        .ok_or(fmt::Error)?;
+    assert!(adapter.0.er_contains::<InnerErr>());
+    Ok(())
+}
+
+#[test]
+pub fn structural_reentry() {
+    let report = failing().er_report().unwrap_err().single_line();
+    let outer = Err::<(), _>(report).er(OuterErr::new).unwrap_err();
+    assert!(outer.er_contains::<AppErr>());
+    assert!(outer.er_contains::<InnerErr>());
+    assert_eq!(outer.into_er_report().layout, Layout::Multiline);
+
+    let top = failing().er_top().unwrap_err().single_line();
+    let outer = Err::<(), _>(top).er(OuterErr::new).unwrap_err();
+    assert!(outer.er_contains::<AppErr>());
+    assert!(outer.er_contains::<InnerErr>());
+    assert_eq!(outer.into_er_report().layout, Layout::Multiline);
 }
 
 #[test]
@@ -94,6 +125,9 @@ pub fn display_only() -> fmt::Result {
     let top = tree.er_top();
 
     assert_eq!(format!("{:?}", top.single_line()), "first second");
+    let adapter = top.single_line().opaque_err();
+    assert_eq!(adapter.to_string(), "first second");
+    assert!(Error::source(&adapter).is_none());
 
     let mut lines = Vec::new();
     top.for_each_line(|line| lines.push(line.to_owned()))?;

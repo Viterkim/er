@@ -206,18 +206,23 @@ pub struct TopOutputErr;
 #[test]
 pub fn top_output() {
     let error = ErTree::new(TopOutputErr, [InnerErr]);
+    #[cfg(feature = "src_locations")]
+    let location = error.src_location;
     let wrapped = TopOutputErrWrap::from(error);
 
     assert_eq!(wrapped.to_string(), "TopOutputErr");
     assert_eq!(format!("{wrapped:?}"), "TopOutputErr");
-    assert!(Error::source(&wrapped).is_none());
 
     let result: Result<(), TopOutputErrWrap> = Err(wrapped);
-    let report = result.er_report().unwrap_err();
+    let report = result.er(HandlerErr::new).er_report().unwrap_err();
 
     assert!(report.er_contains::<TopOutputErr>());
     assert!(report.er_contains::<InnerErr>());
-    assert!(!report.er_contains::<TopOutputErrWrap>());
+    #[cfg(feature = "src_locations")]
+    assert_eq!(report.tree.nodes[0].src_location, location);
+
+    let standard = TopOutputErr::new().er_wrap().opaque_err();
+    assert!(Error::source(&standard).is_none());
 }
 
 #[derive(Er)]
@@ -232,38 +237,26 @@ pub fn report_output() {
     assert!(displayed.contains("ReportOutputErr"), "{displayed}");
     assert!(displayed.contains("InnerErr"), "{displayed}");
     assert_eq!(format!("{wrapped:?}"), displayed);
-    assert!(Error::source(&wrapped).is_none());
-
-    let result: Result<(), ReportOutputErrWrap> = Err(wrapped);
-    assert_eq!(result.er_top().unwrap_err().to_string(), "ReportOutputErr");
-}
-
-#[test]
-pub fn opaque_reentry() {
-    let error = ErTree::new(ReportOutputErr, [InnerErr]);
-    let wrapped = ReportOutputErrWrap::from(error);
 
     let result: Result<(), ReportOutputErrWrap> = Err(wrapped);
     let outer = result.er(HandlerErr::new).unwrap_err();
+    assert!(outer.er_contains::<ReportOutputErr>());
+    assert!(outer.er_contains::<InnerErr>());
 
-    assert!(outer.er_contains::<ReportOutputErrWrap>());
-    assert!(!outer.er_contains::<InnerErr>());
-
-    let recovered = outer.er_find::<ReportOutputErrWrap>().unwrap();
-    assert!(recovered.tree.er_contains::<InnerErr>());
+    let standard = ReportOutputErr::new().er_wrap().opaque_err();
+    assert!(Error::source(&standard).is_none());
 }
 
 #[test]
 pub fn structural_reentry() {
-    let tree = ErTree::new(ReportOutputErr, [InnerErr]);
+    let tree = ErTree::new(HandlerErr, [InnerErr]);
     #[cfg(feature = "src_locations")]
     let location = tree.src_location;
-    let result: Result<(), ReportOutputErrWrap> = Err(tree.into());
-    let outer = result.er_tree().er(HandlerErr::new).unwrap_err();
+    let result: Result<(), HandlerErrWrap> = Err(tree.into());
+    let outer = result.er(ReportOutputErr::new).unwrap_err();
 
-    assert!(outer.er_contains::<ReportOutputErr>());
+    assert!(outer.er_contains::<HandlerErr>());
     assert!(outer.er_contains::<InnerErr>());
-    assert!(!outer.er_contains::<ReportOutputErrWrap>());
     #[cfg(feature = "src_locations")]
     assert_eq!(outer.nodes[0].src_location, location);
 
@@ -273,20 +266,72 @@ pub fn structural_reentry() {
     let location = tree.src_location;
     let child = tree.er_find::<Tracked>().unwrap() as *const Tracked;
     let result: Result<(), ErReport<ReportOutputErr>> = Err(tree.into_er_report().single_line());
-    let top = result.er_tree().er_top().unwrap_err();
-    assert_eq!(top.layout, Layout::Multiline);
-
-    let result: Result<(), ErTop<ReportOutputErr>> = Err(top.single_line());
-    let outer = result.er_tree().er(HandlerErr::new).unwrap_err();
+    let outer = result.er(HandlerErr::new).unwrap_err();
 
     assert!(outer.er_contains::<ReportOutputErr>());
-    assert!(!outer.er_contains::<ErReport<ReportOutputErr>>());
     assert!(ptr::eq(child, outer.er_find::<Tracked>().unwrap()));
     #[cfg(feature = "src_locations")]
     assert_eq!(outer.nodes[0].src_location, location);
     assert_eq!(drops.load(Ordering::Relaxed), 0);
     drop(outer);
     assert_eq!(drops.load(Ordering::Relaxed), 1);
+}
+
+#[derive(Er)]
+#[er(wrap(output = report, std_error))]
+pub struct StandardErr<T>(pub T);
+
+#[test]
+pub fn std_error() -> core::fmt::Result {
+    let drops = Arc::new(AtomicUsize::new(0));
+    let tree = ErTree::new(
+        StandardErr::new(85u8),
+        [
+            Tracked::new(1, Arc::clone(&drops)),
+            Tracked::new(2, Arc::clone(&drops)),
+        ],
+    );
+    let expected = tree.er_report().to_string();
+    let child = &*tree.nodes[0].error as *const _;
+    #[cfg(feature = "src_locations")]
+    let location = tree.src_location;
+    let wrapped = StandardErrWrap::from(tree);
+    assert_eq!(wrapped.to_string(), expected);
+    assert_eq!(format!("{wrapped:?}"), expected);
+    assert!(Error::source(&wrapped).is_none());
+
+    let _line = line!() + 1;
+    let result = Err::<(), _>(wrapped).er_from_wrap(HandlerErr::new);
+    let tree = result.err().ok_or(core::fmt::Error)?;
+    assert_eq!(tree.er_find_all::<Tracked>().count(), 2);
+    assert!(ptr::eq(child, &*tree.nodes[0].nodes[0].error));
+    #[cfg(feature = "src_locations")]
+    {
+        assert_eq!(tree.src_location.line(), _line);
+        assert_eq!(tree.nodes[0].src_location, location);
+    }
+    assert_eq!(drops.load(Ordering::Relaxed), 0);
+    drop(tree);
+    assert_eq!(drops.load(Ordering::Relaxed), 2);
+
+    let wrapped = StandardErrWrap::from(ErTree::new(StandardErr::new(85u8), [InnerErr]));
+    let expected = wrapped.to_string();
+    let opaque = Err::<(), _>(wrapped)
+        .er(HandlerErr::new)
+        .err()
+        .ok_or(core::fmt::Error)?;
+    assert!(opaque.er_contains::<StandardErrWrap<u8>>());
+    assert!(!opaque.er_contains::<InnerErr>());
+    assert_eq!(opaque.nodes[0].error.to_string(), expected);
+
+    let mut called = false;
+    let success = Ok::<_, StandardErrWrap<u8>>(7).er_from_wrap(|| {
+        called = true;
+        HandlerErr
+    });
+    assert_eq!(success.ok(), Some(7));
+    assert!(!called);
+    Ok(())
 }
 
 #[derive(Er)]

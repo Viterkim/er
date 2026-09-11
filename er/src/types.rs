@@ -56,6 +56,11 @@ pub struct ErReportRef<'a, E> {
     pub layout: Layout,
 }
 
+/// An opaque standard Error. The presentation is still in `.0`.
+/// `source()` is empty, so ordinary error searches cannot see its tree.
+#[must_use]
+pub struct ErAsError<P>(pub P);
+
 /// Layout variant for reports and snapshots
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Layout {

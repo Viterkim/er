@@ -27,6 +27,8 @@ impl<E: Error + 'static> ErTree<E> {
     /// Add your error on the top, move everything else below it.
     ///
     /// `let error = error.er(ConfigEr::new);`
+    ///
+    /// Same [constructor calls](crate::ErResult::er) as on a Result.
     #[cfg_attr(feature = "src_locations", track_caller)]
     pub fn er<A>(self, parent: impl FnOnce() -> A) -> ErTree<A>
     where

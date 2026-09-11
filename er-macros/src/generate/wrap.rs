@@ -1,7 +1,7 @@
 use super::replace_self::ReplaceSelf;
 use crate::input::attrs::{WrapOptions, WrapOutput};
 use crate::names::binding;
-use proc_macro2::TokenStream;
+use proc_macro2::{TokenStream, TokenTree};
 use quote::{format_ident, quote};
 use std::collections::HashSet;
 use syn::fold::Fold as _;
@@ -44,9 +44,53 @@ pub fn expand(
         .push(root_bound);
     let (root_impl, _, root_where) = root_generics.split_for_impl();
 
+    let conversion = if options.std_error {
+        quote! {
+            impl #root_impl ::core::error::Error for #wrap #type_generics #root_where {}
+        }
+    } else {
+        // Don't shadow names from the user's bounds, including trait names.
+        let mut node_names = HashSet::new();
+        let mut tokens: Vec<_> = quote!(#declaration #where_clause #stored #wrap #er_path)
+            .into_iter()
+            .collect();
+        while let Some(token) = tokens.pop() {
+            match token {
+                TokenTree::Ident(ident) => {
+                    node_names.insert(crate::names::plain(&ident));
+                }
+                TokenTree::Group(group) => tokens.extend(group.stream()),
+                _ => {}
+            }
+        }
+        let node_root = binding(&node_names, "__ErNodeRoot");
+        let mut node_generics = declaration.clone();
+        node_generics.params.push(syn::parse2(quote!(#node_root))?);
+        // A Wrap containing Rc must still compile. Only turning it into a node needs Send/Sync.
+        let predicates = &mut node_generics.make_where_clause().predicates;
+        predicates.push(syn::parse2(quote!(
+            #wrap #type_generics: #er_path::IntoErTree<Error = #node_root>
+        ))?);
+        predicates.push(syn::parse2(quote!(
+            #node_root: ::core::error::Error + ::core::marker::Send + ::core::marker::Sync + 'static
+        ))?);
+        let (node_impl, _, node_where) = node_generics.split_for_impl();
+
+        quote! {
+            impl #node_impl #er_path::IntoErNode for #wrap #type_generics #node_where {
+                fn into_er_node(self) -> #er_path::ErNode {
+                    let #tree: #er_path::ErTree<#node_root> =
+                        #er_path::IntoErTree::into_er_tree(self);
+                    #er_path::IntoErNode::into_er_node(#tree)
+                }
+            }
+        }
+    };
+
     let formatting = match options.output {
         None => TokenStream::new(),
         Some(output) => formatting(
+            er_path,
             &wrap,
             &declaration,
             &root_generics,
@@ -56,7 +100,15 @@ pub fn expand(
         )?,
     };
 
+    let std_error_docs = options.std_error.then(|| {
+        quote! {
+            /// **WARNING: This is a piece of shit. With this `.er(...)` on the Result hides the sub errors from find!**
+            /// **WARNING You HAVE to use `.er_from_wrap(||)` instead of `.er()` and there's no way i can help you enforce it, I'm sorry...**
+        }
+    });
+
     Ok(quote! {
+        #std_error_docs
         #[must_use]
         #visibility struct #wrap #declaration #where_clause {
             pub tree: #inner,
@@ -105,6 +157,7 @@ pub fn expand(
                 self.tree
             }
         }
+        #conversion
         impl #root_impl ::core::convert::From<#stored> for #wrap #type_generics #root_where {
             #[track_caller]
             fn from(#value: #stored) -> Self {
@@ -122,7 +175,8 @@ pub fn expand(
     })
 }
 
-pub fn formatting(
+fn formatting(
+    er_path: &Path,
     wrap: &Ident,
     declaration: &Generics,
     error_generics: &Generics,
@@ -140,7 +194,6 @@ pub fn formatting(
         WrapOutput::Report => (quote!(er_report), error_generics.clone()),
     };
     let (impl_generics, type_generics, where_clause) = format_generics.split_for_impl();
-    let (error_impl, _, error_where) = error_generics.split_for_impl();
 
     Ok(quote! {
         impl #impl_generics ::core::fmt::Display for #wrap #type_generics #where_clause {
@@ -150,9 +203,15 @@ pub fn formatting(
         }
         impl #impl_generics ::core::fmt::Debug for #wrap #type_generics #where_clause {
             fn fmt(&self, #formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                ::core::fmt::Display::fmt(&self.tree.#view(), #formatter)
+                ::core::fmt::Display::fmt(self, #formatter)
             }
         }
-        impl #error_impl ::core::error::Error for #wrap #type_generics #error_where {}
+        impl #impl_generics #er_path::ErOpaqueError for #wrap #type_generics #where_clause {
+            type Output = #er_path::ErAsError<Self>;
+
+            fn opaque_err(self) -> Self::Output {
+                #er_path::ErAsError(self)
+            }
+        }
     })
 }

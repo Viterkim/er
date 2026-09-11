@@ -7,7 +7,7 @@ pub fn ingest<T>(result: anyhow::Result<T>) -> Er<T, BackendEr> {
 }
 
 pub fn outward(result: Er<(), BackendEr>) -> anyhow::Result<()> {
-    result.er_report()?;
+    result.er_report().opaque_err()?;
     Ok(())
 }
 
@@ -36,9 +36,9 @@ pub mod tests {
         assert!(report.contains("NativeEr(85)"));
     }
 
-    // Anyhow's great long name new box, drops its backtrace.
-    // Lets er_find see NativeEr. map_err only converts the Anyhow error here, then .er() makes the tree.
-    // Remember to usually never use map_err, as in er it would ruin the tree.
+    // If you thought i sucked at coming up with names check this out.
+    // Gets the original type back, but drops Anyhow's backtrace.
+    // `map_err` is fine here because we are converting Anyhow, not throwing away an `ErTree`.
     #[test]
     pub fn original_downcast() {
         let result: anyhow::Result<()> = Err(anyhow::Error::new(NativeEr(85)));

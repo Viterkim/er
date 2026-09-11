@@ -1,6 +1,6 @@
 # Examples
 
-`use er::*;` at the top, then give each function that deals with errors its own `FuncNameEr` ish type with `#[derive(Er)]` and use `.er(...)` on results, errors and options.
+`use er::*;` at the top, then give each function that deals with errors its own `FuncNameEr` type with `#[derive(Er)]` and use `.er(...)` on results, errors and options.
 
 Don't throw away the tree in `map_err`. Use `.er(...)` for context.
 
@@ -24,15 +24,13 @@ Keep the stuff the caller cares about:
 
 ```rust
 #[derive(Er)]
-pub struct ReadFileEr {
+pub struct ReadFileEr { // or `ReadFileEr(pub PathBuf)`
     pub path: PathBuf,
 }
 pub fn read_file(path: &Path) -> Er<String, ReadFileEr> {
     fs::read_to_string(path).er(|| ReadFileEr::new(path))
 }
 ```
-
-Rc/Cell can stay in the top error. Putting that error below another needs `Send + Sync + 'static`.
 
 ## Enum
 
@@ -92,7 +90,7 @@ Missing: missing85
 
 ## Type inside
 
-For a struct inside your error, `ErFormat` gives normal data the same Display and Debug formatting (doesn't implement `Error` and doesn't make any constructors).
+For a struct inside your error, `ErFormat` gives the same Display/Debug and constructors, but no `Error`.
 
 ```rust
 #[derive(ErFormat)]
@@ -106,10 +104,7 @@ pub struct ConnectEr {
     pub connection: Connection,
 }
 
-let connection = Connection {
-    host: "ComputerKatten".into(),
-    port: 85,
-};
+let connection = Connection::new("ComputerKatten", 85);
 let error = ConnectEr::new(connection).er();
 
 println!("{}", error.er_top());
@@ -120,7 +115,7 @@ ConnectEr { connection: Connection { host: "ComputerKatten", port: 85 } }
 
 ## Collect/aggregate
 
-Collects both failures, different types are fine.
+Collects multi failures (different types are fine).
 
 ```rust
 #[derive(Er)]
@@ -136,7 +131,7 @@ pub fn check_config(port: &str, enabled: &str) -> Er<(), ConfigEr> {
 }
 ```
 
-Already have a Vec? Same call:
+Or if the collections is there already.
 
 ```rust
 #[derive(Er)]
@@ -192,9 +187,35 @@ match error {
 }
 ```
 
-## Non error fails
+Or you want to keep the report as text too.
+```rust
+#[derive(Er)]
+pub struct ApiError {
+    pub report: String,
+    pub err_msg: String,
+}
 
-For stuff like `Err(85)`, where 85 isn't an Error:
+pub fn public_read_port(input: &str) -> Result<u16, ApiError> {
+    // Only place in `Er` where you won't get thrown in jail for using `.map_err()`
+    // We're turning the tree into text (it gets dropped)
+    read_port(input).map_err(|error| ApiError {
+        report: error.er_report().to_string(),
+        err_msg: "invalid port".to_string(),
+    })
+}
+
+if let Err(error) = public_read_port("fakenumber") {
+    // !WARNING! Don't just print "{error:?}" you'll get `\n` instead of actual newlines    
+    println!("{}", error.report);
+    println!("{}", error.err_msg);
+}
+```
+
+## Non errors (values)
+
+NEVER do this on a tree, you nuke it! !This makes a new tree!
+
+For values that don't implement `Error` like `Err(85)`.
 
 ```rust
 #[derive(Er)]
@@ -202,11 +223,11 @@ pub struct DeviceEr {
     pub status: u8,
 }
 pub fn check_device(result: Result<(), u8>) -> Er<(), DeviceEr> {
-    result.er_from(DeviceEr::new)
+    // Remember, the error is a value and gets passed into the first argument
+    // Same as `|v| DeviceEr::new(v)`
+    result.er_from_val(DeviceEr::new)
 }
 ```
-
-Starts a new tree. Usually you want `.er(...)` to keep the old one.
 
 ## Tests
 
@@ -229,11 +250,9 @@ pub fn port() -> TestEr {
 }
 ```
 
-## Wrap / External traits
+## Other traits
 
-!Errors from other crates don't need Wrap! Just use `.er(...)`.
-
-But for times where the orphan rule hits you, and you need to implement another crate's trait (hello Axum's `IntoResponse`):
+If you need to implement another crate's trait on the whole tree, use Wrap.
 
 ```rust
 #[derive(Er)]
@@ -245,37 +264,19 @@ pub fn handler(input: &str) -> Result<u16, HandlerError> {
 }
 ```
 
-`.er_find()`, `.er_top()` and `.er_report()` still work. [The Axum example](../../integrations/axum/src/lib.rs) shows the trait impl.
-
-If you need `Error` or `Display/Debug` add `output = report` or `output = top` which implements that style and implements `Error`: `#[er(wrap(name = HandlerError, output = report))]`.
-
-Use it when another library needs those traits, or when you need a local type for your own trait impl. Normal .er(...) calls don't need Wrap.
-
-And remember, Er wants you to pick report/top. If you call .er_report() or .er_top() on a Wrap, you still get Error + Display/Debug. 'output = report/top' is only for places that need it.
-
-## Wrap and back
-
-From Wrap back to Er:
+`?` puts the tree in `HandlerError`. Add context as usual:
 
 ```rust
-#[derive(Er)]
-pub struct RequestEr;
-pub fn request(input: &str) -> Er<u16, RequestEr> {
-    handler(input).er_tree().er(RequestEr::new)
-}
+handler(input).er(RequestEr::new)
 ```
 
-Same tree with RequestEr added on top, use for owned reports and tops too, their layout is gone.
-
-If you call `.er()` on a result with a Wrap with output makes the wrapper boxed which hides its inner errors from find, so use `.er_tree().er(...)`. 
-
-Anyhow doesn't need wrap but its boxed conversion can be a sneaky bitch and hide types from `er_find`, so you might have to do [something like the Anyhow example here](../../integrations/anyhow/src/lib.rs).
+[Wrap options and the trait impl](macros.md#wrap).
 
 ## Snapshots
 
-Saved messages and tree structure for christmas or other special occasions.
+Saves msgs and the tree structure for christmas or other special occasions.
 
-Keep the messages and structure, let the real errors go (i know it's hard, i believe in you):
+Remember they aren't real errors but strings.
 
 ```rust
 if let Err(error) = read_port("fakenumber") {
@@ -290,7 +291,25 @@ if let Err(error) = read_port("fakenumber") {
 }
 ```
 
-Clone it, store a Vec of em', print `.er_top()` or `.er_report()`. Each entry has its parent and depth, not just a printed line. (Disclaimer: The original error types are gone though).
+Can still print `.er_top()` or `.er_report()`. Each entry has its parent and depth.
+
+## If you want Error on report (opaque)
+
+You can make your own public type and attach a string report, or a snapshot, check the `Public error` example above.
+
+But if you want to force the real report, into an Error for like anyhow, then you can.
+
+```rust
+pub fn run() -> anyhow::Result<()> {
+    // Or `.er_top()`
+    read_port("nope").er_report().opaque_err()?;
+    Ok(())
+}
+```
+
+BONUS: Nothing is deleted `ErAsError` keeps the presentation in its public `.0` field.
+
+BUT `.opaque_err()` stops searches (source() is empty), and going the other way, Anyhow's boxed conversion can also be a sneaky bitch and hide types from er_find. [The anyhow example](../../integrations/anyhow/src/lib.rs) shows both.
 
 ## Macros
 
@@ -315,4 +334,6 @@ println!("{error}");
 
 `#[er(skip)]` leaves a field out. `#[er(censor)]` prints `*CENSORED*` (data still there). 
 
-[More about the macros](https://github.com/Viterkim/er/blob/main/er/docs/macros.md), including the generated constructors.
+`#[er(no_constructors)]` on the struct/enum skips `new` and all variant constructors, for either derive.
+
+[More about the macros](macros.md), including the generated constructors.

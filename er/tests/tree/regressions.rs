@@ -55,11 +55,12 @@ pub fn method_collision() {
 }
 
 pub trait Relates<T> {}
+pub use Relates as __ErNodeRoot;
 pub struct Token;
 
 #[derive(Er)]
 #[er(wrap(output = report))]
-pub struct Bound<T: Relates<Self>> {
+pub struct Bound<T: __ErNodeRoot<Self>> {
     #[er(skip)]
     pub marker: PhantomData<T>,
 }
@@ -69,7 +70,7 @@ impl Relates<Bound<Token>> for Token {}
 #[er(wrap(output = top))]
 pub struct WhereBound<T>
 where
-    T: Relates<Self>,
+    T: __ErNodeRoot<Self>,
 {
     #[er(censor)]
     pub marker: PhantomData<T>,

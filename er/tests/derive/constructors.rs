@@ -6,10 +6,37 @@ pub struct OptionalEr<T> {
     #[er(exact)]
     pub value: Option<T>,
 }
+#[derive(ErFormat)]
+pub struct OptionalData<T> {
+    #[er(exact)]
+    pub value: Option<T>,
+}
 #[test]
 pub fn exact() {
     let error = OptionalEr::new(Some(7u8));
     assert_eq!(error.to_string(), "OptionalEr { value: Some(7) }");
+    let data = OptionalData::new(Some(7u8));
+    assert_eq!(data.to_string(), "OptionalData { value: Some(7) }");
+}
+
+#[derive(Er)]
+#[er(no_constructors, wrap)]
+pub struct ManualEr(pub u8);
+impl ManualEr {
+    pub fn new(value: u8) -> Self {
+        Self(value.saturating_add(1))
+    }
+}
+
+#[derive(ErFormat)]
+#[er(no_constructors)]
+pub enum ManualData {
+    Pair(u8, u8),
+}
+impl ManualData {
+    pub fn pair(value: u8) -> Self {
+        Self::Pair(value, value)
+    }
 }
 
 #[derive(Debug)]
@@ -38,6 +65,9 @@ pub enum JobEr {
 }
 #[test]
 pub fn constructors() {
+    assert_eq!(ManualEr::new(84).er_wrap().tree.top.0, 85);
+    assert!(matches!(ManualData::pair(7), ManualData::Pair(7, 7)));
+
     let path = PathBuf::from("config.toml");
     let msg = String::from("couldn't read it");
     let token = Token("secret".into());

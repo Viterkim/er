@@ -20,10 +20,7 @@ pub struct FirmwareErr {
     pub device: Device,
 }
 pub fn diagnostic() -> FirmwareErrWrap {
-    let device = Device {
-        bus: 85,
-        key: Secret,
-    };
+    let device = Device::new(85, Secret);
 
     FirmwareErr::new(device).er_wrap()
 }

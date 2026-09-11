@@ -4,6 +4,7 @@ use std::{fmt, marker::PhantomData};
 pub struct NotPrintable;
 
 #[derive(ErFormat)]
+#[er(no_constructors)]
 pub struct Payload<T: ?Sized> {
     pub value: T,
 }
@@ -26,12 +27,7 @@ pub struct Data<T> {
 }
 #[test]
 pub fn fields() {
-    let data = Data {
-        name: "ComputerKatten".into(),
-        secret: NotPrintable,
-        handle: NotPrintable,
-        marker: PhantomData,
-    };
+    let data = Data::new("ComputerKatten", NotPrintable, NotPrintable, PhantomData);
     let text = data.to_string();
 
     assert!(
@@ -67,17 +63,14 @@ pub enum Choice<'a, T, U> {
 #[test]
 pub fn variants() {
     let text = String::from("hello");
-    let named = Choice::Named { text: &text };
-    let custom = Choice::Custom {
-        value: OnlyDisplay(9),
-        secret: NotPrintable,
-    };
+    let named = Choice::named(&text);
+    let custom = Choice::custom(OnlyDisplay(9), NotPrintable);
 
     for (value, expected) in [
-        (Choice::Empty, "Choice::Empty"),
+        (Choice::empty(), "Choice::Empty"),
         (named, "Choice::Named { text: \"hello\" }"),
         (
-            Choice::Tuple(7, NotPrintable, NotPrintable),
+            Choice::tuple(7, NotPrintable, NotPrintable),
             "Choice::Tuple(7, *CENSORED*)",
         ),
         (custom, "value 9; secret *CENSORED*"),
@@ -93,6 +86,6 @@ pub struct Unit;
 pub struct Tuple(pub String);
 #[test]
 pub fn unit_and_tuple() {
-    assert_eq!(Unit.to_string(), "Unit");
-    assert_eq!(Tuple("hi".into()).to_string(), "\"hi\"");
+    assert_eq!(Unit::new().to_string(), "Unit");
+    assert_eq!(Tuple::new("hi").to_string(), "\"hi\"");
 }

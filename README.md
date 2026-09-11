@@ -6,7 +6,9 @@ The main focus is caring about what the function caller cares about, how can you
 
 For more examples look at [Most common examples / use cases](./er/docs/examples.md).
 
-There's also an [extensive comparison on error libraries / opinion piece](er/docs/err-lib-comparisons.md) for a bigger comparison/opinion piece with examples. (Obviously biased, but trying to be fair with examples).
+There's also a [comparison on error libraries / opinion piece](er/docs/err-lib-comparisons.md). (Obviously biased, but trying to be fair with examples).
+
+And if you really care [there's also stuff about the macros](er/docs/macros.md) for different options (censor/skip).
 
 Add it with:
 ```toml
@@ -20,7 +22,6 @@ Use `.er` on basically any result/error/option/tree, even different types.
 
 You add relevant context(or none), Er keeps the original error and adds line number and file name.
 
-Basic example where we add context.
 ```rust
 use er::*;
 use std::{fs::read_to_string, path::PathBuf};
@@ -55,7 +56,7 @@ AnalyzeEr @ er/runnable_examples/context.rs:14:32
    `- No such file or directory (os error 2) @ er/runnable_examples/context.rs:7:37
 ```
 
-And when things get spicy ([the other helpers](er/runnable_examples/context.rs)):
+And when things get spicy
 ```rust
 #[derive(Er)]
 pub struct ConfigEr {
@@ -64,7 +65,7 @@ pub struct ConfigEr {
     pub token: String,
 }
 pub fn read_config(machine: &str, token: &str, port: &str, mode: Option<&str>) -> Er<(), ConfigEr> {
-    // add local context (new() generated and ordered)
+    // add local context
     let er = || ConfigEr::new(machine, token);
 
     // 3 different types 
@@ -81,7 +82,6 @@ And aggregation/collection
 #[derive(Er)]
 pub struct StartupEr;
 pub fn startup() -> Er<(), StartupEr> {
-    // Aggregate different results (even different types)
     er_all!(StartupEr::new, [
         read_config("HaandboldFuglen", "HaandboldFuglen_token", "aint_even_a_number_cmon_man", Some("microsoftjavaakacsharp")),
         read_config("ComputerKatten", "ComputerKatten_token", "85", None),
@@ -119,43 +119,23 @@ The TLDR is `#[derive(Er)]YourEr + return Er<(), YourEr> + .er(||)?;`
 
 AVOID `map_err(|error|)` for adding context! You're gonna nuke the tree(unless you manually handle it). Use `.er(||)`.
 
-`Er<T, YourEr>` is `Result<T, ErTree<YourEr>>`.
+`Er<T, YourEr>` is `Result<T, ErTree<YourEr>>`. (You don't need to remember this).
 
 Each function that handles errors should have THEIR OWN little Er type, this is to force readding context. If you just used an 'EverythingEr' you could '?' everywhere without context.
+
+In many cases unit structs are more than enough, add the context where it makes sense, and where it helps, usually small local things that change on runs.
 
 For structs use `.er(|| OtherEr::new(arg1))`, for empty structs use `.er(OtherEr::new)`.
 
 For enums use `.er(|| EnumErr::variant_name(arg1))`, for empty variants use `.er(EnumErr::variant_name)`.
 
-Enums get a constructor per variant.
-```rust
-#[derive(Er)]
-pub enum BingoEr {
-    // BingoEr::parse() generated
-    Parse { input: String, favorite_number: u32 },
-}
-pub fn bingo(input: &str) -> Er<u8, BingoEr> {
-    input.parse().er(|| BingoEr::parse(input, 85))
-}
-```
-
 ## Why?
-
-You don't add a source field manually, you don't have to write out wrappers, you avoid the god enum of every suberror imaginable(thiserror spaghetti pyramid).
 
 It's designed to force you to pick between report/top error. (Display/Debug meaning report or something else is confusing and tribal knowledge).
 
 Slightly exaggerated, i want to avoid: `thing.add_lazy_context_and_its_tuesday(|something_here| #[now_theres_a_macro_here_for_some_reason] YouGetThePoint { a: "85".to_string() } )`, i just wanna do `.er(||)`.
 
 Having an easy to use macro with the defaults you want, is the thing that makes each function have their own little `Er` type not be painful.
-
-## The macro (it does what it do)
-
-If you have other structs and you want display/debug in the same way: `#[derive(ErFormat)]`.
-
-You can use `#[er(skip)]` to leave out a field or `#[er(censor)]` which shows up as `*CENSORED*` (Stored value is NOT removed!).
-
-If you HATE the defaults and want to type out your own messages: `#[er(format = "couldn't read {path:?}")]`. 
 
 ## Features / Extra
 

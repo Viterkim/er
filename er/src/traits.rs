@@ -8,6 +8,8 @@ pub trait ErError: Error + Sized + 'static {
     /// Make a new Er error tree.
     ///
     /// `return Err(PortEr::new(85).er());`
+    ///
+    /// For adding context to a Result, see [`ErResult::er`].
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er(self) -> ErTree<Self> {
         ErTree::from(self)
@@ -22,7 +24,11 @@ pub trait ErResult {
     /// Add your error on the top, move everything else below it.
     /// Only happens on failures.
     ///
-    /// `read_port(input).er(ConfigEr::new)?;`
+    /// ```rust,ignore
+    /// result.er(OtherEr::new)?;                      // Empty struct
+    /// result.er(|| OtherEr::new(arg1))?;             // Struct with fields
+    /// result.er(|| EnumErr::variant_name(arg1))?;    // Enum variant
+    /// ```
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er<A, F>(self, error: F) -> Er<Self::Ok, A>
     where
@@ -30,11 +36,18 @@ pub trait ErResult {
         F: FnOnce() -> A,
         Self::Err: IntoErNode;
 
-    /// Make an error from the failure value, starts fresh.
+    /// For values that don't implement `Error`, like `Err(85)`.
     ///
-    /// `device_status().er_from(DeviceEr::new)?;`
+    /// **Don't use this to add context to an existing tree! This makes a new tree,
+    /// it doesn't keep the old one for you. Use `.er(...)` for that.**
+    ///
+    /// ```rust,ignore
+    /// // Err(85) calls DeviceEr::new(85)
+    /// // Same as `|v| DeviceEr::new(v)`
+    /// device_status().er_from_val(DeviceEr::new)?;
+    /// ```
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_from<A, F>(self, error: F) -> Er<Self::Ok, A>
+    fn er_from_val<A, F>(self, error: F) -> Er<Self::Ok, A>
     where
         A: Error + 'static,
         F: FnOnce(Self::Err) -> A;
@@ -92,6 +105,28 @@ pub trait ErPresentation {
     ///
     /// `read_port("85").er_report().unwrap();`
     fn er_report(self) -> Result<Self::Ok, ErReport<Self::Err>>;
+
+    /// Take the tree out of a Wrap with `std_error` and add context. Leaves Ok alone.
+    ///
+    /// **WARNING: normal `.er(...)` boxes a Wrap with `std_error` and makes its children NON SEARCHABLE.**
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_from_wrap<A, F>(self, error: F) -> Er<Self::Ok, A>
+    where
+        Self: Sized,
+        Self::Err: Error + Send + Sync + 'static,
+        A: Error + 'static,
+        F: FnOnce() -> A,
+    {
+        self.er_tree().er(error)
+    }
+}
+
+/// Give a presentation standard Error support. On a Result, leaves Ok alone.
+pub trait ErOpaqueError {
+    type Output;
+
+    /// The presentation stays in `.0`, but error searches can't see inside it.
+    fn opaque_err(self) -> Self::Output;
 }
 
 /// Turns an error or tree into a node.

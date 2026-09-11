@@ -1,6 +1,7 @@
 use er::*;
 
 #[derive(ErFormat)]
+#[er(no_constructors)]
 pub struct Data {
     pub value: u8,
 }
@@ -13,15 +14,16 @@ pub struct Wrapped;
 #[er(crate = ::er)]
 pub struct RuntimePath;
 
-#[derive(ErFormat)]
-pub struct Exact {
-    #[er(exact)]
-    pub value: u8,
+#[derive(Er)]
+#[er(no_constructors)]
+pub enum NoVariants {
+    Missing,
 }
 
 pub fn needs_error(_: impl std::error::Error) {}
 
 pub fn main() {
     let _ = Data::new(7);
+    let _ = NoVariants::missing();
     needs_error(Data { value: 7 });
 }

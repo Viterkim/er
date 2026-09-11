@@ -16,7 +16,7 @@ error: `wrap` is set more than once
 14 | #[er(wrap, wrap)]
    |            ^^^^
 
-error: empty `#[er(...)]`; expected `#[er(format = "...")]`, `#[er(crate = ...)]`, or `#[er(wrap)]`
+error: empty `#[er(...)]`; expected `#[er(format = "...")]`, `#[er(crate = ...)]`, `#[er(wrap)]`, or `#[er(no_constructors)]`
   --> tests/fail/attribute_options.rs:18:1
    |
 18 | #[er()]
@@ -34,7 +34,7 @@ error: put `skip`, `censor`, or `exact` on a field
 28 | #[er(skip)]
    |      ^^^^
 
-error: expected `#[er(format = "...")]`, `#[er(crate = ...)]`, or `#[er(wrap)]`
+error: expected `#[er(format = "...")]`, `#[er(crate = ...)]`, `#[er(wrap)]`, or `#[er(no_constructors)]`
   --> tests/fail/attribute_options.rs:34:6
    |
 34 | #[er(wrapp)]

@@ -7,6 +7,10 @@ use std::collections::HashSet;
 use syn::{Ident, Type};
 
 pub fn constructors(input: &Input<'_>) -> syn::Result<TokenStream> {
+    if input.options.no_constructors {
+        return Ok(TokenStream::new());
+    }
+
     let name = &input.item.ident;
     let (impl_generics, type_generics, where_clause) = input.item.generics.split_for_impl();
     let variants: HashSet<_> = input
