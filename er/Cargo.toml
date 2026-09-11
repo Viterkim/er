@@ -20,7 +20,7 @@ macros = ["dep:er-macros"]
 test = []
 
 [dependencies]
-er-macros = { version = "=0.1.0", path = "../er-macros", optional = true }
+er-macros = { version = "=0.1.1", path = "../er-macros", optional = true }
 
 [lints]
 workspace = true

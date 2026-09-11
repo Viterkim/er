@@ -4,14 +4,14 @@ version = 4
 
 [[package]]
 name = "er"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "er-macros",
 ]
 
 [[package]]
 name = "er-macros"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "proc-macro2",
  "quote",
