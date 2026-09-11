@@ -91,7 +91,7 @@ impl<E: Error + 'static> ErTree<E> {
 
     /// Borrow every match in order, including native sources.
     ///
-    /// `error.er_find_all::<PortEr>().find(|e| e.input == "nope")`
+    /// `error.er_find_all::<PortEr>().find(|e| e.input == "aint_even_a_number_cmon_man")`
     pub fn er_find_all<T: Error + 'static>(&self) -> impl Iterator<Item = &T> {
         self.er_entries()
             .filter_map(|entry| entry.error.downcast_ref::<T>())

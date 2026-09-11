@@ -111,7 +111,9 @@ pub fn wrapped_results() {
     assert_eq!(parse_wrapped("85").er_report().unwrap(), 85);
     assert_eq!(parse_wrapped("80").er_top().expect("usable response"), 80);
 
-    let report = parse_wrapped("nope").er_report().unwrap_err();
+    let report = parse_wrapped("aint_even_a_number_cmon_man")
+        .er_report()
+        .unwrap_err();
     assert!(report.er_contains::<std::num::ParseIntError>());
     assert!(report.er_contains::<HandlerErr>());
 

@@ -15,6 +15,7 @@ doctest = false
 [features]
 default = ["src_locations", "macros"]
 src_locations = []
+small_path_src = []
 macros = ["dep:er-macros"]
 test = []
 

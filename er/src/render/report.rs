@@ -21,6 +21,8 @@ pub fn write_entry<W: fmt::Write + ?Sized>(
 
     #[cfg(feature = "src_locations")]
     if let Some((file, line, column)) = entry.src_location {
+        #[cfg(feature = "small_path_src")]
+        let file = small_path(file);
         writer.forget_pending_break();
         write!(writer, " @ {file}:{line}:{column}")?;
     }
@@ -31,6 +33,33 @@ pub fn write_entry<W: fmt::Write + ?Sized>(
     }
 
     Ok(())
+}
+
+// Last src directory, plus its parent. This is display-only, not crate-root detection.
+#[cfg(all(feature = "src_locations", feature = "small_path_src"))]
+fn small_path(file: &str) -> &str {
+    let mut offset = 0;
+    let mut parent = None;
+    let mut shortened = file;
+
+    for part in file.split_inclusive(['/', '\\']) {
+        let name = part.trim_end_matches(['/', '\\']);
+        if name == "src" && name.len() < part.len() {
+            shortened = match parent {
+                Some(start) => &file[start..],
+                None => &file[offset..],
+            };
+        }
+
+        if name.len() == 2 && name.as_bytes()[0].is_ascii_alphabetic() && name.ends_with(':') {
+            parent = None; // A Windows drive isn't a parent directory.
+        } else if !name.is_empty() {
+            parent = Some(offset);
+        }
+        offset += part.len();
+    }
+
+    shortened
 }
 
 pub fn write_report<W: fmt::Write + ?Sized>(

@@ -1,25 +1,34 @@
 use er::*;
+use std::{fs::read_to_string, path::PathBuf};
 
 #[derive(Er)]
-pub struct PortEr(pub String);
+pub struct FileEr(pub PathBuf);
+pub fn read_file(path: &str) -> Er<String, FileEr> {
+    let text = read_to_string(path).er(|| FileEr::new(path))?;
+    Ok(text)
+}
+
+#[derive(Er)]
+pub struct AnalyzeEr;
+pub fn analyze() -> Er<String, AnalyzeEr> {
+    read_file("/tmp/file.txt").er(AnalyzeEr::new)
+}
+
+#[derive(Er)]
+pub struct PortEr {
+    pub invalid_port: String,
+}
 pub fn read_port(input: &str) -> Er<u16, PortEr> {
     let port: u16 = input.parse().er(|| PortEr::new(input))?;
     Ok(port)
 }
 
 #[derive(Er)]
-pub struct ReadEr;
-pub fn read() -> Er<(), ReadEr> {
-    let _port = read_port("fakenumber").er(ReadEr::new)?;
-    Ok(())
-}
-
-#[derive(Er)]
 pub enum ModeEr {
-    Missing,
+    MissingMode,
 }
 pub fn read_mode(mode: Option<&str>) -> Er<&str, ModeEr> {
-    let mode = mode.er(ModeEr::missing)?;
+    let mode = mode.er(ModeEr::missing_mode)?;
     Ok(mode)
 }
 
@@ -58,7 +67,7 @@ pub fn startup() -> Er<(), StartupEr> {
             read_config(
                 "HaandboldFuglen",
                 "HaandboldFuglen_token",
-                "nope",
+                "aint_even_a_number_cmon_man",
                 Some("microsoftjavaakacsharp")
             ),
             read_config("ComputerKatten", "ComputerKatten_token", "85", None),
@@ -67,8 +76,28 @@ pub fn startup() -> Er<(), StartupEr> {
     Ok(())
 }
 
+#[derive(Er)]
+pub enum BingoEr {
+    // BingoEr::parse() generated
+    Parse { input: String, favorite_number: u32 },
+}
+pub fn bingo(input: &str) -> Er<u8, BingoEr> {
+    input.parse().er(|| BingoEr::parse(input, 85))
+}
+
 pub fn main() {
+    if let Err(e) = read_file("/tmp/file.txt") {
+        eprintln!("{}", e.er_report());
+        eprintln!("{}", e.er_top());
+    }
+    if let Err(e) = analyze() {
+        eprintln!("{}", e.er_report());
+    }
     if let Err(e) = startup() {
         eprintln!("{}", e.er_report());
+        eprintln!("{}", e.er_top());
+    }
+    if let Err(e) = bingo("aint_even_a_number_cmon_man") {
+        eprintln!("{}", e.er_top());
     }
 }

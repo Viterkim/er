@@ -17,15 +17,15 @@ pub fn load_config(port: &str) -> Er<u16, LoadConfigErr> {
 
 #[test]
 pub fn causal_chain() {
-    let error = load_config("nope").unwrap_err();
+    let error = load_config("aint_even_a_number_cmon_man").unwrap_err();
 
     #[cfg(feature = "src_locations")]
     let expected = format!(
-        "LoadConfigErr @ {}\n`- ParsePortErr(\"nope\") @ {}\n   `- invalid digit found in string @ {}",
+        "LoadConfigErr @ {}\n`- ParsePortErr(\"aint_even_a_number_cmon_man\") @ {}\n   `- invalid digit found in string @ {}",
         error.src_location, error.nodes[0].src_location, error.nodes[0].nodes[0].src_location,
     );
     #[cfg(not(feature = "src_locations"))]
-    let expected = "LoadConfigErr\n`- ParsePortErr(\"nope\")\n   `- invalid digit found in string";
+    let expected = "LoadConfigErr\n`- ParsePortErr(\"aint_even_a_number_cmon_man\")\n   `- invalid digit found in string";
 
     assert_eq!(error.er_report().to_string(), expected);
 }

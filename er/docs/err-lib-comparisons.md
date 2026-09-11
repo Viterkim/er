@@ -4,13 +4,13 @@
 
 Done on Rust 1.98.1
 
-Someone entered `nope` as input and we get this:
+Someone entered `aint_even_a_number_cmon_man` as input and we get this:
 
 ```text
 invalid digit found in string
 ```
 
-So lets call `read_port("nope")` and let's do 2 versions...
+So lets call `read_port("aint_even_a_number_cmon_man")` and let's do 2 versions...
 
 One lazy try where we do whatever the library makes easy (and lets be honest, its what people end up doing).
 
@@ -49,7 +49,7 @@ parse failed: invalid digit found in string
 Parse(ParseIntError { kind: InvalidDigit })
 ```
 
-First line is Display, second is Debug. Neither knows we passed `nope`.
+First line is Display, second is Debug. Neither knows we passed `aint_even_a_number_cmon_man`.
 
 ### With context
 
@@ -77,8 +77,8 @@ println!("{error:?}");
 ```
 
 ```text
-invalid port "nope": invalid digit found in string
-Parse { input: "nope", source: ParseIntError { kind: InvalidDigit } }
+invalid port "aint_even_a_number_cmon_man": invalid digit found in string
+Parse { input: "aint_even_a_number_cmon_man", source: ParseIntError { kind: InvalidDigit } }
 ```
 
 There goes `#[from]`, it gets the parser error, not the local `input`, so we gotta get down and dirty and type stuff out.
@@ -92,7 +92,7 @@ No report, but thats fair enough i think the bigger annoyance with this enum is 
 The upside of declaring the source, the caller can just take it out. No search or downcast. Same goes for SNAFU's typed errors below.
 
 ```rust
-match read_port("nope") {
+match read_port("aint_even_a_number_cmon_man") {
     Ok(port) => println!("port is {port}"),
     Err(PortError::Parse { input, source }) => {
         println!("bad port {input:?}, parser says {source}");
@@ -137,7 +137,7 @@ println!("{error:?}");
 ```
 
 ```text
-invalid port "nope"
+invalid port "aint_even_a_number_cmon_man"
 
 Caused by:
     invalid digit found in string
@@ -145,7 +145,7 @@ Caused by:
 
 Easy to add and easy to forget. The return type stays the same, every function above can keep doing `?` without adding anything.
 
-Printing with `{}` or `.to_string()` only gives `invalid port "nope"`.
+Printing with `{}` or `.to_string()` only gives `invalid port "aint_even_a_number_cmon_man"`.
 
 `{:#}` puts the causes on one line.
 
@@ -191,7 +191,7 @@ println!("{}", Report::from_error(error));
 ```
 
 ```text
-invalid port "nope"
+invalid port "aint_even_a_number_cmon_man"
 
 Caused by this error:
   1: invalid digit found in string
@@ -221,7 +221,7 @@ pub fn read_port(input: &str) -> Result<u16, PortError> {
 ```
 
 ```text
-invalid port "nope" at examples/snafu_unique.rs:14:19
+invalid port "aint_even_a_number_cmon_man" at examples/snafu_unique.rs:14:19
 
 Caused by this error:
   1: invalid digit found in string
@@ -284,7 +284,7 @@ println!("{error:?}");
 ```
 
 ```text
-invalid port "nope"
+invalid port "aint_even_a_number_cmon_man"
 ├╴at examples/error_stack_context.rs:10:37
 │
 ╰─▶ invalid digit found in string
@@ -354,7 +354,7 @@ println!("{error}");
 
 ```text
 
- ● invalid port "nope"
+ ● invalid port "aint_even_a_number_cmon_man"
  ├ examples/rootcause_typed.rs:10
  │
  ● invalid digit found in string
@@ -433,7 +433,7 @@ println!("{error:?}");
 ```
 
 ```text
-invalid port "nope", at examples/exn_context.rs:10:37
+invalid port "aint_even_a_number_cmon_man", at examples/exn_context.rs:10:37
 `-- invalid digit found in string, at examples/exn_context.rs:10:37
 ```
 
@@ -504,7 +504,7 @@ ParseIntError { kind: InvalidDigit }
 ---
 
 Context:
-	- invalid port "nope"
+	- invalid port "aint_even_a_number_cmon_man"
 
 ---
 ```
@@ -605,7 +605,7 @@ println!("{error}");
 ```
 
 ```text
-invalid port "nope": invalid digit found in string
+invalid port "aint_even_a_number_cmon_man": invalid digit found in string
 ```
 
 `.via(MyError)` adds your error above the current cause without source being needed.
@@ -616,7 +616,7 @@ The distinctive thing is the caller chooses how failures are dealt with, pass a 
 
 `map_via` adds a cause, `GlossError` is its string error. No custom type needed here. [Docs](https://docs.rs/problemo/0.0.13/problemo/)
 
-It also has `.with(...)` for typed attachments. Those aren't automatically printed, adding `.with(input.to_owned())` alone won't put `nope` in this output. You have to read the attachment yourself.
+It also has `.with(...)` for typed attachments. Those aren't automatically printed, adding `.with(input.to_owned())` alone won't put `aint_even_a_number_cmon_man` in this output. You have to read the attachment yourself.
 
 I like the focus on aggregation/stopping.
 
@@ -635,13 +635,13 @@ pub fn read_ports(inputs: &[&str], errors: &mut impl ProblemReceiver) -> Result<
     Ok(ports)
 }
 
-let inputs = ["nope", "85", "fakenumber"];
+let inputs = ["aint_even_a_number_cmon_man", "85", "fakenumber"];
 
 let mut errors = Problems::default();
 let ports = read_ports(&inputs, &mut errors)?; // [85] both failures saved
 let collected = errors.check(); // Err don't forget this
 
-let stopped = read_ports(&inputs, &mut FailFast); // Err on "nope"
+let stopped = read_ports(&inputs, &mut FailFast); // Err on "aint_even_a_number_cmon_man"
 ```
 
 Collecting 'Ok' can mean partial success, the errors are in the receiver, not Result.
@@ -672,7 +672,7 @@ Caused by:
 With context:
 
 ```text
-invalid port "nope"
+invalid port "aint_even_a_number_cmon_man"
 
 Caused by:
       invalid digit found in string
@@ -735,7 +735,7 @@ println!("{}", error.er_report());
 ```
 
 ```text
-PortEr { input: "nope" } @ examples/er_context.rs:8:35
+PortEr { input: "aint_even_a_number_cmon_man" } @ examples/er_context.rs:8:35
 `- invalid digit found in string @ examples/er_context.rs:8:35
 ```
 

@@ -4,7 +4,7 @@ use er::*;
 #[test]
 pub fn nested_helpers() {
     fn inner() -> TestEr {
-        "nope".parse::<u16>().t_er()?;
+        "aint_even_a_number_cmon_man".parse::<u16>().t_er()?;
         Ok(())
     }
 
@@ -24,7 +24,10 @@ pub fn test_errors() -> TestEr {
     assert_eq!(format!("{TestError:?}"), "TestEr");
     assert_eq!("85".parse::<u32>().t_er()?, 85);
 
-    let report = "nope".parse::<u32>().t_er().unwrap_err();
+    let report = "aint_even_a_number_cmon_man"
+        .parse::<u32>()
+        .t_er()
+        .unwrap_err();
     assert!(report.er_contains::<ParseIntError>());
     assert!(report.to_string().starts_with("TestEr"));
 
@@ -38,7 +41,10 @@ pub fn test_errors() -> TestEr {
     #[derive(Er)]
     pub struct ParseEr;
 
-    let tree = "nope".parse::<u32>().er(ParseEr::new).unwrap_err();
+    let tree = "aint_even_a_number_cmon_man"
+        .parse::<u32>()
+        .er(ParseEr::new)
+        .unwrap_err();
     #[cfg(feature = "src_locations")]
     let src = tree.src_location;
     let result: Er<(), ParseEr> = Err(tree);

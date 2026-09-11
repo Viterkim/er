@@ -229,13 +229,15 @@ pub fn port() -> TestEr {
 }
 ```
 
-## Wrap
+## Wrap / External traits
 
-If something needs your own type, like Axum's `IntoResponse`:
+!Errors from other crates don't need Wrap! Just use `.er(...)`.
+
+But for times where the orphan rule hits you, and you need to implement another crate's trait (hello Axum's `IntoResponse`):
 
 ```rust
 #[derive(Er)]
-#[er(wrap(name = HandlerError))]
+#[er(wrap(name = HandlerError))] // Defaults to HandlerErWrap without name
 pub struct HandlerEr;
 pub fn handler(input: &str) -> Result<u16, HandlerError> {
     let port = input.parse().er(HandlerEr::new)?;
@@ -243,11 +245,13 @@ pub fn handler(input: &str) -> Result<u16, HandlerError> {
 }
 ```
 
-`?` converts the normal Er tree into HandlerError. Making one directly? `HandlerEr::new().er_wrap()`.
+`.er_find()`, `.er_top()` and `.er_report()` still work. [The Axum example](../../integrations/axum/src/lib.rs) shows the trait impl.
 
-Wrap borrows like its tree, so `.er_find()`, `.er_top()` and `.er_report()` work on it.
+If you need `Error` or `Display/Debug` add `output = report` or `output = top` which implements that style and implements `Error`: `#[er(wrap(name = HandlerError, output = report))]`.
 
-Plain Wrap has no formatting. Add `output = report` or `output = top` when a framework needs Display, Debug and Error. Like `#[er(wrap(name = HandlerError, output = report))]`
+Use it when another library needs those traits, or when you need a local type for your own trait impl. Normal .er(...) calls don't need Wrap.
+
+And remember, Er wants you to pick report/top. If you call .er_report() or .er_top() on a Wrap, you still get Error + Display/Debug. 'output = report/top' is only for places that need it.
 
 ## Wrap and back
 
@@ -261,9 +265,11 @@ pub fn request(input: &str) -> Er<u16, RequestEr> {
 }
 ```
 
-Same tree, RequestEr added on top. Use this for owned reports and tops too, their layout is left behind.
+Same tree with RequestEr added on top, use for owned reports and tops too, their layout is gone.
 
-Skip `.er_tree()` and a Wrap with `output` becomes one boxed error, searches won't see its inner errors. Owned reports and tops do the same.
+If you call `.er()` on a result with a Wrap with output makes the wrapper boxed which hides its inner errors from find, so use `.er_tree().er(...)`. 
+
+Anyhow doesn't need wrap but its boxed conversion can be a sneaky bitch and hide types from `er_find`, so you might have to do [something like the Anyhow example here](../../integrations/anyhow/src/lib.rs).
 
 ## Snapshots
 

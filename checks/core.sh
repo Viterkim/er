@@ -13,6 +13,7 @@ test_core() {
     cargo "$@" test -p er --no-default-features --test api --test snapshot
     cargo "$@" test -p er --no-default-features --features src_locations,test --test api
     cargo "$@" test -p er --no-default-features --features macros,test
+    cargo "$@" test -p er --no-default-features --features macros,src_locations --test format
 }
 
 test_core +1.89.0
@@ -26,4 +27,3 @@ cargo clippy -p er --all-targets --no-default-features --features macros -- -D w
 # Docs
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 RUSTDOCFLAGS="-D warnings" cargo doc -p er --no-default-features --no-deps
-
