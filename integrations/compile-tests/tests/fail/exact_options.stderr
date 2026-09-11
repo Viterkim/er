@@ -1,0 +1,23 @@
+error: `exact` is set more than once
+ --> tests/fail/exact_options.rs:5:17
+  |
+5 |     #[er(exact, exact)]
+  |                 ^^^^^
+
+error: `exact` takes no value
+  --> tests/fail/exact_options.rs:11:10
+   |
+11 |     #[er(exact = true)]
+   |          ^^^^^
+
+error: put `skip`, `censor`, or `exact` on a field
+  --> tests/fail/exact_options.rs:16:6
+   |
+16 | #[er(exact)]
+   |      ^^^^^
+
+error: expected `format = "..."`; put `skip`, `censor`, or `exact` on a field, or `wrap`/`crate` on the enum
+  --> tests/fail/exact_options.rs:23:10
+   |
+23 |     #[er(exact)]
+   |          ^^^^^

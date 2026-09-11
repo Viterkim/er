@@ -1,0 +1,14 @@
+[package]
+license = "MIT-0"
+name = "er-build-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+er = { path = "../../er", default-features = false, features = ["src_locations"] }
+
+[features]
+derive = ["er/macros"]
+
+[workspace]

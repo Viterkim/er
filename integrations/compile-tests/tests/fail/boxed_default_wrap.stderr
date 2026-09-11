@@ -1,0 +1,7 @@
+error[E0277]: the trait bound `BoundaryErrWrap: std::error::Error` is not satisfied
+ --> tests/fail/boxed_default_wrap.rs:5:42
+  |
+5 |     let _: Box<dyn core::error::Error> = Box::new(wrapped);
+  |                                          ^^^^^^^^^^^^^^^^^ the trait `std::error::Error` is not implemented for `BoundaryErrWrap`
+  |
+  = note: required for the cast from `Box<BoundaryErrWrap>` to `Box<dyn std::error::Error>`

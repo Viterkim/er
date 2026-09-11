@@ -1,0 +1,7 @@
+error[E0277]: the trait bound `er::ErTree<AppErr>: std::error::Error` is not satisfied
+ --> tests/fail/boxed_er_tree.rs:9:34
+  |
+9 |     let _boxed: Box<dyn Error> = Box::new(error);
+  |                                  ^^^^^^^^^^^^^^^ the trait `std::error::Error` is not implemented for `er::ErTree<AppErr>`
+  |
+  = note: required for the cast from `Box<er::ErTree<AppErr>>` to `Box<dyn std::error::Error>`

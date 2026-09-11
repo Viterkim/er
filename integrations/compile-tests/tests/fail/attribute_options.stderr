@@ -1,0 +1,53 @@
+error: expected `output = top` or `output = report`
+ --> tests/fail/attribute_options.rs:4:20
+  |
+4 | #[er(wrap(output = sideways))]
+  |                    ^^^^^^^^
+
+error: choose only one of `skip` or `censor`
+ --> tests/fail/attribute_options.rs:9:16
+  |
+9 |     #[er(skip, censor)]
+  |                ^^^^^^
+
+error: `wrap` is set more than once
+  --> tests/fail/attribute_options.rs:14:12
+   |
+14 | #[er(wrap, wrap)]
+   |            ^^^^
+
+error: empty `#[er(...)]`; expected `#[er(format = "...")]`, `#[er(crate = ...)]`, or `#[er(wrap)]`
+  --> tests/fail/attribute_options.rs:18:1
+   |
+18 | #[er()]
+   | ^^^^^^^
+
+error: `wrap` and `crate` are type options; put them on the struct or enum, not on a field
+  --> tests/fail/attribute_options.rs:23:10
+   |
+23 |     #[er(wrap)]
+   |          ^^^^
+
+error: put `skip`, `censor`, or `exact` on a field
+  --> tests/fail/attribute_options.rs:28:6
+   |
+28 | #[er(skip)]
+   |      ^^^^
+
+error: expected `#[er(format = "...")]`, `#[er(crate = ...)]`, or `#[er(wrap)]`
+  --> tests/fail/attribute_options.rs:34:6
+   |
+34 | #[er(wrapp)]
+   |      ^^^^^
+
+error: expected `format = "..."`; put `skip`, `censor`, or `exact` on a field, or `wrap`/`crate` on the enum
+  --> tests/fail/attribute_options.rs:40:10
+   |
+40 |     #[er(censor)]
+   |          ^^^^^^
+
+error: expected `format = "..."`; put `skip`, `censor`, or `exact` on a field, or `wrap`/`crate` on the enum
+  --> tests/fail/attribute_options.rs:47:10
+   |
+47 |     #[er(bogus)]
+   |          ^^^^^

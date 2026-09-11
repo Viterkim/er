@@ -1,0 +1,18 @@
+[workspace]
+resolver = "3"
+members = [
+    "anyhow",
+    "axum",
+    "no-std",
+    "compile-tests",
+]
+exclude = ["no-src-locations"]
+
+[workspace.package]
+license = "MIT-0"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace.dependencies]
+er = { path = "../er" }

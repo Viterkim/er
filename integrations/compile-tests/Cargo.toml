@@ -1,0 +1,13 @@
+[package]
+license.workspace = true
+name = "compile-tests"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The explicit path lets trybuild replace Er's source path with `$ER`.
+er = { path = "../../er" }
+
+[dev-dependencies]
+trybuild = "1"

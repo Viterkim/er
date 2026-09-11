@@ -1,0 +1,41 @@
+error: constructor `http_error` clashes with another variant or constructor
+ --> tests/fail/constructor_names.rs:6:5
+  |
+6 |     HTTPError,
+  |     ^^^^^^^^^
+
+error: constructor `file` clashes with another variant or constructor
+  --> tests/fail/constructor_names.rs:11:5
+   |
+11 |     File,
+   |     ^^^^
+
+error: constructor `type` clashes with another variant or constructor
+  --> tests/fail/constructor_names.rs:18:5
+   |
+18 |     Type,
+   |     ^^^^
+
+error: constructor `er_wrap` clashes with the generated Wrap method
+  --> tests/fail/constructor_names.rs:26:5
+   |
+26 |     ErWrap,
+   |     ^^^^^^
+
+error: the wrapper needs a different name from the error type
+  --> tests/fail/constructor_names.rs:30:18
+   |
+30 | #[er(wrap(name = r#SameEr))]
+   |                  ^^^^^^^^
+
+error: wrapper name `Boundary` clashes with a type parameter; use `wrap(name = ...)` to choose another name
+  --> tests/fail/constructor_names.rs:34:18
+   |
+34 | #[er(wrap(name = r#Boundary))]
+   |                  ^^^^^^^^^^
+
+error: wrapper name `TaskErWrap` clashes with a type parameter; use `wrap(name = ...)` to choose another name
+  --> tests/fail/constructor_names.rs:41:19
+   |
+41 | pub struct TaskEr<TaskErWrap> {
+   |                   ^^^^^^^^^^

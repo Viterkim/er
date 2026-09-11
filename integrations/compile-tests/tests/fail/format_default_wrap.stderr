@@ -1,0 +1,16 @@
+error[E0277]: `BoundaryErrWrap` doesn't implement `std::fmt::Display`
+ --> tests/fail/format_default_wrap.rs:7:15
+  |
+7 |     println!("{wrapped}");
+  |               ^^^^^^^^^ `BoundaryErrWrap` cannot be formatted with the default formatter
+  |
+  = help: the trait `std::fmt::Display` is not implemented for `BoundaryErrWrap`
+  = note: in format strings you may be able to use `{:?}` (or {:#?} for pretty-print) instead
+
+error[E0277]: `BoundaryErrWrap` doesn't implement `Debug`
+ --> tests/fail/format_default_wrap.rs:8:15
+  |
+8 |     println!("{wrapped:?}");
+  |               ^^^^^^^^^^^ `BoundaryErrWrap` cannot be formatted using `{:?}` because it doesn't implement `Debug`
+  |
+  = help: the trait `Debug` is not implemented for `BoundaryErrWrap`

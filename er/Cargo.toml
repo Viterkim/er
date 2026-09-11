@@ -1,0 +1,30 @@
+[package]
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+name = "er"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Er, errors with less r, lib"
+
+[lib]
+doctest = false
+
+[features]
+default = ["src_locations", "macros"]
+src_locations = []
+macros = ["dep:er-macros"]
+test = []
+
+[dependencies]
+er-macros = { version = "=0.1.0", path = "../er-macros", optional = true }
+
+[lints]
+workspace = true
+
+[[example]]
+name = "context"
+path = "runnable_examples/context.rs"
+required-features = ["macros"]

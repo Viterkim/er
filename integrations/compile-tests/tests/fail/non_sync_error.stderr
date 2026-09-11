@@ -1,0 +1,47 @@
+error[E0277]: `Cell<u8>` cannot be shared between threads safely
+  --> tests/fail/non_sync_error.rs:21:18
+   |
+21 |     require_sync(&error);
+   |     ------------ ^^^^^^ `Cell<u8>` cannot be shared between threads safely
+   |     |
+   |     required by a bound introduced by this call
+   |
+   = help: within `ErTree<NotSyncErr>`, the trait `Sync` is not implemented for `Cell<u8>`
+   = note: if you want to do aliasing and mutation between multiple threads, use `std::sync::RwLock` or `std::sync::atomic::AtomicU8` instead
+note: required because it appears within the type `NotSyncErr`
+  --> tests/fail/non_sync_error.rs:6:12
+   |
+ 6 | pub struct NotSyncErr(pub Cell<u8>);
+   |            ^^^^^^^^^^
+note: required because it appears within the type `ErTree<NotSyncErr>`
+  --> $ER/src/types.rs
+   |
+   | pub struct ErTree<E> {
+   |            ^^^^^^
+note: required by a bound in `require_sync`
+  --> tests/fail/non_sync_error.rs:25:24
+   |
+25 | pub fn require_sync<T: Sync>(_: &T) {}
+   |                        ^^^^ required by this bound in `require_sync`
+
+error[E0277]: `Cell<u8>` cannot be shared between threads safely
+  --> tests/fail/non_sync_error.rs:22:19
+   |
+22 |     let _ = error.into_er_node();
+   |                   ^^^^^^^^^^^^ `Cell<u8>` cannot be shared between threads safely
+   |
+   = help: within `NotSyncErr`, the trait `Sync` is not implemented for `Cell<u8>`
+   = note: if you want to do aliasing and mutation between multiple threads, use `std::sync::RwLock` or `std::sync::atomic::AtomicU8` instead
+note: required because it appears within the type `NotSyncErr`
+  --> tests/fail/non_sync_error.rs:6:12
+   |
+ 6 | pub struct NotSyncErr(pub Cell<u8>);
+   |            ^^^^^^^^^^
+note: required by a bound in `tree::<impl ErTree<E>>::into_er_node`
+  --> $ER/src/impls/tree.rs
+   |
+   |     pub fn into_er_node(self) -> ErNode
+   |            ------------ required by a bound in this associated function
+   |     where
+   |         E: Send + Sync,
+   |                   ^^^^ required by this bound in `tree::<impl ErTree<E>>::into_er_node`

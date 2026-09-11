@@ -1,0 +1,62 @@
+error[E0277]: `NotDisplay` doesn't implement `std::fmt::Display`
+ --> tests/fail/format_requirements.rs:8:31
+  |
+6 | #[derive(Er)]
+  |          -- in this macro invocation
+7 | #[er(format = "{value}")]
+8 | pub struct DisplayField { pub value: NotDisplay }
+  |                               ^^^^^^^^^^^^^^^^^ `NotDisplay` cannot be formatted with the default formatter
+  |
+help: the trait `std::fmt::Display` is not implemented for `NotDisplay`
+ --> tests/fail/format_requirements.rs:4:1
+  |
+4 | pub struct NotDisplay;
+  | ^^^^^^^^^^^^^^^^^^^^^
+  = note: in format strings you may be able to use `{:?}` (or {:#?} for pretty-print) instead
+
+error[E0308]: mismatched types
+  --> tests/fail/format_requirements.rs:12:44
+   |
+10 | #[derive(Er)]
+   |          -- in this macro invocation
+11 | #[er(format = "{value:width$}")]
+12 | pub struct CountField { pub value: u8, pub width: String }
+   |                                            ^^^^^^^^^^^^^
+   |                                            |
+   |                                            expected `&usize`, found `&String`
+   |                                            arguments to this function are incorrect
+   |
+   = note: expected reference `&usize`
+              found reference `&String`
+note: associated function defined here
+  --> $RUST/core/src/fmt/rt.rs
+   |
+   |     pub const fn from_usize(x: &usize) -> Argument<'_> {
+   |                  ^^^^^^^^^^
+
+error[E0277]: the trait bound `str: LowerHex` is not satisfied
+  --> tests/fail/format_requirements.rs:20:15
+   |
+20 |     println!("{error}");
+   |               ^^^^^^^ the trait `LowerHex` is not implemented for `str`
+   |
+   = help: the following other types implement trait `LowerHex`:
+             &T
+             &mut T
+             NonZero<T>
+             Saturating<T>
+             Wrapping<T>
+             compiler_builtins::math::libm_math::support::big::i256
+             compiler_builtins::math::libm_math::support::big::u256
+             compiler_builtins::math::libm_math::support::hex_float::hex_fmt::Hex<T>
+           and $N others
+   = note: required for `&str` to implement `LowerHex`
+note: required for `GenericField<&str>` to implement `std::fmt::Display`
+  --> tests/fail/format_requirements.rs:16:12
+   |
+14 | #[derive(Er)]
+   |          -- type parameter would need to implement `std::fmt::Display`
+15 | #[er(format = "{value:x}")]
+16 | pub struct GenericField<T> { pub value: T }
+   |            ^^^^^^^^^^^^^^^
+   = help: consider manually implementing `std::fmt::Display` to avoid undesired bounds

@@ -1,0 +1,39 @@
+error[E0609]: no field `src_location` on type `er::types::ErTree<DeviceEr>`
+ --> tests/fail/src_locations.rs:3:10
+  |
+3 |     tree.src_location;
+  |          ^^^^^^^^^^^^ unknown field
+  |
+  = note: available fields are: `top`, `nodes`
+
+error[E0609]: no field `src_location` on type `&er::types::ErTree<DeviceEr>`
+ --> tests/fail/src_locations.rs:4:27
+  |
+4 |     tree.er_report().tree.src_location;
+  |                           ^^^^^^^^^^^^ unknown field
+  |
+  = note: available fields are: `top`, `nodes`
+
+error[E0609]: no field `src_location` on type `er::types::ErNode`
+ --> tests/fail/src_locations.rs:5:19
+  |
+5 |     tree.nodes[0].src_location;
+  |                   ^^^^^^^^^^^^ unknown field
+  |
+  = note: available fields are: `error`, `nodes`
+
+error[E0609]: no field `src_location` on type `er::types::ErEntry<'_>`
+ --> tests/fail/src_locations.rs:6:39
+  |
+6 |     tree.er_entries().next().unwrap().src_location;
+  |                                       ^^^^^^^^^^^^ unknown field
+  |
+  = note: available fields are: `error`, `kind`, `index`, `parent`, `depth` ... and 2 others
+
+error[E0609]: no field `src_location` on type `er::types::ErSnapshotEntry`
+ --> tests/fail/src_locations.rs:7:35
+  |
+7 |     tree.er_snapshot().entries[0].src_location;
+  |                                   ^^^^^^^^^^^^ unknown field
+  |
+  = note: available fields are: `message`, `kind`, `index`, `parent`, `depth` ... and 2 others

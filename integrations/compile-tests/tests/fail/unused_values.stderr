@@ -1,0 +1,114 @@
+error: unused `ErReportRef` that must be used
+  --> tests/fail/unused_values.rs:16:5
+   |
+16 |     tree.er_report();
+   |     ^^^^^^^^^^^^^^^^
+   |
+note: the lint level is defined here
+  --> tests/fail/unused_values.rs:1:9
+   |
+ 1 | #![deny(unused_must_use)]
+   |         ^^^^^^^^^^^^^^^
+help: use `let _ = ...` to ignore the resulting value
+   |
+16 |     let _ = tree.er_report();
+   |     +++++++
+
+error: unused `ErTopRef` that must be used
+  --> tests/fail/unused_values.rs:17:5
+   |
+17 |     tree.er_top().single_line();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: use `let _ = ...` to ignore the resulting value
+   |
+17 |     let _ = tree.er_top().single_line();
+   |     +++++++
+
+error: unused `ErEntries` that must be used
+  --> tests/fail/unused_values.rs:18:5
+   |
+18 |     tree.er_entries();
+   |     ^^^^^^^^^^^^^^^^^
+   |
+help: use `let _ = ...` to ignore the resulting value
+   |
+18 |     let _ = tree.er_entries();
+   |     +++++++
+
+error: unused `ErTree` that must be used
+  --> tests/fail/unused_values.rs:19:5
+   |
+19 |     AppEr.er();
+   |     ^^^^^^^^^^
+   |
+help: use `let _ = ...` to ignore the resulting value
+   |
+19 |     let _ = AppEr.er();
+   |     +++++++
+
+error: unused `ErNode` that must be used
+  --> tests/fail/unused_values.rs:20:5
+   |
+20 |     AppEr.er().into_er_node();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: use `let _ = ...` to ignore the resulting value
+   |
+20 |     let _ = AppEr.er().into_er_node();
+   |     +++++++
+
+error: unused `ErReport` that must be used
+  --> tests/fail/unused_values.rs:21:5
+   |
+21 |     AppEr.er().into_er_report();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: use `let _ = ...` to ignore the resulting value
+   |
+21 |     let _ = AppEr.er().into_er_report();
+   |     +++++++
+
+error: unused `AppErWrap` that must be used
+  --> tests/fail/unused_values.rs:22:5
+   |
+22 |     AppErWrap { tree: AppEr.er() };
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: use `let _ = ...` to ignore the resulting value
+   |
+22 |     let _ = AppErWrap { tree: AppEr.er() };
+   |     +++++++
+
+error: unused return value of `AppEr::new` that must be used
+  --> tests/fail/unused_values.rs:23:5
+   |
+23 |     AppEr::new();
+   |     ^^^^^^^^^^^^
+   |
+help: use `let _ = ...` to ignore the resulting value
+   |
+23 |     let _ = AppEr::new();
+   |     +++++++
+
+error: unused return value of `Kind::missing` that must be used
+  --> tests/fail/unused_values.rs:24:5
+   |
+24 |     Kind::missing();
+   |     ^^^^^^^^^^^^^^^
+   |
+help: use `let _ = ...` to ignore the resulting value
+   |
+24 |     let _ = Kind::missing();
+   |     +++++++
+
+error: unused `AppErWrap` that must be used
+  --> tests/fail/unused_values.rs:25:5
+   |
+25 |     AppEr.er_wrap();
+   |     ^^^^^^^^^^^^^^^
+   |
+help: use `let _ = ...` to ignore the resulting value
+   |
+25 |     let _ = AppEr.er_wrap();
+   |     +++++++
