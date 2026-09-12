@@ -14,6 +14,7 @@ impl ErNode {
         ErNodes::new(&self.nodes)
     }
 
+    /// Returns the FIRST match.
     pub fn er_find<T: Error + 'static>(&self) -> Option<&T> {
         if let Some(found) = self.er_find_here::<T>() {
             return Some(found);
@@ -22,7 +23,7 @@ impl ErNode {
         self.er_descendants().find_map(Self::er_find_here::<T>)
     }
 
-    /// Borrows matching errors in this subtree, including this node and native sources.
+    /// Finds all the instances of an error type, for when you have duplicates.
     pub fn er_find_all<T: Error + 'static>(&self) -> impl Iterator<Item = &T> {
         ErEntries::new(
             &*self.error,

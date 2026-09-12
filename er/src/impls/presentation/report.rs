@@ -56,11 +56,12 @@ impl<'a, E: Error + 'static> ErReportRef<'a, E> {
         self.tree.er_sources()
     }
 
+    /// Returns the FIRST match.
     pub fn er_find<T: Error + 'static>(&self) -> Option<&'a T> {
         self.tree.er_find::<T>()
     }
 
-    /// Borrows every match; see [`ErTree::er_find_all`].
+    /// Finds all the instances of an error type, for when you have duplicates.
     pub fn er_find_all<T: Error + 'static>(&self) -> impl Iterator<Item = &'a T> + use<'a, E, T> {
         self.tree.er_find_all::<T>()
     }
@@ -137,11 +138,12 @@ impl<E: Error + 'static> ErReport<E> {
         self.tree.er_sources()
     }
 
+    /// Returns the FIRST match.
     pub fn er_find<T: Error + 'static>(&self) -> Option<&T> {
         self.tree.er_find::<T>()
     }
 
-    /// Borrows every match; see [`ErTree::er_find_all`].
+    /// Finds all the instances of an error type, for when you have duplicates.
     pub fn er_find_all<T: Error + 'static>(&self) -> impl Iterator<Item = &T> {
         self.tree.er_find_all::<T>()
     }

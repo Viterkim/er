@@ -7,7 +7,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "Er, errors with less r, lib"
+description = "Er, errors with less r"
 
 [lib]
 doctest = false

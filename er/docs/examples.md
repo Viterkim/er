@@ -2,8 +2,6 @@
 
 `use er::*;` at the top, then give each function that deals with errors its own `FuncNameEr` type with `#[derive(Er)]` and use `.er(...)` on results, errors and options.
 
-Don't throw away the tree in `map_err`. Use `.er(...)` for context.
-
 The TLDR is `#[derive(Er)]YourEr + return Er<(), YourEr> + .er(||)`
 
 ## Empty struct
@@ -52,6 +50,36 @@ pub fn read_mode(input: Option<&str>) -> Er<&str, ModeEr> {
 
     Ok(mode)
 }
+```
+
+## Don't destroy the tree (lose sub errors)
+
+If you already have a tree, add context to it, do NOT create a new one.
+
+```rust
+#[derive(Er)]
+pub struct AnalyzeEr;
+pub fn analyze() -> Er<(), AnalyzeEr> {
+    if let Err(previous_error_tree) = read_port("nope") {
+        // Bad: if we return a new error, and .er() that one
+        // the 'previous_error_tree' will get lost
+        // BAD: return Err(AnalyzeEr::new().er());
+
+        // Good: add context to the existing previous_error_tree
+        return Err(previous_error_tree.er(AnalyzeEr::new));
+    }
+    Ok(())
+}
+```
+
+Same thing with `map_err`:
+
+```rust
+// BAD: We don't add context to the previous error, and it will dissapear
+read_port(input).map_err(|_previous_error_tree| AnalyzeEr::new().er())
+
+// Good: we use `.er()` which keeps the tree
+read_port(input).er(AnalyzeEr::new)
 ```
 
 ## Print report
@@ -196,8 +224,8 @@ pub struct ApiError {
 }
 
 pub fn public_read_port(input: &str) -> Result<u16, ApiError> {
-    // Only place in `Er` where you won't get thrown in jail for using `.map_err()`
-    // We're turning the tree into text (it gets dropped)
+    // Remember to avoid using `.map_err()` in Er for most cases.
+    // We're turning the tree into text (it gets dropped), so its what we actually want here.
     read_port(input).map_err(|error| ApiError {
         report: error.er_report().to_string(),
         err_msg: "invalid port".to_string(),

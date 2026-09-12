@@ -185,3 +185,10 @@ er = { version = "0.1", default-features = false, features = ["src_locations"] }
 ## Disclaimer
 
 The macro portions were heavily gippity assisted.
+
+## Links
+
+[Github Repo](https://github.com/Viterkim/er)
+[Docs.rs](https://docs.rs/er/0.1.1/er/)
+[Crates.io for the lib](https://crates.io/crates/er)
+[Crates.io for the macros](https://crates.io/crates/er-macros/)

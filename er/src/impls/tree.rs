@@ -75,7 +75,7 @@ impl<E: Error + 'static> ErTree<E> {
         ErSources::new(self.top.source())
     }
 
-    /// Find the first match, including native sources.
+    /// Returns the FIRST match.
     ///
     /// `error.er_find::<io::Error>()`
     pub fn er_find<T: Error + 'static>(&self) -> Option<&T> {
@@ -91,7 +91,7 @@ impl<E: Error + 'static> ErTree<E> {
         self.er_find::<T>().is_some()
     }
 
-    /// Borrow every match in order, including native sources.
+    /// Finds all the instances of an error type, for when you have duplicates.
     ///
     /// `error.er_find_all::<PortEr>().find(|e| e.input == "aint_even_a_number_cmon_man")`
     pub fn er_find_all<T: Error + 'static>(&self) -> impl Iterator<Item = &T> {
