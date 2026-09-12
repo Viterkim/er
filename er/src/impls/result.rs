@@ -1,6 +1,6 @@
 use crate::{
-    Er, ErError, ErOption, ErPresentation, ErReport, ErResult, ErTop, ErTree, IntoErNode,
-    IntoErTree,
+    Er, ErError, ErOpaqueError, ErOption, ErPresentation, ErReport, ErResult, ErTop, ErTree,
+    IntoErNode, IntoErTree,
 };
 use alloc::vec;
 use core::error::Error;
@@ -93,6 +93,17 @@ impl<T, E: IntoErTree> ErPresentation for Result<T, E> {
         match self {
             Ok(value) => Ok(value),
             Err(error) => Err(error.into_er_tree().into_er_report()),
+        }
+    }
+}
+
+impl<T, E: ErOpaqueError> ErOpaqueError for Result<T, E> {
+    type Output = Result<T, E::Output>;
+
+    fn opaque_err(self) -> Self::Output {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.opaque_err()),
         }
     }
 }

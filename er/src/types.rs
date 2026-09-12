@@ -1,5 +1,6 @@
+use crate::types_helpers::Pending;
 use alloc::{boxed::Box, string::String, vec::Vec};
-use core::{error::Error, panic::Location};
+use core::{error::Error, fmt, panic::Location};
 
 /// A Result with your typed error on top.
 pub type Er<T, E> = Result<T, ErTree<E>>;
@@ -92,6 +93,30 @@ pub struct ErEntry<'a> {
     pub src_location: Option<SrcLocation>,
 }
 
+/// Root, native sources, then nodes.
+/// Longer native chains stop at [`crate::walk::MAX_SOURCE_HOPS`], setting the last entry's `source_truncated`.
+/// Filtering keeps the original indices, parents, depths, and `is_last` values.
+#[must_use]
+pub struct ErEntries<'a> {
+    pub pending: Vec<Pending<'a>>,
+    pub next_index: usize,
+}
+
+/// Child nodes, in tree order. Excludes the root and native sources.
+#[must_use]
+pub struct ErNodes<'a> {
+    pub pending: Vec<&'a ErNode>,
+}
+
+/// Up to [`crate::walk::MAX_SOURCE_HOPS`] errors in a native `Error::source()` chain.
+#[must_use]
+pub struct ErSources<'a> {
+    pub next: Option<&'a (dyn Error + 'static)>,
+    pub remaining: usize,
+    /// Set when iteration stops at the limit with another source left.
+    pub truncated: bool,
+}
+
 /// Saved messages and locations, no original error values.
 #[derive(Clone)]
 #[must_use]
@@ -138,4 +163,11 @@ pub struct ErSnapshotReport<'a> {
 pub struct ErSnapshotTop<'a> {
     pub snapshot: &'a ErSnapshot,
     pub layout: Layout,
+}
+
+/// Formatting or callback failure.
+#[derive(Debug, PartialEq, Eq)]
+pub enum LineError<E> {
+    Format(fmt::Error),
+    Callback(E),
 }
