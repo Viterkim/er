@@ -1,8 +1,12 @@
-# 0.1.2
+# 0.1.3
 
 Readme and docs changes.
 Optional serde for snapshots.
 Add `.er_with(|t|)` / `.er_with(|e|)` to copy fields off the previous error, without `map_err` accidentally destroying the tree.
+
+# 0.1.2
+
+Accidentally pushed stuff with wrong readme. And you can't undo it great.
 
 # 0.1.1
 

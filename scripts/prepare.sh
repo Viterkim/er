@@ -31,6 +31,7 @@ sed -i -E \
 cd -- "$release_dir"
 cargo publish --workspace --dry-run
 
-printf '\nDry run bingo! Run these when ready:\n'
-printf 'cd -- %q\n' "$release_dir"
-printf 'cargo publish -p er-macros\ncargo publish -p er\n'
+printf '\nDry run bingo! You are in %s\n' "$release_dir"
+printf 'cargo publish -p er-macros && cargo publish -p er\n'
+printf 'exit this shell when you are done.\n\n'
+exec "${SHELL:-bash}" -i
