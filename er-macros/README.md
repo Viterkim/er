@@ -2,9 +2,9 @@
 
 Derives for [Er](https://docs.rs/er/latest/er/).
 
-If you want `.er(...)` and the tree, then use `er`. 
+If you want `.er(...)` and the tree, then use `er`.
 
-If you only want the macros like `#[derive(Er)]` and `#[derive(ErFormat)]` for stuff like Display, Debug, constructors, then you can just use this. 
+If you only want the macros like `#[derive(Er)]` and `#[derive(ErFormat)]` for stuff like Display, Debug, constructors, then you can just use this.
 
 ```rust
 use er_macros::{Er, ErFormat};

@@ -1,9 +1,8 @@
 # 0.1.2
 
-Readme and docs improvements.
+Readme and docs changes.
 Optional serde for snapshots.
-Add `.er_with(|t|)` / `.er_with(|e|)` to copy fields off the previous error, without `map_err` accidentally nuking the tree.
-Rename `.er_from_val` back to `.er_val`.
+Add `.er_with(|t|)` / `.er_with(|e|)` to copy fields off the previous error, without `map_err` accidentally destroying the tree.
 
 # 0.1.1
 

@@ -74,17 +74,14 @@ pub fn analyze() -> Er<(), AnalyzeEr> {
 }
 ```
 
-Same thing with `map_err`:
+Same thing with `map_err`, using the types from the next example:
 
 ```rust
-// BAD: we ignore the previous error, tree disappears
-read_port(input).map_err(|_previous_error_tree| AnalyzeEr::new().er())
+// BAD: we copied the code, but threw away the old error and its tree
+read_device().map_err(|t| AnalyzeEr::new(t.top.code).er())
 
-// Good
-read_port(input).er(AnalyzeEr::new)
-#[derive(Er)]
-pub struct AnalyzeEr2(pub u32);
-read_port(input).er_with(|e |AnalyzeEr::new(e.thing_you_needed))
+// Good: copies the code AND keeps the old error and its tree
+read_device().er_with(|t| AnalyzeEr::new(t.top.code))
 ```
 
 ## Look at the previous error

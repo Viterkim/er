@@ -515,9 +515,9 @@ There's an optional `#[context(...)]` over the whole function, pretty spicy. You
 
 `location` adds callsites; backtrace support is on by default. [Features](https://docs.rs/crate/eros/0.7.0/features)
 
-I will say i think eros is very unique, i think it's cool that they are trying different features and seeing what works out. 
+I will say i think eros is very unique, i think it's cool that they are trying different features and seeing what works out.
 
-But i still think that they buy too much into passing the error along, instead of handling/creating the context or error type thats needed (And cases for where you get 2 io errors with different meanings, you then have to make newtypes for that anyway). 
+But i still think that they buy too much into passing the error along, instead of handling/creating the context or error type thats needed (And cases for where you get 2 io errors with different meanings, you then have to make newtypes for that anyway).
 
 ### Unique case: handle one type
 
@@ -738,6 +738,49 @@ println!("{}", error.er_report());
 PortEr { input: "aint_even_a_number_cmon_man" } @ examples/er_context.rs:8:35
 `- invalid digit found in string @ examples/er_context.rs:8:35
 ```
+
+## Exn vs Er (since they are the most similar)
+
+If we want also want the input from our `PortEr` in the next error:
+
+```rust
+#[derive(Er)]
+pub struct ConfigEr(pub String);
+
+read_port(input).er_with(|t| ConfigEr::new(t.top.input.clone()))?;
+```
+
+Still keeps the old error and everything below it. Exn can do this with `map_err` then `.raise()`, but here it's very easy to destroy your error tree and now I'm manually having to worry and do it.
+
+`.er_find::<io::Error>()` finds the actual error, including inside native `source()` chains. `.er_find_all::<PortEr>()` gets all the bad ports.
+
+Exn keeps the actual errors you give it too. BUT if a library gives you a `ReadError` with an `io::Error` inside its `source()`, exn copies that source's message into a child frame. So you can SEE the io error in the report, try to find its type in that frame and get nothing. [Exn construction](https://docs.rs/exn/0.3.1/exn/struct.Exn.html#method.new).
+
+The real io error is still reachable however with `frame.error().source()` on the frame holding `ReadError`. You don't even need to know the `ReadError` type. But now your find has to walk both the AND the original error sources. Exn could do this just hasn't done it yet.
+
+`er_all!(StartupEr::new, [a(), b()])` lets the results have different types. It runs all of them, keeps the failures and drops the oks. Exn's `raise_all` needs the children to convert to the same `Exn<T>` type.
+
+Snapshots in Er for storing/having owned string version of the reprots:
+
+```rust
+let saved = error.er_snapshot();
+let json = serde_json::to_string(&saved).unwrap();
+
+let saved: ErSnapshot = serde_json::from_str(&json).unwrap();
+println!("{}", saved.er_report());
+```
+
+There's `.single_line()` and `for_each_line(...)` for printing too, mostly because logging multiline errors can be [complete shit](systemd.md).
+
+And my most hot take:
+
+I feel like with Exn `0.4`, where they add `Exn` (without the generic, so not `Exn<E>`) is the completely wrong direction. I feel like that's compromising on what made Exn great.
+
+I also think not having convenient macros/helpers for making the error types will result in you 'not bothering' with having the types where it makes sense, and you might end up lazily abusing the non generic version.
+
+In Exn and Er you don't HAVE to have an error type per function, you can have it per section or whatever but... I still think that actually having the error typed is crucial, and i think that by allowing users to '?' it up lazily, the point is gone. It's also why i don't think Er should have an ErLazy (like the TestEr) for normal application code.
+
+# Er weird stuff
 
 Now there's some bullshit you also have to learn for Er (some for good reason).
 
