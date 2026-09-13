@@ -59,6 +59,7 @@ pub struct ErReportRef<'a, E> {
 
 /// An opaque standard Error. The presentation is still in `.0`.
 /// `source()` is empty, so ordinary error searches cannot see its tree.
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[must_use]
 pub struct ErAsError<P>(pub P);
 
@@ -96,6 +97,7 @@ pub struct ErEntry<'a> {
 /// Root, native sources, then nodes.
 /// Longer native chains stop at [`crate::walk::MAX_SOURCE_HOPS`], setting the last entry's `source_truncated`.
 /// Filtering keeps the original indices, parents, depths, and `is_last` values.
+#[derive(Clone)]
 #[must_use]
 pub struct ErEntries<'a> {
     pub pending: Vec<Pending<'a>>,
@@ -103,12 +105,14 @@ pub struct ErEntries<'a> {
 }
 
 /// Child nodes, in tree order. Excludes the root and native sources.
+#[derive(Clone)]
 #[must_use]
 pub struct ErNodes<'a> {
     pub pending: Vec<&'a ErNode>,
 }
 
 /// Up to [`crate::walk::MAX_SOURCE_HOPS`] errors in a native `Error::source()` chain.
+#[derive(Clone)]
 #[must_use]
 pub struct ErSources<'a> {
     pub next: Option<&'a (dyn Error + 'static)>,
@@ -118,7 +122,7 @@ pub struct ErSources<'a> {
 }
 
 /// Saved messages and locations, no original error values.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[must_use]
 pub struct ErSnapshot {
     /// Tree order, with parent indices pointing into this list.
@@ -127,7 +131,7 @@ pub struct ErSnapshot {
 }
 
 /// One saved error, not one printed line.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ErSnapshotEntry {
     pub message: String,
     pub kind: ErEntryKind,
@@ -142,7 +146,7 @@ pub struct ErSnapshotEntry {
 }
 
 /// File, line, column.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ErSnapshotLocation {
     pub file: String,
     pub line: u32,
@@ -166,7 +170,7 @@ pub struct ErSnapshotTop<'a> {
 }
 
 /// Formatting or callback failure.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LineError<E> {
     Format(fmt::Error),
     Callback(E),

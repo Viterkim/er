@@ -2,6 +2,7 @@ use crate::{ErEntry, ErNode};
 use alloc::string::String;
 use core::fmt;
 
+#[derive(Clone, Copy)]
 pub struct Pending<'a> {
     pub entry: ErEntry<'a>,
     pub nodes: &'a [ErNode],

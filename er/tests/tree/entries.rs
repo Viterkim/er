@@ -120,6 +120,26 @@ pub fn walk() {
 }
 
 #[test]
+pub fn clone() {
+    let tree = ErTree::new(Native(Leaf(0)), [Native(Leaf(1)), Native(Leaf(2))]);
+
+    let mut entries = tree.er_entries();
+    assert_eq!(entries.next().map(|entry| entry.index), Some(0));
+    assert_eq!(
+        entries.clone().map(|entry| entry.index).collect::<Vec<_>>(),
+        entries.map(|entry| entry.index).collect::<Vec<_>>()
+    );
+
+    let mut nodes = tree.er_descendants();
+    nodes.next();
+    assert_eq!(nodes.clone().count(), nodes.count());
+
+    let mut sources = ErSources::new(Some(&tree.top));
+    sources.next();
+    assert_eq!(sources.clone().count(), sources.count());
+}
+
+#[test]
 pub fn root_and_source() {
     let tree = Native(Leaf(9)).er();
     assert_eq!(tree.er_descendants().count(), 0);
