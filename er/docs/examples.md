@@ -75,7 +75,7 @@ pub fn analyze() -> Er<(), AnalyzeEr> {
 Same thing with `map_err`:
 
 ```rust
-// BAD: We don't add context to the previous error, and it will dissapear
+// BAD: We don't add context to the previous error, and it will disappear
 read_port(input).map_err(|_previous_error_tree| AnalyzeEr::new().er())
 
 // Good: we use `.er()` which keeps the tree

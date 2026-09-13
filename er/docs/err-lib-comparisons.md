@@ -453,15 +453,13 @@ I love exn, but i got tired of typing .or_raise() everywhere, ok_or_raise(), no 
 
 It's also funny, because exn came about because they were tired of error-stack and typing `change_context_lazy(||)` and i aint gonna lie man `.ok_or_raise(||)` for options is the same lol. 
 
-'_tison' from exn wrote `"The real trigger is I'd prefer or_raise over change_context_lazy very much, lol"` from [Reddit link](https://www.reddit.com/r/rust/comments/1qs68cn/comment/o2wtdwq/) where he also says errorstacks code and error chains are overcomplicated.
+An exn maintainer `_tison` wrote: `"The real trigger is I'd prefer or_raise over change_context_lazy very much, lol"` from [Reddit link](https://www.reddit.com/r/rust/comments/1qs68cn/comment/o2wtdwq/) where he also says errorstacks code and error chains are overcomplicated.
 
 Bro i just want to use crate_name::*; and do the same thing everywhere. And hot take, error handling is a huge part of most apps, needs to be easy to type, and i dont want to rely on snippets or ai, or huge proc macros spanning the entire function (The error type is fine imo).
 
 And the moment you add tiny friction on making errors, people aren't gonna want to do it. 
 
 When trying to convince other people of how great exn was, the examples aren't the easiest and it's confusing for people that you're doing std::Result<T, Exn<E>>, and people immediately wanna do .map_err(||) and ruin that poor error reports for good.
-
-I really really like exn, but theres small things that build up over time...
 
 ## Eros (0.7.0)
 
@@ -517,7 +515,9 @@ There's an optional `#[context(...)]` over the whole function, pretty spicy. You
 
 `location` adds callsites; backtrace support is on by default. [Features](https://docs.rs/crate/eros/0.7.0/features)
 
-I will say i think eros is very unique, i think it's cool with different features and trying out stuff. 
+I will say i think eros is very unique, i think it's cool that they are trying different features and seeing what works out. 
+
+But i still think that they buy too much into passing the error along, instead of handling/creating the context or error type thats needed (And cases for where you get 2 io errors with different meanings, you then have to make newtypes for that anyway). 
 
 ### Unique case: handle one type
 
@@ -690,9 +690,9 @@ Report prints what you already have, it doesn't add context. Single line by defa
 
 Set variants [terrors](https://docs.rs/terrors/0.3.3/terrors/) and [error_set](https://docs.rs/error_set/0.9.2/error_set/) are kinda like eros, useful when callers want to handle those types directly, similar to EROS and doesn't solve the case i care about.
 
-[lazy_errors](https://docs.rs/lazy_errors/latest/lazy_errors/) is worth a look if collecting several failures and you want to keep going and collect the failures, including errors from cleanup. It has nesting and locations too, pretty useful if aggregation is what you care about the most.
+[lazy_errors](https://docs.rs/lazy_errors/latest/lazy_errors/) is worth a look if collecting several failures and you want to keep going and collect the failures, including errors from cleanup. It has nesting and locations too, aggregation focus is interesting.
 
-## Er (0.1.0)
+## Er (0.1.2)
 
 (hey that's this one)
 
@@ -741,7 +741,7 @@ PortEr { input: "aint_even_a_number_cmon_man" } @ examples/er_context.rs:8:35
 
 Now there's some bullshit you also have to learn for Er (some for good reason).
 
-Returning `Er<T, E>` means the caller is in Er world now. On public boundries make a normal error and convert. [Checkout the example](examples.md#public-error).
+Returning `Er<T, E>` means the caller is in Er world now. On public boundaries make a normal error and convert. [Checkout the example](examples.md#public-error).
 
 The tree has no Display, Debug, or Error. Pick `.er_report()` or `.er_top()`, then Display and Debug do the same. (Designed this way, to avoid mistakes).
 

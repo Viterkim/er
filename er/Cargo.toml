@@ -8,6 +8,8 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 description = "Er, errors with less r"
+keywords = ["error", "error-handling", "context", "report", "no_std"]
+categories = ["rust-patterns", "no-std"]
 
 [lib]
 doctest = false
