@@ -4,4 +4,5 @@ use crate::ErReport;
 pub type TestEr<T = ()> = Result<T, ErReport<TestError>>;
 
 /// Catchall unit struct for tests
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct TestError;

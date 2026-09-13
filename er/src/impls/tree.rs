@@ -1,11 +1,15 @@
+#[cfg(feature = "src_locations")]
+use crate::ErSnapshotLocation;
 use crate::{
-    ErEntries, ErEntry, ErNode, ErNodes, ErReport, ErReportRef, ErSources, ErTop, ErTopRef, ErTree,
-    IntoErNode, IntoErTree, Layout,
+    ErEntries, ErEntry, ErNode, ErNodes, ErReport, ErReportRef, ErSnapshot, ErSnapshotEntry,
+    ErSources, ErTop, ErTopRef, ErTree, IntoErNode, IntoErTree, Layout,
 };
-use alloc::{boxed::Box, vec::Vec};
-use core::error::Error;
+#[cfg(feature = "src_locations")]
+use alloc::string::ToString;
+use alloc::{boxed::Box, string::String, vec::Vec};
 #[cfg(feature = "src_locations")]
 use core::panic::Location;
+use core::{error::Error, fmt};
 
 impl<E: Error + 'static> ErTree<E> {
     /// Put existing errors below this one, even if the list is empty.
@@ -36,6 +40,22 @@ impl<E: Error + 'static> ErTree<E> {
         A: Error + 'static,
     {
         let parent = parent();
+        ErTree::new(parent, [self])
+    }
+
+    /// Add your error on the top, move everything else below it.
+    /// |t| is the tree. The error is `t.top`.
+    /// Use instead of `.map_err(|err|)` when you need the value on the error
+    /// in the new error you are making, otherwise use `.er(||)`
+    ///
+    /// `let error = error.er_with(|t| AnalyzeEr { code: t.top.code });`
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    pub fn er_with<A>(self, parent: impl FnOnce(&Self) -> A) -> ErTree<A>
+    where
+        E: Send + Sync,
+        A: Error + 'static,
+    {
+        let parent = parent(&self);
         ErTree::new(parent, [self])
     }
 
@@ -75,7 +95,7 @@ impl<E: Error + 'static> ErTree<E> {
         ErSources::new(self.top.source())
     }
 
-    /// Find the first match, including native sources.
+    /// Returns the FIRST match.
     ///
     /// `error.er_find::<io::Error>()`
     pub fn er_find<T: Error + 'static>(&self) -> Option<&T> {
@@ -91,12 +111,50 @@ impl<E: Error + 'static> ErTree<E> {
         self.er_find::<T>().is_some()
     }
 
-    /// Borrow every match in order, including native sources.
+    /// Finds all the instances of an error type, for when you have duplicates.
     ///
     /// `error.er_find_all::<PortEr>().find(|e| e.input == "aint_even_a_number_cmon_man")`
     pub fn er_find_all<T: Error + 'static>(&self) -> impl Iterator<Item = &T> {
         self.er_entries()
             .filter_map(|entry| entry.error.downcast_ref::<T>())
+    }
+
+    /// Save the messages, tree structure and locations, without keeping the errors.
+    /// A broken formatter's partial message is replaced with `ER_FMT_FAILED`.
+    pub fn er_snapshot(&self) -> ErSnapshot {
+        let mut entries = Vec::new();
+
+        for entry in self.er_entries() {
+            let mut message = String::new();
+            let result = fmt::write(&mut message, format_args!("{}", entry.error));
+            if result.is_err() {
+                message.clear();
+                message.push_str("ER_FMT_FAILED");
+            }
+
+            #[cfg(feature = "src_locations")]
+            let src_location = entry.src_location.map(|location| {
+                let file = location.file().to_string();
+                let line = location.line();
+                let column = location.column();
+
+                ErSnapshotLocation { file, line, column }
+            });
+
+            entries.push(ErSnapshotEntry {
+                message,
+                kind: entry.kind,
+                index: entry.index,
+                parent: entry.parent,
+                depth: entry.depth,
+                is_last: entry.is_last,
+                source_truncated: entry.source_truncated,
+                #[cfg(feature = "src_locations")]
+                src_location,
+            });
+        }
+
+        ErSnapshot { entries }
     }
 }
 impl<E> ErTree<E> {

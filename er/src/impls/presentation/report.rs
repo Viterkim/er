@@ -1,8 +1,8 @@
 use crate::lines;
 use crate::render::report::write_entries;
 use crate::{
-    ErEntries, ErEntry, ErNodes, ErReport, ErReportRef, ErSources, ErTree, IntoErNode, IntoErTree,
-    Layout, LineError,
+    ErAsError, ErEntries, ErEntry, ErNodes, ErOpaqueError, ErReport, ErReportRef, ErSources,
+    ErTree, IntoErNode, IntoErTree, Layout, LineError,
 };
 use core::{error::Error, fmt};
 
@@ -56,11 +56,12 @@ impl<'a, E: Error + 'static> ErReportRef<'a, E> {
         self.tree.er_sources()
     }
 
+    /// Returns the FIRST match.
     pub fn er_find<T: Error + 'static>(&self) -> Option<&'a T> {
         self.tree.er_find::<T>()
     }
 
-    /// Borrows every match; see [`ErTree::er_find_all`].
+    /// Finds all the instances of an error type, for when you have duplicates.
     pub fn er_find_all<T: Error + 'static>(&self) -> impl Iterator<Item = &'a T> + use<'a, E, T> {
         self.tree.er_find_all::<T>()
     }
@@ -137,11 +138,12 @@ impl<E: Error + 'static> ErReport<E> {
         self.tree.er_sources()
     }
 
+    /// Returns the FIRST match.
     pub fn er_find<T: Error + 'static>(&self) -> Option<&T> {
         self.tree.er_find::<T>()
     }
 
-    /// Borrows every match; see [`ErTree::er_find_all`].
+    /// Finds all the instances of an error type, for when you have duplicates.
     pub fn er_find_all<T: Error + 'static>(&self) -> impl Iterator<Item = &T> {
         self.tree.er_find_all::<T>()
     }
@@ -163,5 +165,21 @@ impl<E: Error + 'static> fmt::Debug for ErReport<E> {
 impl<E: Error + Send + Sync + 'static> IntoErNode for ErReport<E> {
     fn into_er_node(self) -> crate::ErNode {
         self.tree.into_er_node()
+    }
+}
+
+impl<E: Error + 'static> ErOpaqueError for ErReport<E> {
+    type Output = ErAsError<Self>;
+
+    fn opaque_err(self) -> Self::Output {
+        ErAsError(self)
+    }
+}
+
+impl<E: Error + 'static> ErOpaqueError for ErReportRef<'_, E> {
+    type Output = ErAsError<Self>;
+
+    fn opaque_err(self) -> Self::Output {
+        ErAsError(self)
     }
 }

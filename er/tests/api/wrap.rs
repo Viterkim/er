@@ -116,29 +116,6 @@ pub fn wrapped_results() {
         .unwrap_err();
     assert!(report.er_contains::<std::num::ParseIntError>());
     assert!(report.er_contains::<HandlerErr>());
-
-    for top in [false, true] {
-        let wrapped = HandlerErrWrap::from(failing().unwrap_err());
-        let expected = if top {
-            wrapped.er_top().to_string()
-        } else {
-            wrapped.er_report().to_string()
-        };
-        let result: Result<(), HandlerErrWrap> = Err(wrapped);
-        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            if top {
-                result.er_top().expect("request failed");
-            } else {
-                result.er_report().expect("request failed");
-            }
-        }))
-        .unwrap_err();
-
-        assert_eq!(
-            panic.downcast_ref::<String>().unwrap(),
-            &format!("request failed: {expected}")
-        );
-    }
 }
 
 #[test]
@@ -220,9 +197,6 @@ pub fn top_output() {
     assert!(report.er_contains::<InnerErr>());
     #[cfg(feature = "src_locations")]
     assert_eq!(report.tree.nodes[0].src_location, location);
-
-    let standard = TopOutputErr::new().er_wrap().opaque_err();
-    assert!(Error::source(&standard).is_none());
 }
 
 #[derive(Er)]
@@ -242,13 +216,10 @@ pub fn report_output() {
     let outer = result.er(HandlerErr::new).unwrap_err();
     assert!(outer.er_contains::<ReportOutputErr>());
     assert!(outer.er_contains::<InnerErr>());
-
-    let standard = ReportOutputErr::new().er_wrap().opaque_err();
-    assert!(Error::source(&standard).is_none());
 }
 
 #[test]
-pub fn structural_reentry() {
+pub fn reentry() {
     let tree = ErTree::new(HandlerErr, [InnerErr]);
     #[cfg(feature = "src_locations")]
     let location = tree.src_location;

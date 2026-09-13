@@ -3,7 +3,7 @@ set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 
 if [[ $# != 1 || ! $1 =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-    printf 'Usage: %s 0.1.1\n' "$0" >&2
+    printf 'Usage: %s 0.1.x\n' "$0" >&2
     exit 1
 fi
 

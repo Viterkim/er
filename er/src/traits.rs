@@ -14,6 +14,23 @@ pub trait ErError: Error + Sized + 'static {
     fn er(self) -> ErTree<Self> {
         ErTree::from(self)
     }
+
+    /// Add your error on the top, move everything else below it.
+    /// |e| is the old error.
+    /// Use instead of `.map_err(|err|)` when you need the value on the error
+    /// in the new error you are making, otherwise use `.er()`
+    ///
+    /// `return Err(device.er_with(|e| AnalyzeEr { code: e.code }));`
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_with<A, F>(self, error: F) -> ErTree<A>
+    where
+        Self: Send + Sync,
+        A: Error + 'static,
+        F: FnOnce(&Self) -> A,
+    {
+        let parent = error(&self);
+        ErTree::new(parent, [self])
+    }
 }
 
 /// Add context to a Result, leave Ok alone.
@@ -36,6 +53,20 @@ pub trait ErResult {
         F: FnOnce() -> A,
         Self::Err: IntoErNode;
 
+    /// Add your error on the top, move everything else below it.
+    /// Only happens on failures.
+    /// If the Err is already an Er tree, |t| is the tree. The error is `t.top`.
+    /// Use instead of `.map_err(|err|)` when you need the value on the error
+    /// in the new error you are making, otherwise use `.er(||)`
+    ///
+    /// `result.er_with(|t| AnalyzeEr { code: t.top.code })?;`
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_with<A, F>(self, error: F) -> Er<Self::Ok, A>
+    where
+        A: Error + 'static,
+        F: FnOnce(&Self::Err) -> A,
+        Self::Err: IntoErNode;
+
     /// For values that don't implement `Error`, like `Err(85)`.
     ///
     /// **Don't use this to add context to an existing tree! This makes a new tree,
@@ -44,10 +75,10 @@ pub trait ErResult {
     /// ```rust,ignore
     /// // Err(85) calls DeviceEr::new(85)
     /// // Same as `|v| DeviceEr::new(v)`
-    /// device_status().er_from_val(DeviceEr::new)?;
+    /// device_status().er_val(DeviceEr::new)?;
     /// ```
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_from_val<A, F>(self, error: F) -> Er<Self::Ok, A>
+    fn er_val<A, F>(self, error: F) -> Er<Self::Ok, A>
     where
         A: Error + 'static,
         F: FnOnce(Self::Err) -> A;

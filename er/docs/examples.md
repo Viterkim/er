@@ -2,8 +2,6 @@
 
 `use er::*;` at the top, then give each function that deals with errors its own `FuncNameEr` type with `#[derive(Er)]` and use `.er(...)` on results, errors and options.
 
-Don't throw away the tree in `map_err`. Use `.er(...)` for context.
-
 The TLDR is `#[derive(Er)]YourEr + return Er<(), YourEr> + .er(||)`
 
 ## Empty struct
@@ -52,6 +50,75 @@ pub fn read_mode(input: Option<&str>) -> Er<&str, ModeEr> {
 
     Ok(mode)
 }
+```
+
+## Don't destroy the tree (lose sub errors)
+
+You should use `.er_with(|e|)` from the example below this (`Look at the previous error`).
+
+But here's an example of the manual way, and how easy it is to destroy the tree.
+
+```rust
+#[derive(Er)]
+pub struct AnalyzeEr;
+pub fn analyze() -> Er<(), AnalyzeEr> {
+    if let Err(previous_error_tree) = read_port("nope") {
+        // Bad: new error, previous tree is gone
+        // BAD: return Err(AnalyzeEr::new().er());
+
+        // Good: manually add context to the existing tree
+        // BUT use .er_with(|e|) instead, it does it for you.
+        return Err(previous_error_tree.er(AnalyzeEr::new));
+    }
+    Ok(())
+}
+```
+
+Same thing with `map_err`, using the types from the next example:
+
+```rust
+// BAD: we copied the code, but threw away the old error and its tree
+read_device().map_err(|t| AnalyzeEr::new(t.top.code).er())
+
+// Good: copies the code AND keeps the old error and its tree
+read_device().er_with(|t| AnalyzeEr::new(t.top.code))
+```
+
+## Look at the previous error
+
+If you need some value on the previous error (and don't want to .find()).
+
+You can just use `.er(||)` if you don't need the value of the error below, in this error itself.
+
+`.er_with(|e|)` keeps the tree, so is easier than using `.map_err(||)` and accidentally destroying trhe tree.
+
+If it's already an Er tree (`Er<T, DeviceEr>` / `ErTree<DeviceEr>`), the `|t|` is the tree. Your typed error is `t.top`.
+
+```rust
+#[derive(Er)]
+pub struct DeviceEr {
+    pub code: u8,
+}
+#[derive(Er)]
+pub struct AnalyzeEr {
+    pub code: u8,
+}
+pub fn analyze() -> Er<(), AnalyzeEr> {
+    read_device().er_with(|t| AnalyzeEr::new(t.top.code))?;
+    Ok(())
+}
+```
+
+If already a tree (same):
+
+```rust
+return Err(tree.er_with(|t| AnalyzeEr::new(t.top.code)));
+```
+
+If its a plain error (not a tree yet), then the `|e|` is the error:
+
+```rust
+return Err(device.er_with(|e| AnalyzeEr::new(e.code)));
 ```
 
 ## Print report
@@ -196,8 +263,8 @@ pub struct ApiError {
 }
 
 pub fn public_read_port(input: &str) -> Result<u16, ApiError> {
-    // Only place in `Er` where you won't get thrown in jail for using `.map_err()`
-    // We're turning the tree into text (it gets dropped)
+    // Remember to avoid using `.map_err()` in Er for most cases.
+    // We're turning the tree into text (it gets dropped), so its what we actually want here.
     read_port(input).map_err(|error| ApiError {
         report: error.er_report().to_string(),
         err_msg: "invalid port".to_string(),
@@ -225,7 +292,7 @@ pub struct DeviceEr {
 pub fn check_device(result: Result<(), u8>) -> Er<(), DeviceEr> {
     // Remember, the error is a value and gets passed into the first argument
     // Same as `|v| DeviceEr::new(v)`
-    result.er_from_val(DeviceEr::new)
+    result.er_val(DeviceEr::new)
 }
 ```
 
@@ -238,16 +305,28 @@ Enable `test` on your dev deps:
 er = { version = "0.1", features = ["test"] }
 ```
 
-Then use `TestEr` and `.t_er()?`:
+Make the test return `TestEr` and use `.t_er()?`.
 
 ```rust,ignore
-#[test]
-pub fn port() -> TestEr {
-    let port = read_port("85").t_er()?;
+use er::*;
 
-    assert_eq!(port, 85);
+#[derive(Er)]
+pub struct ReadPortEr;
+pub fn read_port(input: &str) -> Er<u16, ReadPortEr> {
+    input.parse().er(ReadPortEr::new)
+}
+
+#[test]
+pub fn the_best_test() -> TestEr {
+    read_port("nope").t_er()?;
     Ok(())
 }
+```
+```text
+Error: TestEr @ tests/the_best_test.rs:12:23
+`- ReadPortEr @ tests/the_best_test.rs:7:19
+   `- invalid digit found in string @ tests/the_best_test.rs:7:19
+test the_best_test ... FAILED
 ```
 
 ## Other traits
@@ -292,6 +371,20 @@ if let Err(error) = read_port("fakenumber") {
 ```
 
 Can still print `.er_top()` or `.er_report()`. Each entry has its parent and depth.
+
+Enable `serde` on Er, then add `serde_json` (or toml, or whatever) in your own crate if you want to save it. Er doesn't have `to_json()`.
+
+```toml
+[dependencies]
+er = { version = "0.1", features = ["serde"] }
+serde_json = "1"
+```
+
+```rust
+let snapshot = read_port("fakenumber").unwrap_err().er_snapshot();
+let json = serde_json::to_string_pretty(&snapshot).unwrap();
+std::fs::write("/tmp/error.json", &json).unwrap();
+```
 
 ## If you want Error on report (opaque)
 

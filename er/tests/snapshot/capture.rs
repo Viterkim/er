@@ -41,14 +41,11 @@ pub fn saved_tree() {
     let expected = tree.er_report().to_string();
     drop(tree);
 
-    let saved = snapshot.clone();
-    drop(snapshot);
-    assert_eq!(saved.er_report().to_string(), expected);
-    assert_eq!(saved.er_entries().count(), 4);
-    assert_eq!(saved.er_descendants().count(), 2);
-    assert_eq!(saved.entries[1].kind, ErEntryKind::Source);
+    assert_eq!(snapshot.er_report().to_string(), expected);
+    assert_eq!(snapshot.er_descendants().count(), 2);
+    assert_eq!(snapshot.entries[1].kind, ErEntryKind::Source);
     #[cfg(feature = "src_locations")]
-    assert!(saved.entries[1].src_location.is_none());
+    assert!(snapshot.entries[1].src_location.is_none());
 }
 
 #[test]
@@ -84,11 +81,9 @@ pub fn deep_tree() {
     let snapshot = tree.er_snapshot();
     drop(tree);
 
-    let saved = snapshot.clone();
-    drop(snapshot);
-    assert_eq!(saved.entries.len(), 20_001);
+    assert_eq!(snapshot.entries.len(), 20_001);
     assert_eq!(
-        saved
+        snapshot
             .er_report()
             .single_line()
             .to_string()

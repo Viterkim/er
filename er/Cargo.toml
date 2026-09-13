@@ -7,7 +7,9 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "Er, errors with less r, lib"
+description = "Er, errors with less r"
+keywords = ["error", "error-handling", "context", "report", "no_std"]
+categories = ["rust-patterns", "no-std"]
 
 [lib]
 doctest = false
@@ -18,9 +20,14 @@ src_locations = []
 small_path_src = []
 macros = ["dep:er-macros"]
 test = []
+serde = ["dep:serde"]
 
 [dependencies]
-er-macros = { version = "=0.1.1", path = "../er-macros", optional = true }
+er-macros = { version = "=0.1.2", path = "../er-macros", optional = true }
+serde = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
+
+[dev-dependencies]
+serde_json = "1"
 
 [lints]
 workspace = true

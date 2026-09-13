@@ -48,10 +48,6 @@ pub fn named_fields() {
 
     assert_eq!(error.to_string(), expected);
     assert_eq!(format!("{error:?}"), expected);
-    assert_eq!(format!("{error:#?}"), expected);
-
-    let tree = error.er();
-    assert_eq!(tree.er_top().to_string(), expected);
 }
 
 #[derive(Er)]

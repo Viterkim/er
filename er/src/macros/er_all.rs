@@ -1,4 +1,5 @@
 /// Keep every error, drop oks. The parent only gets made if something fails.
+/// Does not stop early, every result is evaluated.
 ///
 /// `er_all!(ConfigEr::new, [read_port(port), read_mode(mode)])?;`
 /// An existing collection works too: `er_all!(ConfigEr::new, results)?;`

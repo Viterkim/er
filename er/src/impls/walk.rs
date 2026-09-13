@@ -1,5 +1,5 @@
-use super::{ErEntries, ErNodes, ErSources, MAX_SOURCE_HOPS, Pending};
-use crate::{ErEntry, ErEntryKind, ErNode, SrcLocation};
+use crate::walk::{MAX_SOURCE_HOPS, Pending};
+use crate::{ErEntries, ErEntry, ErEntryKind, ErNode, ErNodes, ErSources, SrcLocation};
 use alloc::vec;
 use core::error::Error;
 

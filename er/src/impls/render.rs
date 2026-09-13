@@ -1,4 +1,4 @@
-use super::{LineWriter, ReportEntry, Wrap};
+use crate::render::{LineWriter, ReportEntry, Wrap};
 use crate::{ErEntry, ErSnapshotEntry};
 use core::fmt;
 

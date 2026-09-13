@@ -129,6 +129,8 @@ For structs use `.er(|| OtherEr::new(arg1))`, for empty structs use `.er(OtherEr
 
 For enums use `.er(|| EnumErr::variant_name(arg1))`, for empty variants use `.er(EnumErr::variant_name)`.
 
+If you NEED a value on the error in the error you are creating now, use `.er_with(|e|)`. It adds it to the tree instead of destroying it: `.er_with(|t| OtherEr::new(t.top.code))` (typed error is `t.top`).
+
 ## Why?
 
 It's designed to force you to pick between report/top error. (Display/Debug meaning report or something else is confusing and tribal knowledge).
@@ -143,7 +145,7 @@ The crate is `no_std` but requires `alloc`
 
 default features: `macros, src_locations`
 
-non-default features: `small_path_src`
+non-default features: `small_path_src, serde`
 
 non-default dev/testing feature: `test`
 
@@ -162,6 +164,31 @@ Usually you'll just get `src/lib.rs` or `engine/src/lib.rs` in a workspace(so yo
 So this turns it into `secret/src/a.rs`. It just looks for the last `src` and gives you the path one step back from that.
 
 If you don't want to restructure stuff you can enable it BUT! it only affects it when PRINTING! It is STILL in your binary.
+
+### serde, off by default
+
+This only adds Serialize/Deserialize snapshots(converted string reports).
+
+Er does NOT turn it into JSON for you. You pick a format crate in your own app `serde_json`, `toml` etc.
+
+```toml
+[dependencies]
+er = { version = "0.1", features = ["serde"] }
+serde_json = "1"
+```
+
+```rust
+// Just unwrapping for the example
+let snapshot = read_port("nope").unwrap_err().er_snapshot();
+
+let json = serde_json::to_string_pretty(&snapshot).unwrap();
+fs::write("/tmp/error.json", &json).unwrap();
+
+let snapshot: ErSnapshot = serde_json::from_str(&json).unwrap();
+println!("{}", snapshot.er_report());
+```
+
+If one side compiled `src_locations` out, the JSON just has no `src_location`. A locations build loads that as `None` (no `@ file:line`). Extra keys the other way get ignored.
 
 ### test, for dev dependencies, off by default
 
@@ -185,3 +212,10 @@ er = { version = "0.1", default-features = false, features = ["src_locations"] }
 ## Disclaimer
 
 The macro portions were heavily gippity assisted.
+
+## Links
+
+[Github Repo](https://github.com/Viterkim/er)
+[Docs.rs](https://docs.rs/er/latest/er/)
+[Crates.io for the lib](https://crates.io/crates/er)
+[Crates.io for the macros](https://crates.io/crates/er-macros/)

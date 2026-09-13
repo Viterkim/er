@@ -1,5 +1,6 @@
+use crate::types_helpers::Pending;
 use alloc::{boxed::Box, string::String, vec::Vec};
-use core::{error::Error, panic::Location};
+use core::{error::Error, fmt, panic::Location};
 
 /// A Result with your typed error on top.
 pub type Er<T, E> = Result<T, ErTree<E>>;
@@ -58,6 +59,7 @@ pub struct ErReportRef<'a, E> {
 
 /// An opaque standard Error. The presentation is still in `.0`.
 /// `source()` is empty, so ordinary error searches cannot see its tree.
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[must_use]
 pub struct ErAsError<P>(pub P);
 
@@ -71,6 +73,7 @@ pub enum Layout {
 
 /// Kind of entry in the tree
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ErEntryKind {
     Root,
     Node,
@@ -92,8 +95,36 @@ pub struct ErEntry<'a> {
     pub src_location: Option<SrcLocation>,
 }
 
-/// Saved messages and locations, no original error values.
+/// Root, native sources, then nodes.
+/// Longer native chains stop at [`crate::walk::MAX_SOURCE_HOPS`], setting the last entry's `source_truncated`.
+/// Filtering keeps the original indices, parents, depths, and `is_last` values.
 #[derive(Clone)]
+#[must_use]
+pub struct ErEntries<'a> {
+    pub pending: Vec<Pending<'a>>,
+    pub next_index: usize,
+}
+
+/// Child nodes, in tree order. Excludes the root and native sources.
+#[derive(Clone)]
+#[must_use]
+pub struct ErNodes<'a> {
+    pub pending: Vec<&'a ErNode>,
+}
+
+/// Up to [`crate::walk::MAX_SOURCE_HOPS`] errors in a native `Error::source()` chain.
+#[derive(Clone)]
+#[must_use]
+pub struct ErSources<'a> {
+    pub next: Option<&'a (dyn Error + 'static)>,
+    pub remaining: usize,
+    /// Set when iteration stops at the limit with another source left.
+    pub truncated: bool,
+}
+
+/// Saved messages and locations, no original error values.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[must_use]
 pub struct ErSnapshot {
     /// Tree order, with parent indices pointing into this list.
@@ -102,7 +133,8 @@ pub struct ErSnapshot {
 }
 
 /// One saved error, not one printed line.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ErSnapshotEntry {
     pub message: String,
     pub kind: ErEntryKind,
@@ -113,11 +145,13 @@ pub struct ErSnapshotEntry {
     /// The native source walk stopped here, the saved tree is incomplete.
     pub source_truncated: bool,
     #[cfg(feature = "src_locations")]
+    #[cfg_attr(feature = "serde", serde(default))]
     pub src_location: Option<ErSnapshotLocation>,
 }
 
 /// File, line, column.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ErSnapshotLocation {
     pub file: String,
     pub line: u32,
@@ -138,4 +172,11 @@ pub struct ErSnapshotReport<'a> {
 pub struct ErSnapshotTop<'a> {
     pub snapshot: &'a ErSnapshot,
     pub layout: Layout,
+}
+
+/// Formatting or callback failure.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LineError<E> {
+    Format(fmt::Error),
+    Callback(E),
 }

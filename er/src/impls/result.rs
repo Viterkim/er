@@ -1,6 +1,6 @@
 use crate::{
-    Er, ErError, ErOption, ErPresentation, ErReport, ErResult, ErTop, ErTree, IntoErNode,
-    IntoErTree,
+    Er, ErError, ErOpaqueError, ErOption, ErPresentation, ErReport, ErResult, ErTop, ErTree,
+    IntoErNode, IntoErTree,
 };
 use alloc::vec;
 use core::error::Error;
@@ -37,7 +37,30 @@ impl<T, E> ErResult for Result<T, E> {
     }
 
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_from_val<A, F>(self, error: F) -> Er<T, A>
+    fn er_with<A, F>(self, error: F) -> Er<T, A>
+    where
+        A: Error + 'static,
+        F: FnOnce(&E) -> A,
+        E: IntoErNode,
+    {
+        match self {
+            Ok(value) => Ok(value),
+            Err(source) => {
+                let error = error(&source);
+                let nodes = vec![source.into_er_node()];
+
+                Err(ErTree {
+                    top: error,
+                    nodes,
+                    #[cfg(feature = "src_locations")]
+                    src_location: Location::caller(),
+                })
+            }
+        }
+    }
+
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_val<A, F>(self, error: F) -> Er<T, A>
     where
         A: Error + 'static,
         F: FnOnce(E) -> A,
@@ -93,6 +116,17 @@ impl<T, E: IntoErTree> ErPresentation for Result<T, E> {
         match self {
             Ok(value) => Ok(value),
             Err(error) => Err(error.into_er_tree().into_er_report()),
+        }
+    }
+}
+
+impl<T, E: ErOpaqueError> ErOpaqueError for Result<T, E> {
+    type Output = Result<T, E::Output>;
+
+    fn opaque_err(self) -> Self::Output {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.opaque_err()),
         }
     }
 }

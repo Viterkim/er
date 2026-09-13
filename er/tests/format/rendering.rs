@@ -31,7 +31,7 @@ pub fn causal_chain() {
 }
 
 #[test]
-pub fn selected_panic_output() {
+pub fn panic_output() {
     assert_eq!(parse_port("85").er_report().unwrap(), 85);
     assert_eq!(parse_port("80").er_top().expect("usable port"), 80);
 

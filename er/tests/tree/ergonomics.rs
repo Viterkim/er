@@ -59,10 +59,10 @@ pub fn early_return() {
 #[derive(Er)]
 pub struct ChildErr(pub u8);
 #[test]
-pub fn er_from_val() -> Result<(), ErReport<ChildErr>> {
+pub fn er_val() -> Result<(), ErReport<ChildErr>> {
     let calls = Cell::new(0);
     let input: Result<u8, u8> = Ok(7);
-    let result: Er<u8, ChildErr> = input.er_from_val(|value| {
+    let result: Er<u8, ChildErr> = input.er_val(|value| {
         calls.set(calls.get() + 1);
         ChildErr(value)
     });
@@ -72,7 +72,7 @@ pub fn er_from_val() -> Result<(), ErReport<ChildErr>> {
 
     let result: Result<(), u8> = Err(7);
     let _expected_line = line!() + 1;
-    let error = result.er_from_val(ChildErr).unwrap_err();
+    let error = result.er_val(ChildErr).unwrap_err();
 
     assert_eq!(error.top.0, 7);
     assert!(error.nodes.is_empty());
@@ -107,7 +107,7 @@ pub fn local_roots() {
     assert!(missing.er(local_error).unwrap_err().nodes.is_empty());
 
     let status: Result<(), u8> = Err(7);
-    let mapped = status.er_from_val(|attempts| LocalErr::new(Cell::new(attempts), "mapped"));
+    let mapped = status.er_val(|attempts| LocalErr::new(Cell::new(attempts), "mapped"));
 
     assert_eq!(mapped.unwrap_err().top.attempts.get(), 7);
 
@@ -122,14 +122,36 @@ pub fn local_roots() {
     let grouped = ErTree::new(local_error(), [ChildErr(3)]);
     assert_eq!(grouped.er_find::<ChildErr>().unwrap().0, 3);
 
-    let result: Result<(), ChildErr> = Err(ChildErr(4));
-    let results = vec![result];
-    let collected = er_all!(local_error, results).unwrap_err();
-
-    assert_eq!(collected.er_find::<ChildErr>().unwrap().0, 4);
-
     let result: Result<(), ChildErr> = Err(ChildErr(5));
     let collected = er_all!(local_error, [result]).unwrap_err();
 
     assert_eq!(collected.er_find::<ChildErr>().unwrap().0, 5);
+}
+
+#[derive(Er)]
+pub struct ParentErr(pub u8);
+
+#[test]
+pub fn er_with() {
+    let calls = Cell::new(0);
+    let ok: Result<u8, ChildErr> = Ok(7);
+    let result = ok.er_with(|e| {
+        calls.set(calls.get() + 1);
+        ParentErr(e.0)
+    });
+    assert!(matches!(result, Ok(7)));
+    assert_eq!(calls.get(), 0);
+
+    let result: Result<(), ChildErr> = Err(ChildErr(1));
+    let error = result.er_with(|e| ParentErr(e.0)).unwrap_err();
+    assert_eq!(error.top.0, 1);
+    assert_eq!(error.er_find::<ChildErr>().unwrap().0, 1);
+
+    let error = ChildErr(2).er_with(|e| ParentErr(e.0));
+    assert_eq!(error.top.0, 2);
+    assert_eq!(error.er_find::<ChildErr>().unwrap().0, 2);
+
+    let error = ChildErr(3).er().er_with(|t| ParentErr(t.top.0));
+    assert_eq!(error.top.0, 3);
+    assert_eq!(error.er_find::<ChildErr>().unwrap().0, 3);
 }

@@ -1,6 +1,10 @@
+pub mod lines;
 pub mod node;
 pub mod presentation;
+pub mod render;
 pub mod result;
+pub mod snapshot;
 #[cfg(feature = "test")]
 pub mod testing;
 pub mod tree;
+pub mod walk;
