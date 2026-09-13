@@ -18,7 +18,7 @@ pub enum CollidingEnum {
     Positional(String, String),
 }
 #[test]
-pub fn enum_name_collisions() {
+pub fn enum_collisions() {
     let named = CollidingEnum::named("a", "b");
     assert_eq!(
         named.to_string(),
@@ -45,7 +45,7 @@ pub struct CollidingStruct {
     pub __er_f: String,
 }
 #[test]
-pub fn struct_name_collisions() {
+pub fn struct_collisions() {
     let error = CollidingStruct::new("a", "b", "c");
 
     assert_eq!(

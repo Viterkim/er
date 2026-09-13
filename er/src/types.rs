@@ -73,6 +73,7 @@ pub enum Layout {
 
 /// Kind of entry in the tree
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ErEntryKind {
     Root,
     Node,
@@ -123,6 +124,7 @@ pub struct ErSources<'a> {
 
 /// Saved messages and locations, no original error values.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[must_use]
 pub struct ErSnapshot {
     /// Tree order, with parent indices pointing into this list.
@@ -132,6 +134,7 @@ pub struct ErSnapshot {
 
 /// One saved error, not one printed line.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ErSnapshotEntry {
     pub message: String,
     pub kind: ErEntryKind,
@@ -142,11 +145,13 @@ pub struct ErSnapshotEntry {
     /// The native source walk stopped here, the saved tree is incomplete.
     pub source_truncated: bool,
     #[cfg(feature = "src_locations")]
+    #[cfg_attr(feature = "serde", serde(default))]
     pub src_location: Option<ErSnapshotLocation>,
 }
 
 /// File, line, column.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ErSnapshotLocation {
     pub file: String,
     pub line: u32,

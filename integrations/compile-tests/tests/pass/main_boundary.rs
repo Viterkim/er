@@ -8,7 +8,7 @@ pub fn read_port(input: &str) -> Er<u16, ReadPortEr> {
 
 // main accepts the report as its error.
 pub fn main() -> Result<(), ErReport<ReadPortEr>> {
-    let _port = read_port("85").er_report()?;
+    read_port("85").er_report()?;
 
     Ok(())
 }

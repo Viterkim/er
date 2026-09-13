@@ -1,5 +1,7 @@
 pub mod capture;
 pub mod presentation;
+#[cfg(feature = "serde")]
+pub mod serde;
 pub mod sources;
 
 use core::{error::Error, fmt};

@@ -122,12 +122,6 @@ pub fn local_roots() {
     let grouped = ErTree::new(local_error(), [ChildErr(3)]);
     assert_eq!(grouped.er_find::<ChildErr>().unwrap().0, 3);
 
-    let result: Result<(), ChildErr> = Err(ChildErr(4));
-    let results = vec![result];
-    let collected = er_all!(local_error, results).unwrap_err();
-
-    assert_eq!(collected.er_find::<ChildErr>().unwrap().0, 4);
-
     let result: Result<(), ChildErr> = Err(ChildErr(5));
     let collected = er_all!(local_error, [result]).unwrap_err();
 

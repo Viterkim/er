@@ -1,5 +1,5 @@
 #![warn(elided_lifetimes_in_paths)]
-#![doc = "Derive macros for [Er](https://github.com/Viterkim/er)."]
+#![doc = include_str!("../README.md")]
 
 mod fields;
 mod format;
@@ -19,7 +19,7 @@ use syn::{DeriveInput, parse_macro_input};
 ///
 /// Options: `format`, `skip`, `censor`, `exact`, `no_constructors`, `wrap`, and `crate`.
 ///
-/// Look in the docs for macros.md if you need 'wrap' for implementing a trait on the type.
+/// If you need `wrap` to implement a trait on the type [read this](https://github.com/Viterkim/er/blob/main/er/docs/macros.md#wrap).
 /// You generally do NOT need wrap, just use `.er` on anything you see.
 pub fn derive_er(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

@@ -20,9 +20,14 @@ src_locations = []
 small_path_src = []
 macros = ["dep:er-macros"]
 test = []
+serde = ["dep:serde"]
 
 [dependencies]
 er-macros = { version = "=0.1.1", path = "../er-macros", optional = true }
+serde = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
+
+[dev-dependencies]
+serde_json = "1"
 
 [lints]
 workspace = true

@@ -266,16 +266,28 @@ Enable `test` on your dev deps:
 er = { version = "0.1", features = ["test"] }
 ```
 
-Then use `TestEr` and `.t_er()?`:
+Make the test return `TestEr` and use `.t_er()?`.
 
 ```rust,ignore
-#[test]
-pub fn port() -> TestEr {
-    let port = read_port("85").t_er()?;
+use er::*;
 
-    assert_eq!(port, 85);
+#[derive(Er)]
+pub struct ReadPortEr;
+pub fn read_port(input: &str) -> Er<u16, ReadPortEr> {
+    input.parse().er(ReadPortEr::new)
+}
+
+#[test]
+pub fn the_best_test() -> TestEr {
+    read_port("nope").t_er()?;
     Ok(())
 }
+```
+```text
+Error: TestEr @ tests/the_best_test.rs:12:23
+`- ReadPortEr @ tests/the_best_test.rs:7:19
+   `- invalid digit found in string @ tests/the_best_test.rs:7:19
+test the_best_test ... FAILED
 ```
 
 ## Other traits
@@ -320,6 +332,20 @@ if let Err(error) = read_port("fakenumber") {
 ```
 
 Can still print `.er_top()` or `.er_report()`. Each entry has its parent and depth.
+
+Enable `serde` on Er, then add `serde_json` (or toml, or whatever) in your own crate if you want to save it. Er doesn't have `to_json()`.
+
+```toml
+[dependencies]
+er = { version = "0.1", features = ["serde"] }
+serde_json = "1"
+```
+
+```rust
+let snapshot = read_port("fakenumber").unwrap_err().er_snapshot();
+let json = serde_json::to_string_pretty(&snapshot).unwrap();
+std::fs::write("/tmp/error.json", &json).unwrap();
+```
 
 ## If you want Error on report (opaque)
 

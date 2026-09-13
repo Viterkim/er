@@ -72,7 +72,7 @@ pub fn views() -> fmt::Result {
 }
 
 #[test]
-pub fn structural_reentry() {
+pub fn reentry() {
     let report = failing().er_report().unwrap_err().single_line();
     let outer = Err::<(), _>(report).er(OuterErr::new).unwrap_err();
     assert!(outer.er_contains::<AppErr>());

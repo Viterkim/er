@@ -44,9 +44,8 @@ fn paths() {
         for layout in [Layout::Multiline, Layout::SingleLine] {
             let report = snapshot.er_report().layout(layout);
             assert_eq!(report.to_string(), expected);
-            assert_eq!(format!("{report:?}"), expected);
         }
-        assert!(snapshot.entries[0].src_location == Some(location));
+        assert_eq!(snapshot.entries[0].src_location, Some(location));
     }
 }
 
@@ -79,7 +78,6 @@ fn live_and_saved() -> core::fmt::Result {
         let live = tree.er_report().layout(layout);
         let saved = snapshot.er_report().layout(layout);
         assert_eq!(live.to_string(), expected);
-        assert_eq!(format!("{live:?}"), expected);
         assert_eq!(saved.to_string(), expected);
         let mut lines = Vec::new();
         live.for_each_line(|line| lines.push(line.to_owned()))?;

@@ -1,6 +1,7 @@
 # 0.1.2
 
 Readme and docs improvements.
+Optional serde for snapshots.
 
 # 0.1.1
 
