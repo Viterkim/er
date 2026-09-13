@@ -75,10 +75,10 @@ pub trait ErResult {
     /// ```rust,ignore
     /// // Err(85) calls DeviceEr::new(85)
     /// // Same as `|v| DeviceEr::new(v)`
-    /// device_status().er_from_val(DeviceEr::new)?;
+    /// device_status().er_val(DeviceEr::new)?;
     /// ```
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_from_val<A, F>(self, error: F) -> Er<Self::Ok, A>
+    fn er_val<A, F>(self, error: F) -> Er<Self::Ok, A>
     where
         A: Error + 'static,
         F: FnOnce(Self::Err) -> A;

@@ -295,7 +295,7 @@ pub struct DeviceEr {
 pub fn check_device(result: Result<(), u8>) -> Er<(), DeviceEr> {
     // Remember, the error is a value and gets passed into the first argument
     // Same as `|v| DeviceEr::new(v)`
-    result.er_from_val(DeviceEr::new)
+    result.er_val(DeviceEr::new)
 }
 ```
 
