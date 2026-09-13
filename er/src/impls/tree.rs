@@ -43,6 +43,22 @@ impl<E: Error + 'static> ErTree<E> {
         ErTree::new(parent, [self])
     }
 
+    /// Add your error on the top, move everything else below it.
+    /// |t| is the tree. The error is `t.top`.
+    /// Use instead of `.map_err(|err|)` when you need the value on the error
+    /// in the new error you are making, otherwise use `.er(||)`
+    ///
+    /// `let error = error.er_with(|t| AnalyzeEr { code: t.top.code });`
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    pub fn er_with<A>(self, parent: impl FnOnce(&Self) -> A) -> ErTree<A>
+    where
+        E: Send + Sync,
+        A: Error + 'static,
+    {
+        let parent = parent(&self);
+        ErTree::new(parent, [self])
+    }
+
     pub fn into_er_node(self) -> ErNode
     where
         E: Send + Sync,

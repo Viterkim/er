@@ -2,6 +2,7 @@
 
 Readme and docs improvements.
 Optional serde for snapshots.
+Add `.er_with(|t|)` / `.er_with(|e|)` to copy fields off the previous error, without `map_err` accidentally nuking the tree.
 
 # 0.1.1
 

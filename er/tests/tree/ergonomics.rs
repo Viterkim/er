@@ -127,3 +127,31 @@ pub fn local_roots() {
 
     assert_eq!(collected.er_find::<ChildErr>().unwrap().0, 5);
 }
+
+#[derive(Er)]
+pub struct ParentErr(pub u8);
+
+#[test]
+pub fn er_with() {
+    let calls = Cell::new(0);
+    let ok: Result<u8, ChildErr> = Ok(7);
+    let result = ok.er_with(|e| {
+        calls.set(calls.get() + 1);
+        ParentErr(e.0)
+    });
+    assert!(matches!(result, Ok(7)));
+    assert_eq!(calls.get(), 0);
+
+    let result: Result<(), ChildErr> = Err(ChildErr(1));
+    let error = result.er_with(|e| ParentErr(e.0)).unwrap_err();
+    assert_eq!(error.top.0, 1);
+    assert_eq!(error.er_find::<ChildErr>().unwrap().0, 1);
+
+    let error = ChildErr(2).er_with(|e| ParentErr(e.0));
+    assert_eq!(error.top.0, 2);
+    assert_eq!(error.er_find::<ChildErr>().unwrap().0, 2);
+
+    let error = ChildErr(3).er().er_with(|t| ParentErr(t.top.0));
+    assert_eq!(error.top.0, 3);
+    assert_eq!(error.er_find::<ChildErr>().unwrap().0, 3);
+}

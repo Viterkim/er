@@ -54,18 +54,20 @@ pub fn read_mode(input: Option<&str>) -> Er<&str, ModeEr> {
 
 ## Don't destroy the tree (lose sub errors)
 
-If you already have a tree, add context to it, do NOT create a new one.
+You should use `.er_with(|e|)` from the example below this (`Look at the previous error`).
+
+But here's an example of the manual way, and how easy it is to destroy the tree.
 
 ```rust
 #[derive(Er)]
 pub struct AnalyzeEr;
 pub fn analyze() -> Er<(), AnalyzeEr> {
     if let Err(previous_error_tree) = read_port("nope") {
-        // Bad: if we return a new error, and .er() that one
-        // the 'previous_error_tree' will get lost
+        // Bad: new error, previous tree is gone
         // BAD: return Err(AnalyzeEr::new().er());
 
-        // Good: add context to the existing previous_error_tree
+        // Good: manually add context to the existing tree
+        // BUT use .er_with(|e|) instead, it does it for you.
         return Err(previous_error_tree.er(AnalyzeEr::new));
     }
     Ok(())
@@ -75,11 +77,51 @@ pub fn analyze() -> Er<(), AnalyzeEr> {
 Same thing with `map_err`:
 
 ```rust
-// BAD: We don't add context to the previous error, and it will disappear
+// BAD: we ignore the previous error, tree disappears
 read_port(input).map_err(|_previous_error_tree| AnalyzeEr::new().er())
 
-// Good: we use `.er()` which keeps the tree
+// Good
 read_port(input).er(AnalyzeEr::new)
+#[derive(Er)]
+pub struct AnalyzeEr2(pub u32);
+read_port(input).er_with(|e |AnalyzeEr::new(e.thing_you_needed))
+```
+
+## Look at the previous error
+
+If you need some value on the previous error (and don't want to .find()).
+
+You can just use `.er(||)` if you don't need the value of the error below, in this error itself.
+
+`.er_with(|e|)` keeps the tree, so is easier than using `.map_err(||)` and accidentally destroying trhe tree.
+
+If it's already an Er tree (`Er<T, DeviceEr>` / `ErTree<DeviceEr>`), the `|t|` is the tree. Your typed error is `t.top`.
+
+```rust
+#[derive(Er)]
+pub struct DeviceEr {
+    pub code: u8,
+}
+#[derive(Er)]
+pub struct AnalyzeEr {
+    pub code: u8,
+}
+pub fn analyze() -> Er<(), AnalyzeEr> {
+    read_device().er_with(|t| AnalyzeEr::new(t.top.code))?;
+    Ok(())
+}
+```
+
+If already a tree (same):
+
+```rust
+return Err(tree.er_with(|t| AnalyzeEr::new(t.top.code)));
+```
+
+If its a plain error (not a tree yet), then the `|e|` is the error:
+
+```rust
+return Err(device.er_with(|e| AnalyzeEr::new(e.code)));
 ```
 
 ## Print report

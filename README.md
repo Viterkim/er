@@ -129,6 +129,8 @@ For structs use `.er(|| OtherEr::new(arg1))`, for empty structs use `.er(OtherEr
 
 For enums use `.er(|| EnumErr::variant_name(arg1))`, for empty variants use `.er(EnumErr::variant_name)`.
 
+If you NEED a value on the error in the error you are creating now, use `.er_with(|e|)`. It adds it to the tree instead of destroying it: `.er_with(|t| OtherEr::new(t.top.code))` (typed error is `t.top`).
+
 ## Why?
 
 It's designed to force you to pick between report/top error. (Display/Debug meaning report or something else is confusing and tribal knowledge).

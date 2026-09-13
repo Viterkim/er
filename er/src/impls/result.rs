@@ -37,6 +37,29 @@ impl<T, E> ErResult for Result<T, E> {
     }
 
     #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_with<A, F>(self, error: F) -> Er<T, A>
+    where
+        A: Error + 'static,
+        F: FnOnce(&E) -> A,
+        E: IntoErNode,
+    {
+        match self {
+            Ok(value) => Ok(value),
+            Err(source) => {
+                let error = error(&source);
+                let nodes = vec![source.into_er_node()];
+
+                Err(ErTree {
+                    top: error,
+                    nodes,
+                    #[cfg(feature = "src_locations")]
+                    src_location: Location::caller(),
+                })
+            }
+        }
+    }
+
+    #[cfg_attr(feature = "src_locations", track_caller)]
     fn er_from_val<A, F>(self, error: F) -> Er<T, A>
     where
         A: Error + 'static,
