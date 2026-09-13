@@ -23,7 +23,7 @@ test = []
 serde = ["dep:serde"]
 
 [dependencies]
-er-macros = { version = "=0.1.1", path = "../er-macros", optional = true }
+er-macros = { version = "=0.1.2", path = "../er-macros", optional = true }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
 
 [dev-dependencies]
