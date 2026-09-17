@@ -1,14 +1,20 @@
 # Er, errors with less r
 
-Convenient error handling with very easy(i hope) ways to add typed context at every step.
+Convenient error handling with very easy ways to add typed context at every step.
 
-The main focus is caring about what the function caller cares about, how can you 'kinda' be forced to add context, and what would be nice to see in error logs at 03:00?(no AM for you americans). 
+The main focus is having good types at every step, and caring about what the caller wants to know. To have fully typed context be convenient and easy to type.
 
-For more examples look at [Most common examples / use cases](./er/docs/examples.md).
+And then maybe most importantly, when stuff goes wrong in production at 03:00(no AM for you americans), what is gonna save you hours of debugging?
 
-There's also a [comparison on error libraries / opinion piece](er/docs/err-lib-comparisons.md). (Obviously biased, but trying to be fair with examples).
+[Examples and patterns to use](./er/docs/examples.md).
 
-And if you really care [there's also stuff about the macros](er/docs/macros.md) for different options (censor/skip).
+[Simple error comparison (basic usage, context, output)](er/docs/simple-error-comparison.md).
+
+[Tricky error comparison (foreign errors, own errors, the original error, string context, typed context, using / consuming, public boundary)](er/docs/tricky-error-comparison.md).
+
+[Features](er/docs/features.md).
+
+[Macros](er/docs/macros.md).
 
 Add it with:
 ```toml
@@ -115,6 +121,8 @@ if let Err(error) = startup() {
 
 ## How to use + convenience
 
+// TODO: viktor redo a bit
+
 The TLDR is `#[derive(Er)]YourEr + return Er<(), YourEr> + .er(||)?;`
 
 AVOID `map_err(|error|)` for adding context! You're gonna nuke the tree(unless you manually handle it). Use `.er(||)`.
@@ -133,89 +141,22 @@ If you NEED a value on the error in the error you are creating now, use `.er_wit
 
 ## Why?
 
-It's designed to force you to pick between report/top error. (Display/Debug meaning report or something else is confusing and tribal knowledge).
+Ultra convenience for actually typing out stuff yourself, and for not having the error handling in complex cases take up 70% of the code line. I really believe that people do worse error handling because the ergonomics are bad, why should the typed experience be hard/take up so much code? I'll even argue it reads better as well once you know it (And that's the case with anything, people take what they know for granted).
 
-Slightly exaggerated, i want to avoid: `thing.add_lazy_context_and_its_tuesday(|something_here| #[now_theres_a_macro_here_for_some_reason] YouGetThePoint { a: "85".to_string() } )`, i just wanna do `.er(||)`.
+Concretely and exaggerated but i want to avoid: `thing.add_lazy_context_and_its_tuesday(|something_here| #[now_theres_a_macro_here_for_some_reason] YouGetThePoint { a: "85".to_string() } )`, i just wanna do `.er(||)`.
 
-Having an easy to use macro with the defaults you want, is the thing that makes each function have their own little `Er` type not be painful.
+Being 'somewhat forced' or atleast very inclined to add context, or at the very least having the gap between the lazy version, and the fully typed context with variants be tiny, is very important to actually doing the good thing everywhere.
 
-## Features / Extra
+Forces you to pick between report/top error. (Display/Debug meaning report is confusing and tribal knowledge).
 
-The crate is `no_std` but requires `alloc`
-
-default features: `macros, src_locations`
-
-non-default features: `small_path_src, serde`
-
-non-default dev/testing feature: `test`
-
-### macros
-
-Convenience macros that kinda is the point of Er, you get `#[derive(Er)]` and `#[derive(ErFormat)]` etc.
-
-### src_locations
-
-Enables capturing the file path, line number and column number at compile time.
-
-### small_path_src, off by default
-
-Usually you'll just get `src/lib.rs` or `engine/src/lib.rs` in a workspace(so you WONT need this), but on some setups if you use paths for dependencies, like a local crate on your pc, then you'll get the full path `/the/magic/src/folder/that/was/supposed/to/be/secret/src/a.rs`.
-
-So this turns it into `secret/src/a.rs`. It just looks for the last `src` and gives you the path one step back from that.
-
-If you don't want to restructure stuff you can enable it BUT! it only affects it when PRINTING! It is STILL in your binary.
-
-### serde, off by default
-
-This only adds Serialize/Deserialize snapshots(converted string reports).
-
-Er does NOT turn it into JSON for you. You pick a format crate in your own app `serde_json`, `toml` etc.
-
-```toml
-[dependencies]
-er = { version = "0.1", features = ["serde"] }
-serde_json = "1"
-```
-
-```rust
-// Just unwrapping for the example
-let snapshot = read_port("nope").unwrap_err().er_snapshot();
-
-let json = serde_json::to_string_pretty(&snapshot).unwrap();
-fs::write("/tmp/error.json", &json).unwrap();
-
-let snapshot: ErSnapshot = serde_json::from_str(&json).unwrap();
-println!("{}", snapshot.er_report());
-```
-
-If one side compiled `src_locations` out, the JSON just has no `src_location`. A locations build loads that as `None` (no `@ file:line`). Extra keys the other way get ignored.
-
-### test, for dev dependencies, off by default
-
-`TestEr` and `.t_er()?` for tests. 
-
-### Examples
-
-```toml
-[dependencies]
-er = { version = "0.1", features = ["small_path_src"] }
-
-[dev-dependencies]
-er = { version = "0.1", features = ["test"] }
-```
-
-```toml
-[dependencies]
-er = { version = "0.1", default-features = false, features = ["src_locations"] }
-```
-
-## Disclaimer
-
-The macro portions were heavily gippity assisted.
+Having an easy to use macro with the defaults you want, is the thing that makes each function have their own little `Er` type not be painful. And it means we don't have to rely on thiserror, and we can add convenience via the macro.
 
 ## Links
 
 [Github Repo](https://github.com/Viterkim/er)
+
 [Docs.rs](https://docs.rs/er/latest/er/)
+
 [Crates.io for the lib](https://crates.io/crates/er)
+
 [Crates.io for the macros](https://crates.io/crates/er-macros/)

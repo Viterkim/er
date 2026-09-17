@@ -1,8 +1,15 @@
-# Different error library comparisons
+# Simple Error Comparison ™
 
-## The quest we're about to go on
+## Before we start
 
-Done on Rust 1.98.1
+DISCLAIMER: this is obviously the error case i care about, and its biased, but i try to be fair.
+
+Links on this page: [thiserror](#thiserror-2020), [Anyhow](#anyhow-10104), [SNAFU](#snafu-092), [error-stack](#error-stack-080), [rootcause](#rootcause-0130),
+[exn](#exn-031), [Eros](#eros-070), [Problemo](#problemo-0013), [Nightly std::error::Report](#nightly-stderrorreport), [Others](#others), [Er](#er-012)
+
+For a tricky example checkout the [tricky comparison](tricky-error-comparison.md) after reading this (foreign errors, own errors, the original error, string context, typed context, using / consuming, public boundary).
+
+## The quest /task we're about to do
 
 Someone entered `aint_even_a_number_cmon_man` as input and we get this:
 
@@ -16,7 +23,7 @@ One lazy try where we do whatever the library makes easy (and lets be honest, it
 
 Then a second run where we add context (would be nice to see what went wrong, and no... logging is not the same).
 
-DISCLAIMER: this is obviously the error case i care about, and its biased, but i try to be fair.
+Done on Rust 1.98.1
 
 ## thiserror (2.0.20)
 
@@ -461,6 +468,47 @@ And the moment you add tiny friction on making errors, people aren't gonna want 
 
 When trying to convince other people of how great exn was, the examples aren't the easiest and it's confusing for people that you're doing std::Result<T, Exn<E>>, and people immediately wanna do .map_err(||) and ruin that poor error reports for good.
 
+### Exn vs Er
+
+If we want also want the input from our `PortEr` in the next error:
+
+```rust
+#[derive(Er)]
+pub struct ConfigEr(pub String);
+
+read_port(input).er_with(|t| ConfigEr::new(t.top.input.clone()))?;
+```
+
+Still keeps the old error and everything below it. Exn can do this with `map_err` then `.raise()`, but here it's very easy to destroy your error tree and now I'm manually having to worry and do it.
+
+`.er_find::<io::Error>()` finds the actual error, including inside native `source()` chains. `.er_find_all::<PortEr>()` gets all the bad ports.
+
+Exn keeps the actual errors you give it too. BUT if a library gives you a `ReadError` with an `io::Error` inside its `source()`, exn copies that source's message into a child frame. So you can SEE the io error in the report, try to find its type in that frame and get nothing. [Exn construction](https://docs.rs/exn/0.3.1/exn/struct.Exn.html#method.new).
+
+The real io error is still there in the normal `source()` of `ReadError`. You don't even have to know it was a `ReadError` to find it. But that means a find function has to check both the Exn frames AND the normal `source()` chains. [This one from the Exn issue](https://github.com/fast/exn/issues/65) only checks frames, so it misses the io error. `.er_find()` checks both.
+
+`er_all!(StartupEr::new, [a(), b()])` lets the results have different types. It runs all of them, keeps the failures and drops the oks. Exn's `raise_all` needs the children to convert to the same `Exn<T>` type.
+
+Snapshots in Er for storing/having owned string version of the reprots:
+
+```rust
+let saved = error.er_snapshot();
+let json = serde_json::to_string(&saved).unwrap();
+
+let saved: ErSnapshot = serde_json::from_str(&json).unwrap();
+println!("{}", saved.er_report());
+```
+
+There's `.single_line()` and `for_each_line(...)` for printing too, mostly because logging multiline errors can be [complete shit](systemd.md).
+
+And my most hot take:
+
+I feel like with Exn `0.4`, where they add `Exn` (without the generic, so not `Exn<E>`) is the completely wrong direction. I feel like that's compromising on what made Exn great.
+
+I also think not having convenient macros/helpers for making the error types will result in you 'not bothering' with having the types where it makes sense, and you might end up lazily abusing the non generic version.
+
+In Exn and Er you don't HAVE to have an error type per function, you can have it per section or whatever but... I still think that actually having the error typed is crucial, and i think that by allowing users to '?' it up lazily, the point is gone. It's also why i don't think Er should have an ErLazy (like the TestEr) for normal application code.
+
 ## Eros (0.7.0)
 
 ### Lazy
@@ -481,7 +529,7 @@ ParseIntError { kind: InvalidDigit }
 ---
 ```
 
-### With context
+### With string context
 
 Lets name the parser type in the signature too:
 
@@ -507,21 +555,42 @@ Context:
 ---
 ```
 
-Trailing comma to make it a tuple. Reminds me of OCaml a bit variadic ish.
+Trailing comma to make it a tuple(since there's only one value).
 
-The caller sees `ParseIntError`, with context saved alongside it. You can erase the set or narrow it (thats so cool!).
+The caller sees `ParseIntError`, with context saved alongside it. You can erase the set or narrow it (which is cool and different to Er).
 
 There's an optional `#[context(...)]` over the whole function, pretty spicy. You pick the arguments to format, but can't use body locals there. For 'this exact command failed', add `.with_context()` at the call. (I would always want that.) [Attribute](https://docs.rs/eros/0.7.0/eros/attr.context.html)
 
-`location` adds callsites; backtrace support is on by default. [Features](https://docs.rs/crate/eros/0.7.0/features)
+### With typed context
 
-I will say i think eros is very unique, i think it's cool that they are trying different features and seeing what works out.
+```rust
+#[derive(Debug, thiserror::Error)] // thiserror
+#[error("command {command:?} on {machine}")]
+pub struct CommandError {
+    pub command: String,
+    pub machine: String,
+}
 
-But i still think that they buy too much into passing the error along, instead of handling/creating the context or error type thats needed (And cases for where you get 2 io errors with different meanings, you then have to make newtypes for that anyway).
+pub fn read_port(input: &str) -> eros::Result<u16, (ParseIntError,)> {
+    let command = format!("set-port {input}");
+    input.parse::<u16>().with_context(|| {
+        Box::new(CommandError {
+            command,
+            machine: "ComputerKatten".to_owned(),
+        }) as Box<dyn eros::SendSyncError>
+    })
+}
 
-### Unique case: handle one type
+if let Some(command) = error.latest_error().as_any().downcast_ref::<CommandError>() {
+    println!("{}", command.machine);
+}
+```
 
-Two possible error types, handle the bad number with a default and only io remains in the set:
+Personally i don't enjoy the ergonomics of this, but it still has some cool things like `CommandError` being there and you can read the fields, the parser error is kept too, and the set still says `ParseIntError`.
+
+### Unique case: narrow down
+
+Two possible error types, handle the bad number with a default and only io remains:
 
 ```rust
 use eros::ReshapeUnion;
@@ -541,36 +610,25 @@ The parser error is no more, F in the chat.
 
 `Err(rest)` means it aint a parser error, `rest` is still a Result (can be ok).
 
-Er doesn't do this. A type per function isn't the same as proving which failures remain. [Narrowing](https://docs.rs/eros/0.7.0/eros/trait.ReshapeUnion.html)
+### Unique case: combine original errors
 
-### Unique case: context can be a type too
+You can combine error types without making another enum which i think is cool when you don't make an alias BUT... I think that if you do a type alias, then it's basically the same as just making an enum, the unique angle is you are doing variant of the ORIGINAL error, where in Er it would be a composition of your own Err types, that has the original error 'below it'). And it's also true that it does compose, which means that your 'A' 'B' 'C' you get, well 'A' itself might itself have 'AA' 'AB' etc (I'll get into later why this might not be desirable).
+
+Lets say we have a case where we get 3 different errors. And because it's basically just a PhantomData marker (compile time info), it isnt a tuple of those 3 errors, its just info that Eros internally can use.
 
 ```rust
-#[derive(Debug, thiserror::Error)] // thiserror
-#[error("command {command:?} on {machine}")]
-pub struct CommandEr {
-    pub command: String,
-    pub machine: String,
-}
+type FilePortErr = (io::Error, Utf8Error, ParseIntError);
 
-pub fn read_port(input: &str) -> eros::Result<u16, (ParseIntError,)> {
-    let command = format!("set-port {input}");
-    input.parse::<u16>().with_context(|| {
-        Box::new(CommandEr {
-            command,
-            machine: "ComputerKatten".to_owned(),
-        }) as Box<dyn eros::SendSyncError>
-    })
-}
-
-if let Some(command) = error.latest_error().as_any().downcast_ref::<CommandEr>() {
-    println!("{}", command.machine);
+fn file_port(path: &str) -> eros::Result<u16, FilePortErr> {
+    let bytes = fs::read(path).into_union()?;
+    let input = std::str::from_utf8(&bytes).into_union()?;
+    read_port(input.trim()).widen()
 }
 ```
 
-Thats the actual `CommandEr`, you can read its fields. The parser error is kept too, and the set still says `ParseIntError`. [Context storage](https://docs.rs/eros/0.7.0/src/eros/context.rs.html)
+Now the angle here is we we aren't handling the error or composing it for our caller, we're just providing our caller with 'what could have gone wrong' which in my opinion is 'just thiserror but you dont make the enum everytime', so yes it avoids the pyramid, but it still making a 'stepped pyramid' and not handling/providing our caller with convenience.
 
-`latest_error()` skips text and gets the newest error context, or the original error. Not a search through them all. I still want the operation type in the signature.
+I think eros is great for the use case where you 'throw together the actual types of the errors you got', but i feel like it gets messy once you want to create custom error types with custom typed context, and more importantly when your consumer has to use those types, the [example in the tricky error](tricky-error-comparison.md#eros-070--thiserror-1) is very relevant.
 
 ## Problemo (0.0.13)
 
@@ -738,47 +796,6 @@ println!("{}", error.er_report());
 PortEr { input: "aint_even_a_number_cmon_man" } @ examples/er_context.rs:8:35
 `- invalid digit found in string @ examples/er_context.rs:8:35
 ```
-
-## Exn vs Er (since they are the most similar)
-
-If we want also want the input from our `PortEr` in the next error:
-
-```rust
-#[derive(Er)]
-pub struct ConfigEr(pub String);
-
-read_port(input).er_with(|t| ConfigEr::new(t.top.input.clone()))?;
-```
-
-Still keeps the old error and everything below it. Exn can do this with `map_err` then `.raise()`, but here it's very easy to destroy your error tree and now I'm manually having to worry and do it.
-
-`.er_find::<io::Error>()` finds the actual error, including inside native `source()` chains. `.er_find_all::<PortEr>()` gets all the bad ports.
-
-Exn keeps the actual errors you give it too. BUT if a library gives you a `ReadError` with an `io::Error` inside its `source()`, exn copies that source's message into a child frame. So you can SEE the io error in the report, try to find its type in that frame and get nothing. [Exn construction](https://docs.rs/exn/0.3.1/exn/struct.Exn.html#method.new).
-
-The real io error is still reachable however with `frame.error().source()` on the frame holding `ReadError`. You don't even need to know the `ReadError` type. But now your find has to walk both the AND the original error sources. Exn could do this just hasn't done it yet.
-
-`er_all!(StartupEr::new, [a(), b()])` lets the results have different types. It runs all of them, keeps the failures and drops the oks. Exn's `raise_all` needs the children to convert to the same `Exn<T>` type.
-
-Snapshots in Er for storing/having owned string version of the reprots:
-
-```rust
-let saved = error.er_snapshot();
-let json = serde_json::to_string(&saved).unwrap();
-
-let saved: ErSnapshot = serde_json::from_str(&json).unwrap();
-println!("{}", saved.er_report());
-```
-
-There's `.single_line()` and `for_each_line(...)` for printing too, mostly because logging multiline errors can be [complete shit](systemd.md).
-
-And my most hot take:
-
-I feel like with Exn `0.4`, where they add `Exn` (without the generic, so not `Exn<E>`) is the completely wrong direction. I feel like that's compromising on what made Exn great.
-
-I also think not having convenient macros/helpers for making the error types will result in you 'not bothering' with having the types where it makes sense, and you might end up lazily abusing the non generic version.
-
-In Exn and Er you don't HAVE to have an error type per function, you can have it per section or whatever but... I still think that actually having the error typed is crucial, and i think that by allowing users to '?' it up lazily, the point is gone. It's also why i don't think Er should have an ErLazy (like the TestEr) for normal application code.
 
 # Er weird stuff
 

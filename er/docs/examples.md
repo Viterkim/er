@@ -296,6 +296,16 @@ pub fn check_device(result: Result<(), u8>) -> Er<(), DeviceEr> {
 }
 ```
 
+## App patterns
+
+Here's some patterns i think you should tryout in your code
+
+### Add unique context
+
+### Provide for your caller (simplify)
+
+### Handle and simplify
+
 ## Tests
 
 Enable `test` on your dev deps:
