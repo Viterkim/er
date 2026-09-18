@@ -90,7 +90,7 @@ pub fn write_entries<'a, W: fmt::Write + ?Sized>(
 pub fn valid_depth(previous: Option<usize>, depth: usize) -> bool {
     match previous {
         None => depth == 0,
-        Some(previous) => depth <= previous.saturating_add(1),
+        Some(previous) => depth > 0 && depth <= previous.saturating_add(1),
     }
 }
 

@@ -2,7 +2,7 @@ use crate::fields::with_fields;
 use crate::generate::constructors::exact_type;
 use crate::input::Input;
 use crate::names::{binding, plain};
-use proc_macro2::TokenStream;
+use proc_macro2::{TokenStream, TokenTree};
 use quote::quote;
 use std::collections::HashSet;
 use syn::Data;
@@ -19,18 +19,18 @@ pub fn construct(input: &Input<'_>) -> TokenStream {
     let name = &input.item.ident;
     let mut generics = input.item.generics.clone();
     let (_, type_generics, _) = input.item.generics.split_for_impl();
-    let mut reserved: HashSet<_> = input
-        .type_names
-        .union(&input.const_names)
-        .cloned()
-        .collect();
-    reserved.extend(
-        input
-            .item
-            .generics
-            .lifetimes()
-            .map(|param| plain(&param.lifetime.ident)),
-    );
+    let mut reserved = HashSet::new();
+    let item = input.item;
+    let mut tokens: Vec<_> = quote!(#item).into_iter().collect();
+    while let Some(token) = tokens.pop() {
+        match token {
+            TokenTree::Ident(ident) => {
+                reserved.insert(plain(&ident));
+            }
+            TokenTree::Group(group) => tokens.extend(group.stream()),
+            _ => {}
+        }
+    }
 
     let mut types = Vec::with_capacity(case.fields.len());
     let mut bindings = Vec::with_capacity(case.fields.len());

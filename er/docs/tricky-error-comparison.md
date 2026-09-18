@@ -32,7 +32,7 @@ Read the [simple comparison](simple-error-comparison.md) first (basic usage, con
 
 [Problemo](#problemo-0013-1)
 
-`(+ thiserror)` means i used its derive instead of writing `Display` and `Error` by hand. (Because they don't provide it).
+`(+ thiserror)` means i used its derive to write `Display` and `Error`.
 
 ## The quest / task we're about to do
 
@@ -42,7 +42,7 @@ A bad Ip or port we'll group to bad input. (Two parser errors we turn into one `
 
 Port `85` is sacred, and not allowed. (An error we made up ourselves, so nothing to map from).
 
-If bind fails, we'll go looking for other available ports and grab `kind()` from the io error. If the address is already in use, the caller can show the ports we found. (Digging for info in the error beneath.)
+If bind fails, we'll go looking for other available ports and grab `kind()` from the io error. If the address is already in use, the caller can show the ports we found (digging for info in the error beneath).
 
 Then we'll try another thing. Say a dependency gives us an error with an io error inside it. Can we get both actual errors back, or do we just get their messages?
 
@@ -74,7 +74,7 @@ Eros gives us a union of the original error types. That's nice if those types ar
 
 ### thiserror (2.0.20)
 
-We get a normal enum. Each variant can have its own typed source field, so the caller knows what it contains. Our simple `InvalidInput` drops the two parser errors because they have different types. Keeping them under one variant means boxing them or making another type, and we write the `map_err` calls ourselves.
+We get a normal enum. Each variant can have its own typed source field, so the caller knows what it contains. Our `InvalidInput` drops the two parser errors. Keeping both under one variant means boxing them or making another type, and we write the `map_err` calls ourselves.
 
 ### Anyhow (1.0.104) (+ thiserror)
 

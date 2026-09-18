@@ -115,8 +115,7 @@ pub fn mixed() {
     .unwrap_err();
 
     let items: Vec<_> = tree.er_find_all::<Item>().map(|item| item.0).collect();
-    assert_eq!(&items[..7], &[1, 2, 3, 4, 5, 6, 7]);
-    assert_eq!(items.last(), Some(&9));
+    assert_eq!(items, [1, 2, 3, 4, 5, 6, 7, 9]);
     assert!(tree.er_contains::<StandardWrap>());
     assert!(tree.er_contains::<Standard>());
     assert!(tree.er_contains::<io::Error>());

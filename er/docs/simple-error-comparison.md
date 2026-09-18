@@ -92,7 +92,7 @@ There goes `#[from]`, it gets the parser error, not the local `input`, so we got
 
 This is like, the opposite of what you thought the library would do when you got it the first time. `?` is too easy, and the context variant is annoying.
 
-No report, but thats fair enough i think the bigger annoyance with this enum is your consumer is now caring about what exact errors you got, and not what you designed for them.
+No report, but the caller gets the `Parse` case we made and can use its `source`. We just had to write the `map_err` and source field ourselves.
 
 ### Unique case
 
