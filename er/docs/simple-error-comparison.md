@@ -503,7 +503,7 @@ And my most hot take:
 
 I also think not having convenient macros/helpers for making the error types will result in you 'not bothering' with having the types where it makes sense, and you might end up lazily abusing the non generic version.
 
-In Exn and Er you don't HAVE to have an error type per function, you can have it per section or whatever but... I still think that actually having the error typed is crucial, and i think that by allowing users to '?' it up lazily, the point is gone. It's also why i don't think Er should have an ErLazy (like ErTest) for normal application code.
+In Exn and Er you don't HAVE to have an error type per function, you can have it per section or whatever but... I still think that actually having the error typed is crucial, and i think that by allowing users to '?' it up lazily, the point is gone. (That's why i don't recommend the `lazy` feature in `Er`, and i don't think you should be using it).
 
 ## Eros (0.8.0-rc.1)
 

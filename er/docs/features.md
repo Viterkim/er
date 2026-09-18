@@ -8,7 +8,7 @@ The crate is `no_std` but requires `alloc`
 
 ### non-default features
 
-`small_path_src, serde`
+`small_path_src, serde, lazy`
 
 ### non-default dev/testing feature
 
@@ -54,6 +54,10 @@ println!("{}", snapshot.er_report());
 ```
 
 If one side compiled `src_locations` out, the JSON just has no `src_location`. A locations build loads that as `None` (no `@ file:line`). Extra keys the other way get ignored.
+
+## lazy, off by default
+
+For small scripts or prototyping, i don't think you should use this [Examples](lazy.md).
 
 ## test, for dev dependencies, off by default
 

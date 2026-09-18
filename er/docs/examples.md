@@ -259,9 +259,9 @@ if let Err(error) = public_read_port("fakenumber") {
 }
 ```
 
-## A tricky one
+## A tricky example
 
-Bad Ip and bad port both become `InvalidInput`. Port 85 gets its own case because why not. If bind fails, we suggest other ports and keep the raw `io::Error` too.
+Foreign errors, own errors, the original error, string context, typed context, using / consuming, public boundary
 
 ```rust
 #[derive(Er)]
@@ -275,7 +275,6 @@ pub fn listen(input: &str) -> Er<TcpListener, ListenErr> {
     let (ip, port) = input.split_once(':').unwrap_or((input, ""));
 
     // First 2 errors, to us they're both just bad input
-    // Shared dynamic context is enough, and the line number is here anyway
     let ip = ip.parse::<Ipv4Addr>().er(|| ListenErr::invalid_input(input))?;
     let port = port.parse::<u16>().er(|| ListenErr::invalid_input(input))?;
 
@@ -323,7 +322,7 @@ fn main() {
 }
 ```
 
-Pretend our app has `find_available_ports`, `show_available_ports` and `start_server`. [The full tricky comparison](tricky-error-comparison.md) does this with the other libraries too.
+[The full tricky comparison](tricky-error-comparison.md) does this with the other libraries as a comparison.
 
 ## Non errors (values)
 

@@ -8,6 +8,8 @@ Reports now only print the source location the first time if it's repeated.
 
 TestEr is now ErTest and now uses the regular `.er(())`. (still used the 'test' feature).
 
+Added ErLazy i don't recommend using.
+
 ## Docs
 
 Recommending `Err` for error names like `NameErr` instead of `NameEr`. And recommend using `NameError` for the public external non Er types.

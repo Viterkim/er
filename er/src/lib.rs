@@ -9,6 +9,8 @@ extern crate alloc;
 
 pub mod aggregate;
 pub mod impls;
+#[cfg(feature = "lazy")]
+pub mod lazy;
 pub mod lines;
 pub mod macros;
 pub mod render;
@@ -23,6 +25,9 @@ pub mod walk;
 #[cfg(feature = "macros")]
 #[doc(inline)]
 pub use er_macros::{Er, ErFormat};
+#[cfg(feature = "lazy")]
+#[doc(inline)]
+pub use lazy::{ErLazy, ErLazyError};
 #[doc(inline)]
 pub use traits::*;
 #[doc(inline)]
