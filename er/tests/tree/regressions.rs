@@ -14,27 +14,17 @@ pub fn success_drop() {
     }
 
     let drops = Cell::new(0);
-    let named: Result<_, Parent> = Ok(Guard(&drops));
-    let temporary: Result<_, Parent> = Ok(Guard(&drops));
-    let result = er_all!(|| Parent, [named, temporary]);
-
-    assert_eq!(drops.get(), 2);
-    assert!(result.is_ok());
-
-    let named: Result<_, Parent> = Ok(Guard(&drops));
-    let result = er_all!(
+    let success: Result<Guard<'_>, Parent> = Ok(Guard(&drops));
+    let failure: Result<Guard<'_>, Parent> = Err(Parent);
+    let result: Er<(), Parent> = er_all!(
         || {
-            assert_eq!(drops.get(), 3);
+            assert_eq!(drops.get(), 1);
             Parent
         },
-        [named, {
-            assert_eq!(drops.get(), 3);
-
-            let failure: Result<(), Parent> = Err(Parent);
-            failure
-        }]
+        [success, failure]
     );
 
+    assert_eq!(drops.get(), 1);
     assert_eq!(result.unwrap_err().nodes.len(), 1);
 }
 
@@ -49,7 +39,7 @@ impl Collision {
 #[test]
 pub fn method_collision() {
     let result: Result<(), Collision> = Err(Collision);
-    let tree = er_all!(|| Parent, [result]).unwrap_err();
+    let tree: ErTree<Parent> = er_all!(|| Parent, [result]).unwrap_err();
 
     assert!(tree.er_contains::<Collision>());
 }

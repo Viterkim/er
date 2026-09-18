@@ -4,7 +4,7 @@
 
 ```rust
 #[derive(Er)]
-pub struct PortEr {
+pub struct PortErr {
     pub input: String,
 }
 ```
@@ -14,29 +14,29 @@ Is roughly this ordinary Rust:
 ```rust
 use std::{error::Error, fmt};
 
-pub struct PortEr {
+pub struct PortErr {
     pub input: String,
 }
-impl PortEr {
+impl PortErr {
     #[must_use]
     pub fn new(input: impl Into<String>) -> Self {
         let input = input.into();
         Self { input }
     }
 }
-impl fmt::Debug for PortEr {
+impl fmt::Debug for PortErr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut debug = f.debug_struct("PortEr");
+        let mut debug = f.debug_struct("PortErr");
         debug.field("input", &self.input);
         debug.finish()
     }
 }
-impl fmt::Display for PortEr {
+impl fmt::Display for PortErr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(self, f)
     }
 }
-impl Error for PortEr {}
+impl Error for PortErr {}
 ```
 
 The derive writes those impls. `.er()` comes from the lib. (.er() is implemented on Errors, and you import it as an extension trait).
@@ -47,29 +47,28 @@ Fields use Debug by default, including foreign types. `#[er(format = "{input}")]
 
 `ErFormat` gives the same constructors and Debug/Display, but no Error. Useful for structs inside your error.
 
-`er_all!(BatchEr::new, [a(), b()])` converts failures separately, so their types can differ. A Vec already has matching types. Both keep failures and drop successes. Roughly:
-
-```rust
-let mut errors = Vec::new();
-for result in results {
-    match result {
-        Ok(value) => drop(value),
-        Err(error) => errors.push(error.into_er_node()),
-    }
-}
-
-if errors.is_empty() {
-    Ok(())
-} else {
-    Err(ErTree::new(parent(), errors))
-}
-```
+`er_all!((), [a(), b()])` runs both, keeps the errors and drops the oks. They can be different types in that list (a Vec needs them to match). The parent only gets made if something failed.
 
 ## Constructors
 
 Both `Er` and `ErFormat` make these. Put `#[er(no_constructors)]` on the struct/enum to write your own instead. It skips `new` and all variant constructors, not `.er_wrap()`.
 
-Unsized fields need `no_constructors` too; these constructors pass fields and return `Self` by value.
+For an empty struct, use `.er(())`. `no_constructors` turns that off too.
+
+For a struct with fields, `.er(|| path)` lets you skip its name at the call site too:
+
+```rust
+#[derive(Er)]
+pub struct FileErr(pub PathBuf);
+
+fs::read_to_string(path).er(|| path)?;
+```
+
+For more fields, use a tuple in field order: `.er(|| (machine, token))`. Enums still need the variant name, like `.er(|| ModeErr::missing(input))`.
+
+If Rust can't tell which error you mean, name it: `.er::<FileErr>(|| path)`. You'll usually need that on the first `.er` when you chain two of them.
+
+This works with `er-macros` on its own too. It makes the field conversions when you derive `Er`, and `no_constructors` skips those as well.
 
 Variants get snakecase names. Args follow field order. Strings accept `&str`, numbers keep their exact type. `#[er(exact)]` asks for the field's exact type too.
 
@@ -78,9 +77,9 @@ Heres some examples of writing some stuff and getting some bullshit out.
 ```rust,ignore
 // You write this
 #[derive(Er)]
-pub struct StartEr;
+pub struct StartErr;
 // You get this 
-impl StartEr {
+impl StartErr {
     #[must_use]
     pub fn new() -> Self {
         Self
@@ -89,9 +88,9 @@ impl StartEr {
 
 // You write this
 #[derive(Er)]
-pub struct PortEr(pub String);
+pub struct PortErr(pub String);
 // You get this 
-impl PortEr {
+impl PortErr {
     #[must_use]
     pub fn new(value: impl Into<String>) -> Self {
         let value = value.into();
@@ -101,12 +100,12 @@ impl PortEr {
 
 // You write this
 #[derive(Er)]
-pub struct FindEr {
+pub struct FindErr {
     pub query: String,
     pub account: u64,
 }
 // You get this 
-impl FindEr {
+impl FindErr {
     #[must_use]
     pub fn new(query: impl Into<String>, account: u64) -> Self {
         let query = query.into();
@@ -116,12 +115,12 @@ impl FindEr {
 
 // You write this
 #[derive(Er)]
-pub enum ModeEr {
+pub enum ModeErr {
     Missing,
     Unknown { input: String },
 }
 // You get this 
-impl ModeEr {
+impl ModeErr {
     #[must_use]
     pub fn missing() -> Self {
         Self::Missing
@@ -141,9 +140,9 @@ It's just a way to force the user (you) to pick between a report/top error, it's
 
 ```rust
 #[derive(Er)]
-pub struct PortEr;
-pub fn read_port(input: &str) -> Er<u16, PortEr> {
-    input.parse().er(PortEr::new)
+pub struct PortErr;
+pub fn read_port(input: &str) -> Er<u16, PortErr> {
+    input.parse().er(())
 }
 
 pub fn main() {
@@ -160,7 +159,7 @@ You probably thought `unwrap()` and `expect()` needed Error right(so did i, but 
 
 But it's actually Debug, so do `.er_report()` or `.er_top()` first.
 
-A `main` can return `Result<(), ErReport<AppEr>>` or `Result<(), ErTop<AppEr>>`.
+A `main` can return `Result<(), ErReport<AppErr>>` or `Result<(), ErTop<AppErr>>`.
 
 Just want your own typed error? `tree.top`. Still your type, no downcast.
 
@@ -174,12 +173,12 @@ So Wrap is just a wrapper around ErTree:
 ```rust
 // You write this
 #[derive(Er)]
-#[er(wrap(name = BaseErWrap))]
-pub struct BaseEr;
+#[er(wrap(name = BaseErrWrap))]
+pub struct BaseErr;
 
 // You get this (plus a LOT of helpers, so you can treat it like the normal case)
-pub struct BaseErWrap {
-    pub tree: ErTree<BaseEr>,
+pub struct BaseErrWrap {
+    pub tree: ErTree<BaseErr>,
 }
 ```
 
@@ -191,19 +190,19 @@ use axum::{
     response::{IntoResponse, Response},
 };
 #[derive(Er)]
-#[er(wrap(name = BaseErWrap))] // Is the default name, but written out here for the example
-pub struct BaseEr {
+#[er(wrap(name = BaseErrWrap))] // Is the default name, but written out here for the example
+pub struct BaseErr {
     pub input: String,
 }
 
 // You can From<NonWrapped> for you <Wrapped> as seen here with '?'
-pub fn read_port(input: &str) -> Result<u16, BaseErWrap> {
-    let port = input.parse().er(|| BaseEr::new(input))?;
+pub fn read_port(input: &str) -> Result<u16, BaseErrWrap> {
+    let port = input.parse().er(|| input)?;
     Ok(port)
 }
 
 // The trait from Axum 
-impl IntoResponse for BaseErWrap {
+impl IntoResponse for BaseErrWrap {
     fn into_response(self) -> Response {
         let response = (StatusCode::BAD_REQUEST, "invalid port");
         response.into_response()
@@ -219,20 +218,29 @@ Want Display/Debug on the Wrap itself? Add `output = report` or `output = top`. 
 
 ## Wrap with Error
 
-!!WARNING!! ONLY add std_error if the foreign trait needs Error on the Wrap itself (Axum doesn't). You HAVE to use `.er_from_wrap()` after that because `.er()` hides sub errors from find!
+!WARNING! ONLY add std_error if the foreign trait needs Error on the Wrap itself (Axum doesn't). You HAVE to use `.er_from_wrap()` after that because `.er()` hides sub errors from find!
 
 If the trait needs `Error` on the Wrap itself, add `std_error` with `output`.
 
 ```rust
 #[derive(Er)]
 #[er(wrap(name = HandlerError, output = report, std_error))]
-pub struct HandlerEr;
+pub struct HandlerErr;
+
+pub fn handler(input: &str) -> Result<u16, HandlerError> {
+    let port = input.parse().er(())?;
+    Ok(port)
+}
 ```
 
-When you get its Result back, use this instead of `.er(...)`
+When you get its Result back, use this instead of `.er()`
 
 ```rust
-handler(input).er_from_wrap(RequestEr::new)
+#[derive(Er)]
+pub struct RequestErr;
+pub fn request(input: &str) -> Er<u16, RequestErr> {
+    handler(input).er_from_wrap(RequestErr::new)
+}
 ```
 
 For aggregation, take the tree out first with `.er_tree()` on the Result, or `.tree` on the Wrap.

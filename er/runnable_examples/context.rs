@@ -2,54 +2,59 @@ use er::*;
 use std::{fs::read_to_string, path::PathBuf};
 
 #[derive(Er)]
-pub struct FileEr(pub PathBuf);
-pub fn read_file(path: &str) -> Er<String, FileEr> {
-    let text = read_to_string(path).er(|| FileEr::new(path))?;
+pub struct FileErr(pub PathBuf);
+pub fn read_file(path: &str) -> Er<String, FileErr> {
+    let text = read_to_string(path).er(|| path)?;
     Ok(text)
 }
 
 #[derive(Er)]
-pub struct AnalyzeEr;
-pub fn analyze() -> Er<String, AnalyzeEr> {
-    read_file("/tmp/file.txt").er(AnalyzeEr::new)
+pub struct AnalyzeErr;
+pub fn analyze() -> Er<String, AnalyzeErr> {
+    read_file("/tmp/file.txt").er(())
 }
 
 #[derive(Er)]
-pub struct PortEr {
+pub struct PortErr {
     pub invalid_port: String,
 }
-pub fn read_port(input: &str) -> Er<u16, PortEr> {
-    let port: u16 = input.parse().er(|| PortEr::new(input))?;
+pub fn read_port(input: &str) -> Er<u16, PortErr> {
+    let port: u16 = input.parse().er(|| input)?;
     Ok(port)
 }
 
 #[derive(Er)]
-pub enum ModeEr {
+pub enum ModeErr {
     MissingMode,
 }
-pub fn read_mode(mode: Option<&str>) -> Er<&str, ModeEr> {
-    let mode = mode.er(ModeEr::missing_mode)?;
+pub fn read_mode(mode: Option<&str>) -> Er<&str, ModeErr> {
+    let mode = mode.er(ModeErr::missing_mode)?;
     Ok(mode)
 }
 
 #[derive(Er)]
-pub struct AuthEr(pub String);
-pub fn authenticate(machine: &str, token: &str) -> Er<(), AuthEr> {
+pub struct AuthErr(pub String);
+pub fn authenticate(machine: &str, token: &str) -> Er<(), AuthErr> {
     if token == format!("{machine}_token") {
         Ok(())
     } else {
-        Err(AuthEr::new(machine).er())
+        Err(AuthErr::new(machine).er())
     }
 }
 
 #[derive(Er)]
-pub struct ConfigEr {
+pub struct ConfigErr {
     pub machine: String,
     #[er(censor)]
     pub token: String,
 }
-pub fn read_config(machine: &str, token: &str, port: &str, mode: Option<&str>) -> Er<(), ConfigEr> {
-    let er = || ConfigEr::new(machine, token);
+pub fn read_config(
+    machine: &str,
+    token: &str,
+    port: &str,
+    mode: Option<&str>,
+) -> Er<(), ConfigErr> {
+    let er = || (machine, token);
 
     authenticate(machine, token).er(er)?;
     read_port(port).er(er)?;
@@ -59,10 +64,10 @@ pub fn read_config(machine: &str, token: &str, port: &str, mode: Option<&str>) -
 }
 
 #[derive(Er)]
-pub struct StartupEr;
-pub fn startup() -> Er<(), StartupEr> {
+pub struct StartupErr(pub String);
+pub fn startup() -> Er<(), StartupErr> {
     er_all!(
-        StartupEr::new,
+        || "some config checks failed",
         [
             read_config(
                 "HaandboldFuglen",
@@ -77,12 +82,12 @@ pub fn startup() -> Er<(), StartupEr> {
 }
 
 #[derive(Er)]
-pub enum BingoEr {
-    // BingoEr::parse() generated
+pub enum BingoErr {
+    // BingoErr::parse() generated
     Parse { input: String, favorite_number: u32 },
 }
-pub fn bingo(input: &str) -> Er<u8, BingoEr> {
-    input.parse().er(|| BingoEr::parse(input, 85))
+pub fn bingo(input: &str) -> Er<u8, BingoErr> {
+    input.parse().er(|| BingoErr::parse(input, 85))
 }
 
 pub fn main() {

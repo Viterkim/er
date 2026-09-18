@@ -5,9 +5,9 @@
 DISCLAIMER: this is obviously the error case i care about, and its biased, but i try to be fair.
 
 Links on this page: [thiserror](#thiserror-2020), [Anyhow](#anyhow-10104), [SNAFU](#snafu-092), [error-stack](#error-stack-080), [rootcause](#rootcause-0130),
-[exn](#exn-031), [Eros](#eros-070), [Problemo](#problemo-0013), [Nightly std::error::Report](#nightly-stderrorreport), [Others](#others), [Er](#er-012)
+[exn](#exn-031), [Eros](#eros-080-rc1), [Problemo](#problemo-0013), [Nightly std::error::Report](#nightly-stderrorreport), [Others](#others), [Er](#er-020)
 
-For a tricky example checkout the [tricky comparison](tricky-error-comparison.md) after reading this (foreign errors, own errors, the original error, string context, typed context, using / consuming, public boundary).
+For a tricky example check out the [tricky comparison](tricky-error-comparison.md) after reading this (foreign errors, own errors, the original error, string context, typed context, using / consuming, public boundary).
 
 ## The quest /task we're about to do
 
@@ -161,8 +161,6 @@ Printing with `{}` or `.to_string()` only gives `invalid port "aint_even_a_numbe
 Backtraces can be enabled though. [Printing](https://docs.rs/anyhow/1.0.104/anyhow/struct.Error.html#display-representations)
 
 You can still downcast to the original error, context can be even be struct. The return type just doesn't name your operation's error. [Context](https://docs.rs/anyhow/1.0.104/anyhow/trait.Context.html)
-
-Also `anyhow::Error` doesn't impl Error because of a trait overlap or its gonna break its generic From<E> conversion. (ER DOES THE SAME SHIT with tree/report/top, `.opaque_err()` is the explicit way out where you then can't search the sub errors).
 
 ## SNAFU (0.9.2)
 
@@ -470,26 +468,26 @@ When trying to convince other people of how great exn was, the examples aren't t
 
 ### Exn vs Er
 
-If we want also want the input from our `PortEr` in the next error:
+If we also want the input from our `PortErr` in the next error:
 
 ```rust
 #[derive(Er)]
-pub struct ConfigEr(pub String);
+pub struct ConfigErr(pub String);
 
-read_port(input).er_with(|t| ConfigEr::new(t.top.input.clone()))?;
+read_port(input).er_with(|t| t.top.input.clone())?;
 ```
 
 Still keeps the old error and everything below it. Exn can do this with `map_err` then `.raise()`, but here it's very easy to destroy your error tree and now I'm manually having to worry and do it.
 
-`.er_find::<io::Error>()` finds the actual error, including inside native `source()` chains. `.er_find_all::<PortEr>()` gets all the bad ports.
+`.er_find::<io::Error>()` finds the actual error, including inside native `source()` chains. `.er_find_all::<PortErr>()` gets all the bad ports.
 
 Exn keeps the actual errors you give it too. BUT if a library gives you a `ReadError` with an `io::Error` inside its `source()`, exn copies that source's message into a child frame. So you can SEE the io error in the report, try to find its type in that frame and get nothing. [Exn construction](https://docs.rs/exn/0.3.1/exn/struct.Exn.html#method.new).
 
 The real io error is still there in the normal `source()` of `ReadError`. You don't even have to know it was a `ReadError` to find it. But that means a find function has to check both the Exn frames AND the normal `source()` chains. [This one from the Exn issue](https://github.com/fast/exn/issues/65) only checks frames, so it misses the io error. `.er_find()` checks both.
 
-`er_all!(StartupEr::new, [a(), b()])` lets the results have different types. It runs all of them, keeps the failures and drops the oks. Exn's `raise_all` needs the children to convert to the same `Exn<T>` type.
+`er_all!((), [a(), b()])` lets the results have different types. It runs all of them, keeps the failures and drops the oks. Exn's `raise_all` needs the children to convert to the same `Exn<T>` type.
 
-Snapshots in Er for storing/having owned string version of the reprots:
+Snapshots in Er for storing/having owned string version of the reports:
 
 ```rust
 let saved = error.er_snapshot();
@@ -499,21 +497,19 @@ let saved: ErSnapshot = serde_json::from_str(&json).unwrap();
 println!("{}", saved.er_report());
 ```
 
-There's `.single_line()` and `for_each_line(...)` for printing too, mostly because logging multiline errors can be [complete shit](systemd.md).
+There's `.single_line()` and `for_each_line()` for printing too, mostly because logging multiline errors can be [complete shit](systemd.md).
 
 And my most hot take:
 
-I feel like with Exn `0.4`, where they add `Exn` (without the generic, so not `Exn<E>`) is the completely wrong direction. I feel like that's compromising on what made Exn great.
-
 I also think not having convenient macros/helpers for making the error types will result in you 'not bothering' with having the types where it makes sense, and you might end up lazily abusing the non generic version.
 
-In Exn and Er you don't HAVE to have an error type per function, you can have it per section or whatever but... I still think that actually having the error typed is crucial, and i think that by allowing users to '?' it up lazily, the point is gone. It's also why i don't think Er should have an ErLazy (like the TestEr) for normal application code.
+In Exn and Er you don't HAVE to have an error type per function, you can have it per section or whatever but... I still think that actually having the error typed is crucial, and i think that by allowing users to '?' it up lazily, the point is gone. It's also why i don't think Er should have an ErLazy (like ErTest) for normal application code.
 
-## Eros (0.7.0)
+## Eros (0.8.0-rc.1)
 
 ### Lazy
 
-No type to write, no error set to list unless you want one. [Docs](https://docs.rs/eros/0.7.0/eros/)
+No type to write, no error set to list unless you want one. [Docs](https://docs.rs/eros/0.8.0-rc.1/eros/)
 
 ```rust
 pub fn read_port(input: &str) -> eros::Result<u16> {
@@ -525,8 +521,9 @@ println!("{error:?}");
 ```
 
 ```text
-ParseIntError { kind: InvalidDigit }
----
+invalid digit found in string
+
+Backtrace (disabled):
 ```
 
 ### With string context
@@ -546,20 +543,19 @@ println!("{error:?}");
 ```
 
 ```text
-ParseIntError { kind: InvalidDigit }
----
+invalid digit found in string
 
-Context:
-	- invalid port "aint_even_a_number_cmon_man"
+  Context (innermost first):
+    1. invalid port "aint_even_a_number_cmon_man"
 
----
+Backtrace (disabled):
 ```
 
 Trailing comma to make it a tuple(since there's only one value).
 
 The caller sees `ParseIntError`, with context saved alongside it. You can erase the set or narrow it (which is cool and different to Er).
 
-There's an optional `#[context(...)]` over the whole function, pretty spicy. You pick the arguments to format, but can't use body locals there. For 'this exact command failed', add `.with_context()` at the call. (I would always want that.) [Attribute](https://docs.rs/eros/0.7.0/eros/attr.context.html)
+There's an optional `context` attribute over the whole function, pretty spicy. You pick the arguments to format, but can't use body locals there. For 'this exact command failed', add `.with_context()` at the call. (I would always want that.) [Attribute](https://docs.rs/eros/0.8.0-rc.1/eros/attr.context.html)
 
 ### With typed context
 
@@ -581,14 +577,15 @@ pub fn read_port(input: &str) -> eros::Result<u16, (ParseIntError,)> {
     })
 }
 
-if let Some(command) = error.latest_error().as_any().downcast_ref::<CommandError>() {
+if let Some(command) = error.latest_context_error()
+    .and_then(|e| e.as_any().downcast_ref::<CommandError>()) {
     println!("{}", command.machine);
 }
 ```
 
 Personally i don't enjoy the ergonomics of this, but it still has some cool things like `CommandError` being there and you can read the fields, the parser error is kept too, and the set still says `ParseIntError`.
 
-### Unique case: narrow down
+### Unique case: handle one error
 
 Two possible error types, handle the bad number with a default and only io remains:
 
@@ -599,36 +596,33 @@ use std::io;
 pub fn default_bad_port(
     result: eros::Result<u16, (ParseIntError, io::Error)>,
 ) -> eros::Result<u16, (io::Error,)> {
-    match result.narrow::<ParseIntError, _>() {
-        Ok(_) => Ok(85),
-        Err(rest) => rest,
-    }
+    result.recover::<ParseIntError, _>(|_| 85)
 }
 ```
 
 The parser error is no more, F in the chat.
 
-`Err(rest)` means it aint a parser error, `rest` is still a Result (can be ok).
+`map_inner` lets us replace the inner error, if we decide to make our own type for it.
 
 ### Unique case: combine original errors
 
-You can combine error types without making another enum which i think is cool when you don't make an alias BUT... I think that if you do a type alias, then it's basically the same as just making an enum, the unique angle is you are doing variant of the ORIGINAL error, where in Er it would be a composition of your own Err types, that has the original error 'below it'). And it's also true that it does compose, which means that your 'A' 'B' 'C' you get, well 'A' itself might itself have 'AA' 'AB' etc (I'll get into later why this might not be desirable).
+You can combine error types without making another enum, which i think is cool. Even with a type alias, that's way less work than making an enum. The alias just names the set. If you stop there, your caller gets the original error types, not the cases you'd name for them. In 0.8, `map_inner` can group them into your own error type, if you want to write that type and do the mapping.
 
-Lets say we have a case where we get 3 different errors. And because it's basically just a PhantomData marker (compile time info), it isnt a tuple of those 3 errors, its just info that Eros internally can use.
+Lets say a function can fail with 3 different errors. The tuple names the possible types. At runtime Eros holds one of them, not a tuple with all 3 errors inside it.
 
 ```rust
-type FilePortErr = (io::Error, Utf8Error, ParseIntError);
+type FilePortError = (io::Error, Utf8Error, ParseIntError);
 
-fn file_port(path: &str) -> eros::Result<u16, FilePortErr> {
-    let bytes = fs::read(path).into_union()?;
-    let input = std::str::from_utf8(&bytes).into_union()?;
+fn file_port(path: &str) -> eros::Result<u16, FilePortError> {
+    let bytes = fs::read(path).union()?;
+    let input = std::str::from_utf8(&bytes).union()?;
     read_port(input.trim()).widen()
 }
 ```
 
-Now the angle here is we we aren't handling the error or composing it for our caller, we're just providing our caller with 'what could have gone wrong' which in my opinion is 'just thiserror but you dont make the enum everytime', so yes it avoids the pyramid, but it still making a 'stepped pyramid' and not handling/providing our caller with convenience.
+Now the angle here is we aren't handling the error or composing it for our caller, we're just providing our caller with 'what could have gone wrong' which in my opinion is 'just thiserror but you dont make the enum everytime', so yes it avoids the pyramid, but it still making a 'stepped pyramid' and not handling/providing our caller with convenience.
 
-I think eros is great for the use case where you 'throw together the actual types of the errors you got', but i feel like it gets messy once you want to create custom error types with custom typed context, and more importantly when your consumer has to use those types, the [example in the tricky error](tricky-error-comparison.md#eros-070--thiserror-1) is very relevant.
+I think eros is great for the use case where you 'throw together the actual types of the errors you got', but i feel like it gets messy once you want custom error types with typed context. The [tricky example](tricky-error-comparison.md#eros-080-rc1--thiserror-1) shows the union and context, then separately makes a plain public error.
 
 ## Problemo (0.0.13)
 
@@ -666,7 +660,7 @@ println!("{error}");
 invalid port "aint_even_a_number_cmon_man": invalid digit found in string
 ```
 
-`.via(MyError)` adds your error above the current cause without source being needed.
+`.via(MyErr)` adds your error above the current cause without source being needed.
 
 But it returns Problem, so the signature doesn’t name your top error type, but the actual errors are kept inside.
 
@@ -674,7 +668,7 @@ The distinctive thing is the caller chooses how failures are dealt with, pass a 
 
 `map_via` adds a cause, `GlossError` is its string error. No custom type needed here. [Docs](https://docs.rs/problemo/0.0.13/problemo/)
 
-It also has `.with(...)` for typed attachments. Those aren't automatically printed, adding `.with(input.to_owned())` alone won't put `aint_even_a_number_cmon_man` in this output. You have to read the attachment yourself.
+It also has `.with(input.to_owned())` for typed attachments. Those aren't automatically printed, so this alone won't put `aint_even_a_number_cmon_man` in the output. You have to read the attachment yourself.
 
 I like the focus on aggregation/stopping.
 
@@ -708,7 +702,7 @@ Collecting 'Ok' can mean partial success, the errors are in the receiver, not Re
 
 (1.99.0-nightly)
 
-Same two errors from thiserror, but remove `: {0}` / `: {source}` from their `#[error(...)]` text. Report prints the source:
+Same two errors from thiserror, but remove `: {0}` / `: {source}` from their error text. Report prints the source:
 
 ```rust
 #![feature(error_reporter)]
@@ -746,11 +740,11 @@ Report prints what you already have, it doesn't add context. Single line by defa
 
 ## Others 
 
-Set variants [terrors](https://docs.rs/terrors/0.3.3/terrors/) and [error_set](https://docs.rs/error_set/0.9.2/error_set/) are kinda like eros, useful when callers want to handle those types directly, similar to EROS and doesn't solve the case i care about.
+[terrors](https://docs.rs/terrors/0.3.3/terrors/) is closer to Eros, with a set of possible errors where you can handle one and pass the rest up. [error_set](https://docs.rs/error_set/0.9.2/error_set/) actually makes enums with your own variants, and lets you combine smaller sets. I haven't tried either in the tricky example.
 
 [lazy_errors](https://docs.rs/lazy_errors/latest/lazy_errors/) is worth a look if collecting several failures and you want to keep going and collect the failures, including errors from cleanup. It has nesting and locations too, aggregation focus is interesting.
 
-## Er (0.1.2)
+## Er (0.2.0)
 
 (hey that's this one)
 
@@ -760,10 +754,10 @@ Set variants [terrors](https://docs.rs/terrors/0.3.3/terrors/) and [error_set](h
 use er::*;
 
 #[derive(Er)]
-pub struct PortEr;
+pub struct PortErr;
 
-pub fn read_port(input: &str) -> Er<u16, PortEr> {
-    let port: u16 = input.parse().er(PortEr::new)?;
+pub fn read_port(input: &str) -> Er<u16, PortErr> {
+    let port: u16 = input.parse().er(())?;
     Ok(port)
 }
 
@@ -771,7 +765,7 @@ println!("{}", error.er_report());
 ```
 
 ```text
-PortEr @ examples/er_lazy.rs:7:35
+PortErr @ examples/er_lazy.rs:7:35
 `- invalid digit found in string @ examples/er_lazy.rs:7:35
 ```
 
@@ -781,11 +775,11 @@ Exn 2 electric boogalo now with macros and shortened syntax (and some internal c
 
 ```rust
 #[derive(Er)]
-pub struct PortEr {
+pub struct PortErr {
     pub input: String,
 }
-pub fn read_port(input: &str) -> Er<u16, PortEr> {
-    let port: u16 = input.parse().er(|| PortEr::new(input))?;
+pub fn read_port(input: &str) -> Er<u16, PortErr> {
+    let port: u16 = input.parse().er(|| input)?;
     Ok(port)
 }
 
@@ -793,29 +787,19 @@ println!("{}", error.er_report());
 ```
 
 ```text
-PortEr { input: "aint_even_a_number_cmon_man" } @ examples/er_context.rs:8:35
+PortErr { input: "aint_even_a_number_cmon_man" } @ examples/er_context.rs:8:35
 `- invalid digit found in string @ examples/er_context.rs:8:35
 ```
 
 # Er weird stuff
 
-Now there's some bullshit you also have to learn for Er (some for good reason).
-
 Returning `Er<T, E>` means the caller is in Er world now. On public boundaries make a normal error and convert. [Checkout the example](examples.md#public-error).
 
 The tree has no Display, Debug, or Error. Pick `.er_report()` or `.er_top()`, then Display and Debug do the same. (Designed this way, to avoid mistakes).
 
-Local data is fine in the root. Moving it into a boxed child needs `Send + Sync + 'static`.
-
 No backtraces (i prefer explicit context, hot take i know).
 
 No cloning the live tree built in. Snapshots can be cloned, but save text and structure, not the original error types.
-
-`.opaque_err()` gives you a standard Error but hides the tree from ordinary error finds.
-
-If you NEED Error on the Wrap itself, [Wrap with `std_error`](macros.md#wrap-with-error) does that, and needs `.er_from_wrap(...)` on the way back. This is without a doubt the worst thing about Er, but i can't come up with anything better, i hope you will never need it and can forgive me. (ONLY used for implementing a foreign trait on a wrapper which NEEDS to implement `Error` itself).
-
-If a foreign error prints its source AND returns it from `source()`, the report can repeat that text. Er doesn't guess which bits to remove. [Standard Error guidance](https://doc.rust-lang.org/std/error/trait.Error.html#error-source).
 
 ## Biased?
 

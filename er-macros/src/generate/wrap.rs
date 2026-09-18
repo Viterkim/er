@@ -102,8 +102,8 @@ pub fn expand(
 
     let std_error_docs = options.std_error.then(|| {
         quote! {
-            /// **WARNING: This is a piece of shit. With this `.er(...)` on the Result hides the sub errors from find!**
-            /// **WARNING You HAVE to use `.er_from_wrap(||)` instead of `.er()` and there's no way i can help you enforce it, I'm sorry...**
+            /// !WARNING! This is a piece of shit. Normal `.er()` on a Result with this Wrap hides the sub errors from find!
+            /// Use `.er_from_wrap()` on the way back. I can't enforce it, sorry.
         }
     });
 

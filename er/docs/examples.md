@@ -1,8 +1,6 @@
 # Examples
 
-`use er::*;` at the top, then give each function that deals with errors its own `FuncNameEr` type with `#[derive(Er)]` and use `.er(...)` on results, errors and options.
-
-The TLDR is `#[derive(Er)]YourEr + return Er<(), YourEr> + .er(||)`
+`use er::*;` at the top, then give each function that deals with errors its own `FuncNameErr` type with `#[derive(Er)]` and use `.er()` on results, errors and options.
 
 ## Empty struct
 
@@ -10,9 +8,9 @@ If the name and location are enough:
 
 ```rust
 #[derive(Er)]
-pub struct ReadPortEr;
-pub fn read_port(input: &str) -> Er<u16, ReadPortEr> {
-    input.parse().er(ReadPortEr::new)
+pub struct ReadPortErr;
+pub fn read_port(input: &str) -> Er<u16, ReadPortErr> {
+    input.parse().er(())
 }
 ```
 
@@ -22,11 +20,11 @@ Keep the stuff the caller cares about:
 
 ```rust
 #[derive(Er)]
-pub struct ReadFileEr { // or `ReadFileEr(pub PathBuf)`
+pub struct ReadFileErr { // or `ReadFileErr(pub PathBuf)`
     pub path: PathBuf,
 }
-pub fn read_file(path: &Path) -> Er<String, ReadFileEr> {
-    fs::read_to_string(path).er(|| ReadFileEr::new(path))
+pub fn read_file(path: &Path) -> Er<String, ReadFileErr> {
+    fs::read_to_string(path).er(|| path)
 }
 ```
 
@@ -36,16 +34,16 @@ Variants get their own constructors:
 
 ```rust
 #[derive(Er)]
-pub enum ModeEr {
+pub enum ModeErr {
     Missing,
     Unknown { input: String },
 }
-pub fn read_mode(input: Option<&str>) -> Er<&str, ModeEr> {
+pub fn read_mode(input: Option<&str>) -> Er<&str, ModeErr> {
     // Even on options (like .ok_or_else())
-    let mode = input.er(ModeEr::missing)?;
+    let mode = input.er(ModeErr::missing)?;
 
     if mode != "haandbold" {
-        return Err(ModeEr::unknown(mode).er());
+        return Err(ModeErr::unknown(mode).er());
     }
 
     Ok(mode)
@@ -54,21 +52,16 @@ pub fn read_mode(input: Option<&str>) -> Er<&str, ModeEr> {
 
 ## Don't destroy the tree (lose sub errors)
 
-You should use `.er_with(|e|)` from the example below this (`Look at the previous error`).
-
-But here's an example of the manual way, and how easy it is to destroy the tree.
+`.er()` keeps the old tree below your new error. The easy way to lose it is to make a fresh error in `map_err`.
 
 ```rust
 #[derive(Er)]
-pub struct AnalyzeEr;
-pub fn analyze() -> Er<(), AnalyzeEr> {
+pub struct AnalyzeErr;
+pub fn analyze() -> Er<(), AnalyzeErr> {
     if let Err(previous_error_tree) = read_port("nope") {
-        // Bad: new error, previous tree is gone
-        // BAD: return Err(AnalyzeEr::new().er());
-
-        // Good: manually add context to the existing tree
-        // BUT use .er_with(|e|) instead, it does it for you.
-        return Err(previous_error_tree.er(AnalyzeEr::new));
+        // BAD: return Err(AnalyzeErr::new().er()); // old tree gone
+        // Good: add to the tree we already have
+        return Err(previous_error_tree.er(()));
     }
     Ok(())
 }
@@ -78,48 +71,38 @@ Same thing with `map_err`, using the types from the next example:
 
 ```rust
 // BAD: we copied the code, but threw away the old error and its tree
-read_device().map_err(|t| AnalyzeEr::new(t.top.code).er())
+read_device().map_err(|t| AnalyzeErr::new(t.top.code).er())
 
 // Good: copies the code AND keeps the old error and its tree
-read_device().er_with(|t| AnalyzeEr::new(t.top.code))
+read_device().er_with(|t| t.top.code)
 ```
 
 ## Look at the previous error
 
-If you need some value on the previous error (and don't want to .find()).
-
-You can just use `.er(||)` if you don't need the value of the error below, in this error itself.
-
-`.er_with(|e|)` keeps the tree, so is easier than using `.map_err(||)` and accidentally destroying trhe tree.
-
-If it's already an Er tree (`Er<T, DeviceEr>` / `ErTree<DeviceEr>`), the `|t|` is the tree. Your typed error is `t.top`.
+If you need something from the old error, `.er_with()` lets you look at it and still keeps it in the tree. If it's already an Er tree, `t.top` is the error you made:
 
 ```rust
 #[derive(Er)]
-pub struct DeviceEr {
+pub struct DeviceErr {
     pub code: u8,
 }
 #[derive(Er)]
-pub struct AnalyzeEr {
+pub struct AnalyzeErr {
     pub code: u8,
 }
-pub fn analyze() -> Er<(), AnalyzeEr> {
-    read_device().er_with(|t| AnalyzeEr::new(t.top.code))?;
+pub fn analyze() -> Er<(), AnalyzeErr> {
+    read_device().er_with(|t| t.top.code)?;
     Ok(())
 }
-```
-
-If already a tree (same):
-
-```rust
-return Err(tree.er_with(|t| AnalyzeEr::new(t.top.code)));
 ```
 
 If its a plain error (not a tree yet), then the `|e|` is the error:
 
 ```rust
-return Err(device.er_with(|e| AnalyzeEr::new(e.code)));
+return Err(device.er_with(|e| e.code));
 ```
+
+If you need to own something from the old error, use `.clone()`, `.to_string()`, whatever Rust needs there.
 
 ## Print report
 
@@ -135,7 +118,7 @@ Works with `.expect()` too:
 let port = read_port("85").er_report().expect("usable port");
 ```
 
-`main` can also just return `Result<(), ErReport<AppEr>>`.
+`main` can also just return `Result<(), ErReport<AppErr>>`.
 
 ## Print top error
 
@@ -149,7 +132,7 @@ if let Err(error) = read_file(Path::new("missing85")) {
 ```
 
 ```text
-ReadFileEr { path: "missing85" }
+ReadFileErr { path: "missing85" }
 Missing: missing85
 ```
 
@@ -167,17 +150,17 @@ pub struct Connection {
 }
 
 #[derive(Er)]
-pub struct ConnectEr {
+pub struct ConnectErr {
     pub connection: Connection,
 }
 
 let connection = Connection::new("ComputerKatten", 85);
-let error = ConnectEr::new(connection).er();
+let error = ConnectErr::new(connection).er();
 
 println!("{}", error.er_top());
 ```
 ```text
-ConnectEr { connection: Connection { host: "ComputerKatten", port: 85 } }
+ConnectErr { connection: Connection { host: "ComputerKatten", port: 85 } }
 ```
 
 ## Collect/aggregate
@@ -186,13 +169,13 @@ Collects multi failures (different types are fine).
 
 ```rust
 #[derive(Er)]
-pub struct ConfigEr {
+pub struct ConfigErr {
     pub port: String,
     pub enabled: String,
 }
-pub fn check_config(port: &str, enabled: &str) -> Er<(), ConfigEr> {
+pub fn check_config(port: &str, enabled: &str) -> Er<(), ConfigErr> {
     er_all!(
-        || ConfigEr::new(port, enabled),
+        || (port, enabled),
         [port.parse::<u16>(), enabled.parse::<bool>()],
     )
 }
@@ -202,15 +185,15 @@ Or if the collections is there already.
 
 ```rust
 #[derive(Er)]
-pub struct FilesEr;
-pub fn read_files(paths: &[PathBuf]) -> Er<(), FilesEr> {
+pub struct FilesErr;
+pub fn read_files(paths: &[PathBuf]) -> Er<(), FilesErr> {
     let mut results = Vec::new();
 
     for path in paths {
         results.push(read_file(path));
     }
 
-    er_all!(FilesEr::new, results)
+    er_all!((), results)
 }
 ```
 
@@ -227,12 +210,10 @@ if let Err(error) = read_file(Path::new("missing85")) {
 Also checks `source()`. For all matches:
 
 ```rust
-for failed in error.er_find_all::<ReadFileEr>() {
+for failed in error.er_find_all::<ReadFileErr>() {
     println!("{}", failed.path.display());
 }
 ```
-
-Native `source()` chains stop after 256 hops per stored error, so a loop can't hang the walk. Searches won't see past that limit. Reports show `[source limit reached]`, and live/saved entries set `source_truncated`. Ordinary Er tree depth isn't limited.
 
 ## Public error
 
@@ -272,11 +253,77 @@ pub fn public_read_port(input: &str) -> Result<u16, ApiError> {
 }
 
 if let Err(error) = public_read_port("fakenumber") {
-    // !WARNING! Don't just print "{error:?}" you'll get `\n` instead of actual newlines    
+    // !WARNING! Don't just print "{error:?}" you'll get `\n` instead of actual newlines
     println!("{}", error.report);
     println!("{}", error.err_msg);
 }
 ```
+
+## A tricky one
+
+Bad Ip and bad port both become `InvalidInput`. Port 85 gets its own case because why not. If bind fails, we suggest other ports and keep the raw `io::Error` too.
+
+```rust
+#[derive(Er)]
+pub enum ListenErr {
+    InvalidInput { input: String },
+    SacredPort,
+    BindFailed { address: SocketAddrV4, kind: io::ErrorKind, available_ports: Vec<u16> },
+}
+
+pub fn listen(input: &str) -> Er<TcpListener, ListenErr> {
+    let (ip, port) = input.split_once(':').unwrap_or((input, ""));
+
+    // First 2 errors, to us they're both just bad input
+    // Shared dynamic context is enough, and the line number is here anyway
+    let ip = ip.parse::<Ipv4Addr>().er(|| ListenErr::invalid_input(input))?;
+    let port = port.parse::<u16>().er(|| ListenErr::invalid_input(input))?;
+
+    // Third error, our own rule that port 85 is sacred
+    if port == 85 {
+        return Err(ListenErr::sacred_port().er());
+    }
+
+    // Fourth error, we might want to match on what happened
+    let address = SocketAddrV4::new(ip, port);
+    TcpListener::bind(address).er_with(|e| {
+        let available_ports = find_available_ports(address);
+        ListenErr::bind_failed(address, e.kind(), available_ports)
+    })
+}
+
+// Someone using our public API doesn't need Er.
+// I use 'Err' for internal errors, and 'Error' for public facing ones.
+pub type ListenError = ListenErr;
+pub fn public_error_example(input: &str) -> Result<TcpListener, ListenError> {
+    listen(input).map_err(|error| error.top)
+}
+
+// Using it ourselves (still with Er)
+fn main() {
+    match listen("127.0.0.1:8080") {
+        Ok(listener) => start_server(listener),
+        Err(error) => {
+            match &error.top {
+                ListenErr::InvalidInput { input } => eprintln!("bad input: {input}"),
+                ListenErr::SacredPort => eprintln!("port 85 is sacred"),
+                ListenErr::BindFailed { address, kind: io::ErrorKind::AddrInUse, available_ports } => {
+                    eprintln!("{address} is already in use");
+                    show_available_ports(available_ports);
+                },
+                ListenErr::BindFailed { address, .. } => eprintln!("couldn't bind {address}"),
+            }
+
+            // Below .top we have to search for the original error.
+            if let Some(source) = error.er_find::<io::Error>() {
+                eprintln!("raw error code: {:?}", source.raw_os_error());
+            }
+        }
+    }
+}
+```
+
+Pretend our app has `find_available_ports`, `show_available_ports` and `start_server`. [The full tricky comparison](tricky-error-comparison.md) does this with the other libraries too.
 
 ## Non errors (values)
 
@@ -286,25 +333,15 @@ For values that don't implement `Error` like `Err(85)`.
 
 ```rust
 #[derive(Er)]
-pub struct DeviceEr {
+pub struct DeviceErr {
     pub status: u8,
 }
-pub fn check_device(result: Result<(), u8>) -> Er<(), DeviceEr> {
+pub fn check_device(result: Result<(), u8>) -> Er<(), DeviceErr> {
     // Remember, the error is a value and gets passed into the first argument
-    // Same as `|v| DeviceEr::new(v)`
-    result.er_val(DeviceEr::new)
+    // Same as `|v| DeviceErr::new(v)`
+    result.er_val(DeviceErr::new)
 }
 ```
-
-## App patterns
-
-Here's some patterns i think you should tryout in your code
-
-### Add unique context
-
-### Provide for your caller (simplify)
-
-### Handle and simplify
 
 ## Tests
 
@@ -312,29 +349,29 @@ Enable `test` on your dev deps:
 
 ```toml
 [dev-dependencies]
-er = { version = "0.1", features = ["test"] }
+er = { version = "0.2", features = ["test"] }
 ```
 
-Make the test return `TestEr` and use `.t_er()?`.
+Make the test return `ErTest` and use `.er(())?`.
 
 ```rust,ignore
 use er::*;
 
 #[derive(Er)]
-pub struct ReadPortEr;
-pub fn read_port(input: &str) -> Er<u16, ReadPortEr> {
-    input.parse().er(ReadPortEr::new)
+pub struct ReadPortErr;
+pub fn read_port(input: &str) -> Er<u16, ReadPortErr> {
+    input.parse().er(())
 }
 
 #[test]
-pub fn the_best_test() -> TestEr {
-    read_port("nope").t_er()?;
+pub fn the_best_test() -> ErTest {
+    read_port("nope").er(())?;
     Ok(())
 }
 ```
 ```text
-Error: TestEr @ tests/the_best_test.rs:12:23
-`- ReadPortEr @ tests/the_best_test.rs:7:19
+Error: ErTest @ tests/the_best_test.rs:12:23
+`- ReadPortErr @ tests/the_best_test.rs:7:19
    `- invalid digit found in string @ tests/the_best_test.rs:7:19
 test the_best_test ... FAILED
 ```
@@ -345,10 +382,10 @@ If you need to implement another crate's trait on the whole tree, use Wrap.
 
 ```rust
 #[derive(Er)]
-#[er(wrap(name = HandlerError))] // Defaults to HandlerErWrap without name
-pub struct HandlerEr;
+#[er(wrap(name = HandlerError))] // Defaults to HandlerErrWrap without name
+pub struct HandlerErr;
 pub fn handler(input: &str) -> Result<u16, HandlerError> {
-    let port = input.parse().er(HandlerEr::new)?;
+    let port = input.parse().er(())?;
     Ok(port)
 }
 ```
@@ -356,7 +393,11 @@ pub fn handler(input: &str) -> Result<u16, HandlerError> {
 `?` puts the tree in `HandlerError`. Add context as usual:
 
 ```rust
-handler(input).er(RequestEr::new)
+#[derive(Er)]
+pub struct RequestErr;
+pub fn request(input: &str) -> Er<u16, RequestErr> {
+    handler(input).er(())
+}
 ```
 
 [Wrap options and the trait impl](macros.md#wrap).
@@ -386,7 +427,7 @@ Enable `serde` on Er, then add `serde_json` (or toml, or whatever) in your own c
 
 ```toml
 [dependencies]
-er = { version = "0.1", features = ["serde"] }
+er = { version = "0.2", features = ["serde"] }
 serde_json = "1"
 ```
 
@@ -423,13 +464,13 @@ pub type Port = u16;
 
 #[derive(Er)]
 #[er(format = "Couldn't connect to {host} on port {port}")]
-pub struct ConnectEr {
+pub struct ConnectErr {
     pub host: String,
     #[er(exact)]
     pub port: Port,
 }
 
-let error = ConnectEr::new("ComputerKatten", 85);
+let error = ConnectErr::new("ComputerKatten", 85);
 println!("{error}");
 ```
 

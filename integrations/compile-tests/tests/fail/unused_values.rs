@@ -4,7 +4,7 @@ use er::*;
 
 #[derive(Er)]
 #[er(wrap)]
-pub struct AppEr;
+pub struct AppErr;
 
 #[derive(Er)]
 pub enum Kind {
@@ -12,15 +12,15 @@ pub enum Kind {
 }
 
 pub fn main() {
-    let tree = AppEr.er();
+    let tree = AppErr.er();
     tree.er_report();
     tree.er_top().single_line();
     tree.er_entries();
-    AppEr.er();
-    AppEr.er().into_er_node();
-    AppEr.er().into_er_report();
-    AppErWrap { tree: AppEr.er() };
-    AppEr::new();
+    AppErr.er();
+    AppErr.er().into_er_node();
+    AppErr.er().into_er_report();
+    AppErrWrap { tree: AppErr.er() };
+    AppErr::new();
     Kind::missing();
-    AppEr.er_wrap();
+    AppErr.er_wrap();
 }

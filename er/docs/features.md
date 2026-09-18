@@ -38,7 +38,7 @@ Er does NOT turn it into JSON for you. You pick a format crate in your own app `
 
 ```toml
 [dependencies]
-er = { version = "0.1", features = ["serde"] }
+er = { version = "0.2", features = ["serde"] }
 serde_json = "1"
 ```
 
@@ -57,19 +57,19 @@ If one side compiled `src_locations` out, the JSON just has no `src_location`. A
 
 ## test, for dev dependencies, off by default
 
-`TestEr` and `.t_er()?` for tests. 
+`ErTest` and `.er(())?` for tests.
 
 ## Examples
 
 ```toml
 [dependencies]
-er = { version = "0.1", features = ["small_path_src"] }
+er = { version = "0.2", features = ["small_path_src"] }
 
 [dev-dependencies]
-er = { version = "0.1", features = ["test"] }
+er = { version = "0.2", features = ["test"] }
 ```
 
 ```toml
 [dependencies]
-er = { version = "0.1", default-features = false, features = ["src_locations"] }
+er = { version = "0.2", default-features = false, features = ["src_locations"] }
 ```

@@ -9,41 +9,41 @@ pub struct Connection {
 }
 
 #[derive(Er)]
-pub struct ConnectEr {
+pub struct ConnectErr {
     pub connection: Connection,
 }
 
 #[derive(Er)]
-pub struct LoginEr;
+pub struct LoginErr;
 #[test]
 pub fn nested_data() {
     let connection = Connection::new("ComputerKatten", "secret");
-    let tree = ConnectEr::new(connection).er();
+    let tree = ConnectErr::new(connection).er();
 
     let expected =
-        "ConnectEr { connection: Connection { host: \"ComputerKatten\", password: *CENSORED* } }";
+        "ConnectErr { connection: Connection { host: \"ComputerKatten\", password: *CENSORED* } }";
 
     assert_eq!(tree.er_top().to_string(), expected);
 
-    let tree = tree.er(LoginEr::new);
+    let tree = tree.er::<LoginErr>(LoginErr::new);
     for layout in [Layout::Multiline, Layout::SingleLine] {
         let report = tree.er_report().layout(layout).to_string();
         assert!(report.contains(expected), "{report}");
     }
 
-    let connection = &tree.er_find::<ConnectEr>().unwrap().connection;
+    let connection = &tree.er_find::<ConnectErr>().unwrap().connection;
     assert_eq!(connection.password, "secret");
 }
 
 #[derive(Er)]
 #[er(format = "couldn't read {path:?}: {attempts} attempts")]
-pub struct ReadEr {
+pub struct ReadErr {
     pub path: PathBuf,
     pub attempts: u8,
 }
 #[test]
 pub fn named_fields() {
-    let error = ReadEr::new("/tmp/config", 3);
+    let error = ReadErr::new("/tmp/config", 3);
     let expected = "couldn't read \"/tmp/config\": 3 attempts";
 
     assert_eq!(error.to_string(), expected);
@@ -51,7 +51,7 @@ pub fn named_fields() {
 }
 
 #[derive(Er)]
-pub enum AccountEr<T> {
+pub enum AccountErr<T> {
     #[er(format = "account {account} wasn't found")]
     Missing {
         account: u64,
@@ -70,24 +70,24 @@ pub enum AccountEr<T> {
 pub struct NotPrintable;
 #[test]
 pub fn variants() {
-    let error = AccountEr::missing(7, NotPrintable);
+    let error = AccountErr::missing(7, NotPrintable);
     assert_eq!(error.to_string(), "account 7 wasn't found");
     assert_eq!(format!("{error:?}"), error.to_string());
     assert_eq!(
-        AccountEr::later(85, NotPrintable, "port").to_string(),
+        AccountErr::later(85, NotPrintable, "port").to_string(),
         "port: 85"
     );
     assert_eq!(
-        AccountEr::<NotPrintable>::unavailable().to_string(),
+        AccountErr::<NotPrintable>::unavailable().to_string(),
         "account service unavailable"
     );
     assert_eq!(
-        AccountEr::<NotPrintable>::status(7, "retry").to_string(),
+        AccountErr::<NotPrintable>::status(7, "retry").to_string(),
         "\"retry\" / 7"
     );
     assert_eq!(
-        AccountEr::<NotPrintable>::invalid_name("").to_string(),
-        "AccountEr::InvalidName { name: \"\" }"
+        AccountErr::<NotPrintable>::invalid_name("").to_string(),
+        "AccountErr::InvalidName { name: \"\" }"
     );
 }
 
@@ -100,34 +100,34 @@ impl fmt::Display for OnlyDisplay {
 
 #[derive(Er)]
 #[er(format = "{value} / {marker:?}")]
-pub struct GenericEr<T, U> {
+pub struct GenericErr<T, U> {
     pub value: T,
     pub marker: PhantomData<U>,
     pub unused: U,
 }
 #[test]
 pub fn field_bounds() {
-    let error = GenericEr::new(OnlyDisplay(7), PhantomData, NotPrintable);
+    let error = GenericErr::new(OnlyDisplay(7), PhantomData, NotPrintable);
     assert!(error.to_string().starts_with("7 / PhantomData<"));
 
     #[derive(Er)]
     #[er(format = "{value} / {value:?} / {value:x} / {value:b}")]
-    pub struct NumberEr<T> {
+    pub struct NumberErr<T> {
         pub value: T,
     }
 
-    assert_eq!(NumberEr::new(10u8).to_string(), "10 / 10 / a / 1010");
+    assert_eq!(NumberErr::new(10u8).to_string(), "10 / 10 / a / 1010");
 
     #[derive(Er)]
     #[er(format = "{value} [{children:?}]")]
-    pub struct RecursiveEr<T> {
+    pub struct RecursiveErr<T> {
         pub value: T,
         pub children: Vec<Self>,
     }
 
-    let error = RecursiveEr::new(
+    let error = RecursiveErr::new(
         OnlyDisplay(1),
-        vec![RecursiveEr::new(OnlyDisplay(2), vec![])],
+        vec![RecursiveErr::new(OnlyDisplay(2), vec![])],
     );
 
     assert_eq!(error.to_string(), "1 [[2 [[]]]]");
@@ -153,7 +153,7 @@ pub enum Choice<T> {
 
 #[derive(Er)]
 #[er(format = "{label}: {secret} / {secret:?} / {secret:04x} / {secret:.2}")]
-pub struct SecretEr<T> {
+pub struct SecretErr<T> {
     pub label: String,
     #[er(censor)]
     pub secret: T,
@@ -162,13 +162,13 @@ pub struct SecretEr<T> {
 }
 #[test]
 pub fn censor_and_skip() {
-    let tree = SecretEr::new("login", Secret, Secret).er();
+    let tree = SecretErr::new("login", Secret, Secret).er();
     assert_eq!(
         tree.er_top().to_string(),
         "login: *CENSORED* / *CENSORED* / *CENSORED* / *CENSORED*"
     );
 
-    let error = SecretEr::new("login", NotPrintable, NotPrintable);
+    let error = SecretErr::new("login", NotPrintable, NotPrintable);
     assert_eq!(format!("{error:?}"), error.to_string());
 
     assert_eq!(
@@ -182,14 +182,14 @@ pub fn censor_and_skip() {
 
 #[derive(Er)]
 #[er(format = "{{{value:🦀>width$.precision$}}} {value:+08.2e} {width:#x?}")]
-pub struct PrecisionEr {
+pub struct PrecisionErr {
     pub value: f64,
     pub width: usize,
     pub precision: usize,
 }
 #[test]
 pub fn rust_format_syntax() {
-    let error = PrecisionEr::new(1.25, 7, 1);
+    let error = PrecisionErr::new(1.25, 7, 1);
     let value = error.value;
     let width = error.width;
     let precision = error.precision;
@@ -201,10 +201,10 @@ pub fn rust_format_syntax() {
 
     #[derive(Er)]
     #[er(format = "{02} {:.*} / {1:.00$} / {1:>2$} / {{done}}")]
-    pub struct TupleEr(pub usize, pub f64, pub usize);
+    pub struct TupleErr(pub usize, pub f64, pub usize);
 
     assert_eq!(
-        TupleEr::new(2, 1.25, 8).to_string(),
+        TupleErr::new(2, 1.25, 8).to_string(),
         format!("{2} {:.*} / {1:.0$} / {1:>2$} / {{done}}", 2, 1.25, 8)
     );
 
@@ -216,9 +216,9 @@ pub fn rust_format_syntax() {
 
     #[derive(Er)]
     #[er(format = "a {{literal}}\nnext line")]
-    pub struct UnitEr;
+    pub struct UnitErr;
 
-    assert_eq!(UnitEr.to_string(), "a {literal}\nnext line");
+    assert_eq!(UnitErr.to_string(), "a {literal}\nnext line");
 }
 
 #[test]
@@ -226,14 +226,14 @@ pub fn rust_format_syntax() {
 pub fn names_and_wrap() {
     #[derive(Er)]
     #[er(format = "{type} {__er_f} {__er_d:?} {café}", wrap)]
-    pub struct NamesEr<const __er_f: usize, const __er_d: usize, r#T> {
+    pub struct NamesErr<const __er_f: usize, const __er_d: usize, r#T> {
         pub r#type: r#T,
         pub __er_f: String,
         pub __er_d: u8,
         pub café: u8,
     }
 
-    let tree = NamesEr::<1, 2, _>::new(OnlyDisplay(7), "ok", 3, 4)
+    let tree = NamesErr::<1, 2, _>::new(OnlyDisplay(7), "ok", 3, 4)
         .er_wrap()
         .tree;
 
@@ -242,13 +242,13 @@ pub fn names_and_wrap() {
 
 #[derive(Er)]
 #[er(format = "{0:p}")]
-pub struct PointerEr<T>(pub *const T);
+pub struct PointerErr<T>(pub *const T);
 #[test]
 pub fn pointer_value() {
     let value = NotPrintable;
     let pointer = &value as *const _;
 
-    assert_eq!(PointerEr::new(pointer).to_string(), format!("{pointer:p}"));
+    assert_eq!(PointerErr::new(pointer).to_string(), format!("{pointer:p}"));
 }
 
 #[test]
@@ -282,11 +282,11 @@ pub fn projected_and_borrowed_fields() {
     impl<T, Owner> Callback<T, Owner> for CallbackValue {}
     #[derive(Er)]
     #[er(format = "{callback:?}")]
-    pub struct CallbackEr<T: 'static> {
+    pub struct CallbackErr<T: 'static> {
         pub callback: Box<dyn for<'a> Callback<&'a T, Self>>,
     }
 
-    let error = CallbackEr::<NotPrintable> {
+    let error = CallbackErr::<NotPrintable> {
         callback: Box::new(CallbackValue),
     };
 
@@ -294,18 +294,18 @@ pub fn projected_and_borrowed_fields() {
 
     #[derive(Er)]
     #[er(format = "{text}", wrap(output = top))]
-    pub struct BorrowedEr<'a> {
+    pub struct BorrowedErr<'a> {
         pub text: &'a str,
     }
 
     let text = String::from("borrowed");
     let tree = ErTree {
-        top: BorrowedEr::new(&text),
+        top: BorrowedErr::new(&text),
         nodes: Vec::new(),
         #[cfg(feature = "src_locations")]
         src_location: std::panic::Location::caller(),
     };
-    let wrapped: BorrowedErWrap<'_> = tree.into();
+    let wrapped: BorrowedErrWrap<'_> = tree.into();
 
     assert_eq!(wrapped.to_string(), text);
 }
@@ -321,16 +321,16 @@ pub fn numeric_traits() {
 
     #[derive(Er)]
     #[er(format = "{0:#04x}")]
-    pub struct HexEr<T>(pub T);
+    pub struct HexErr<T>(pub T);
 
-    assert_eq!(HexEr::new(OnlyHex(7)).to_string(), "0x07");
+    assert_eq!(HexErr::new(OnlyHex(7)).to_string(), "0x07");
 
     #[derive(Er)]
     #[er(format = "{0:b}/{0:o}/{0:x}/{0:X}/{0:?}/{0:x?}/{0:X?}/{0:e}/{0:E}")]
-    pub struct NumberEr<T>(pub T);
+    pub struct NumberErr<T>(pub T);
 
     assert_eq!(
-        NumberEr::new(42u16).to_string(),
+        NumberErr::new(42u16).to_string(),
         format!(
             "{0:b}/{0:o}/{0:x}/{0:X}/{0:?}/{0:x?}/{0:X?}/{0:e}/{0:E}",
             42u16

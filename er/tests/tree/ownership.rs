@@ -49,7 +49,6 @@ pub fn native_source() {
 
 #[test]
 pub fn owned_context() {
-    let parents = AtomicUsize::new(0);
     let grandchild = fmt::Error.er();
     #[cfg(feature = "src_locations")]
     let grandchild_src_location = grandchild.src_location;
@@ -72,12 +71,8 @@ pub fn owned_context() {
     let inner_src_location = inner.src_location;
 
     let expected_line = line!() + 1;
-    let outer = inner.er(|| {
-        parents.fetch_add(1, Ordering::Relaxed);
-        OuterErr
-    });
+    let outer = inner.er::<OuterErr>(());
 
-    assert_eq!(parents.load(Ordering::Relaxed), 1);
     assert!(outer.er_contains::<LegacyErr>());
     assert!(outer.er_contains::<io::Error>());
     let children: Vec<_> = outer

@@ -1,8 +1,9 @@
 #[cfg(feature = "src_locations")]
 use crate::ErSnapshotLocation;
 use crate::{
-    ErEntries, ErEntry, ErNode, ErNodes, ErReport, ErReportRef, ErSnapshot, ErSnapshotEntry,
-    ErSources, ErTop, ErTopRef, ErTree, IntoErNode, IntoErTree, Layout,
+    ErEntries, ErEntry, ErMake, ErNode, ErNodes, ErPayload, ErReport, ErReportRef, ErSnapshot,
+    ErSnapshotEntry, ErSources, ErTop, ErTopRef, ErTree, ErTreeContext, IntoErNode, IntoErTree,
+    Layout,
 };
 #[cfg(feature = "src_locations")]
 use alloc::string::ToString;
@@ -29,33 +30,19 @@ impl<E: Error + 'static> ErTree<E> {
     }
 
     /// Add your error on the top, move everything else below it.
-    ///
-    /// `let error = error.er(ConfigEr::new);`
-    ///
-    /// Same [constructor calls](crate::ErResult::er) as on a Result.
-    #[cfg_attr(feature = "src_locations", track_caller)]
-    pub fn er<A>(self, parent: impl FnOnce() -> A) -> ErTree<A>
-    where
-        E: Send + Sync,
-        A: Error + 'static,
-    {
-        let parent = parent();
-        ErTree::new(parent, [self])
-    }
-
-    /// Add your error on the top, move everything else below it.
     /// |t| is the tree. The error is `t.top`.
-    /// Use instead of `.map_err(|err|)` when you need the value on the error
-    /// in the new error you are making, otherwise use `.er(||)`
+    /// Use this when the new error needs something from the old one.
+    /// Otherwise use `.er()`.
     ///
-    /// `let error = error.er_with(|t| AnalyzeEr { code: t.top.code });`
+    /// `let error = error.er_with(|t| t.top.code);`
     #[cfg_attr(feature = "src_locations", track_caller)]
-    pub fn er_with<A>(self, parent: impl FnOnce(&Self) -> A) -> ErTree<A>
+    pub fn er_with<A, P, Mode>(self, parent: impl FnOnce(&Self) -> P) -> ErTree<A>
     where
         E: Send + Sync,
         A: Error + 'static,
+        P: ErPayload<A, Mode>,
     {
-        let parent = parent(&self);
+        let parent = parent(&self).er_payload();
         ErTree::new(parent, [self])
     }
 
@@ -113,7 +100,7 @@ impl<E: Error + 'static> ErTree<E> {
 
     /// Finds all the instances of an error type, for when you have duplicates.
     ///
-    /// `error.er_find_all::<PortEr>().find(|e| e.input == "aint_even_a_number_cmon_man")`
+    /// `error.er_find_all::<PortErr>().find(|e| e.input == "aint_even_a_number_cmon_man")`
     pub fn er_find_all<T: Error + 'static>(&self) -> impl Iterator<Item = &T> {
         self.er_entries()
             .filter_map(|entry| entry.error.downcast_ref::<T>())
@@ -157,6 +144,17 @@ impl<E: Error + 'static> ErTree<E> {
         ErSnapshot { entries }
     }
 }
+
+impl<E: Error + Send + Sync + 'static, Mode> ErTreeContext<Mode> for ErTree<E> {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er<A>(self, parent: impl ErMake<A, Mode>) -> ErTree<A>
+    where
+        A: Error + 'static,
+    {
+        ErTree::new(parent.er_make(), [self])
+    }
+}
+
 impl<E> ErTree<E> {
     /// The stored children, no root or native sources.
     pub fn er_descendants(&self) -> ErNodes<'_> {

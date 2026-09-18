@@ -69,7 +69,7 @@ pub fn empty_enum() {
 }
 
 #[derive(Er)]
-pub struct GenericError<T> {
+pub struct GenericErr<T> {
     pub marker: PhantomData<T>,
 }
 
@@ -107,7 +107,7 @@ pub struct Qualified<T: HasItem> {
 pub fn projections() {
     pub fn assert_error<T: core::error::Error>() {}
 
-    assert_error::<GenericError<NotPrintable>>();
+    assert_error::<GenericErr<NotPrintable>>();
     assert_error::<Tagged<NotPrintable>>();
     assert_error::<SelfTagged<NotPrintable>>();
     assert_error::<Associated<NotPrintable>>();

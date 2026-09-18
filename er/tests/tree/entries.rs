@@ -249,7 +249,7 @@ pub fn src_locations() {
     let plain: Result<(), Leaf> = Err(Leaf(1));
     let existing: Er<(), Leaf> = Err(direct);
     let line = line!() + 1;
-    let tree = er_all!(|| Leaf(2), [plain, existing]).unwrap_err();
+    let tree: ErTree<Leaf> = er_all!(|| Leaf(2), [plain, existing]).unwrap_err();
 
     assert_eq!(tree.src_location.line(), line);
     assert_eq!(tree.nodes[0].src_location.line(), line);
@@ -257,7 +257,7 @@ pub fn src_locations() {
 
     let missing: Option<()> = None;
     let line = line!() + 1;
-    let tree = missing.er(|| Leaf(3)).unwrap_err();
+    let tree = missing.er::<Leaf>(|| Leaf(3)).unwrap_err();
 
     assert_eq!(tree.src_location.line(), line);
 
@@ -269,7 +269,7 @@ pub fn src_locations() {
     let boxed: Box<dyn Error + Send + Sync> = Box::new(Leaf(5));
     let result: Result<(), BoxError> = Err(boxed);
     let line = line!() + 1;
-    let tree = result.er(|| Leaf(6)).unwrap_err();
+    let tree = result.er::<Leaf>(|| Leaf(6)).unwrap_err();
 
     assert_eq!(tree.src_location.line(), line);
     assert_eq!(tree.nodes[0].src_location.line(), line);

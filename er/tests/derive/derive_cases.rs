@@ -130,29 +130,29 @@ pub struct Borrowed<'a> {
 }
 
 #[derive(Er)]
-pub struct ValueEr<T> {
+pub struct ValueErr<T> {
     pub value: T,
 }
 
 pub type Port = u16;
 #[derive(Er)]
-pub struct ConnectEr {
+pub struct ConnectErr {
     #[er(exact, censor)]
     pub port: Port,
 }
 
 #[derive(Er)]
-pub struct CallbackEr {
+pub struct CallbackErr {
     pub callback: fn(u8) -> u8,
 }
 #[test]
 pub fn inference() {
-    let error = ValueEr::new(7u8);
+    let error = ValueErr::new(7u8);
     assert_eq!(error.value.count_ones(), 3);
-    assert_eq!(ConnectEr::new(85).port, 85);
+    assert_eq!(ConnectErr::new(85).port, 85);
     assert_eq!(
-        ConnectEr::new(85).to_string(),
-        "ConnectEr { port: *CENSORED* }"
+        ConnectErr::new(85).to_string(),
+        "ConnectErr { port: *CENSORED* }"
     );
 
     let text = String::from("borrowed");
@@ -162,12 +162,12 @@ pub fn inference() {
         value
     }
 
-    assert_eq!((CallbackEr::new(identity).callback)(7), 7);
+    assert_eq!((CallbackErr::new(identity).callback)(7), 7);
 }
 
 #[derive(Er)]
 #[er(wrap(output = report))]
-pub struct BytesEr<
+pub struct BytesErr<
     const __er_f: usize,
     const __er_d: usize,
     const tree: usize,
@@ -180,10 +180,10 @@ pub struct BytesEr<
 }
 #[test]
 pub fn const_names() {
-    let wrapped: BytesErWrap<2, 3, 4, 5, 6, 7, 8> = BytesEr::new([1, 2]).er_wrap();
-    let wrapped = BytesErWrap::from(wrapped.into_er_top());
+    let wrapped: BytesErrWrap<2, 3, 4, 5, 6, 7, 8> = BytesErr::new([1, 2]).er_wrap();
+    let wrapped = BytesErrWrap::from(wrapped.into_er_top());
     let report: ErReport<_> = wrapped.into();
-    let wrapped = BytesErWrap::from(report);
+    let wrapped = BytesErrWrap::from(report);
 
     assert!(wrapped.to_string().contains("[1, 2]"));
 }
@@ -206,26 +206,26 @@ pub fn enum_bindings() {
 pub struct Payload;
 
 #[derive(Er)]
-pub struct BorrowingCallbackEr<T> {
+pub struct BorrowingCallbackErr<T> {
     pub callback: for<'a> fn(&'a Self, &'a T),
 }
-pub fn callback(_: &BorrowingCallbackEr<Payload>, _: &Payload) {}
+pub fn callback(_: &BorrowingCallbackErr<Payload>, _: &Payload) {}
 
 #[derive(Er)]
-pub struct PointerEr<T> {
+pub struct PointerErr<T> {
     pub pointer: *const (Self, T),
 }
 #[test]
 pub fn pointer_fields() {
-    let error: BorrowingCallbackEr<Payload> = BorrowingCallbackEr::new(callback);
+    let error: BorrowingCallbackErr<Payload> = BorrowingCallbackErr::new(callback);
     assert!(
         error
             .to_string()
-            .starts_with("BorrowingCallbackEr { callback:")
+            .starts_with("BorrowingCallbackErr { callback:")
     );
 
-    let error = PointerEr::<Payload>::new(std::ptr::null());
-    assert!(error.to_string().starts_with("PointerEr { pointer:"));
+    let error = PointerErr::<Payload>::new(std::ptr::null());
+    assert!(error.to_string().starts_with("PointerErr { pointer:"));
 }
 
 pub trait PointerValue {
@@ -259,25 +259,25 @@ pub struct Printer;
 impl<Argument, Owner> Callback<Argument, Owner> for Printer {}
 
 #[derive(Er)]
-pub struct ObjectCallbackEr<T: 'static> {
+pub struct ObjectCallbackErr<T: 'static> {
     pub callback: Box<dyn for<'a> Callback<&'a T, Self>>,
 }
 #[test]
 pub fn trait_object_binder() {
-    let error = ObjectCallbackEr::<Payload> {
+    let error = ObjectCallbackErr::<Payload> {
         callback: Box::new(Printer),
     };
 
-    assert_eq!(error.to_string(), "ObjectCallbackEr { callback: Printer }");
+    assert_eq!(error.to_string(), "ObjectCallbackErr { callback: Printer }");
 }
 
 #[derive(Er)]
-pub struct RawValueEr<T> {
+pub struct RawValueErr<T> {
     pub value: r#T,
 }
 
 #[derive(Er)]
-pub struct PlainValueEr<r#T> {
+pub struct PlainValueErr<r#T> {
     pub value: T,
 }
 
@@ -288,23 +288,23 @@ pub struct r#RawTree<T> {
 }
 #[test]
 pub fn raw_type_names() {
-    let raw = RawValueEr::new(7u8);
-    let plain = PlainValueEr::new(8u8);
+    let raw = RawValueErr::new(7u8);
+    let plain = PlainValueErr::new(8u8);
     let _: u8 = raw.value;
     let _: u8 = plain.value;
 
-    assert_eq!(raw.to_string(), "RawValueEr { value: 7 }");
-    assert_eq!(plain.to_string(), "PlainValueEr { value: 8 }");
+    assert_eq!(raw.to_string(), "RawValueErr { value: 7 }");
+    assert_eq!(plain.to_string(), "PlainValueErr { value: 8 }");
 
     let tree = RawTree::new(9u8, Vec::new());
     assert_eq!(tree.to_string(), "RawTree { value: 9, children: [] }");
 }
 
 #[derive(Er)]
-pub enum StageEr {
+pub enum StageErr {
     Gen,
 }
 #[test]
 pub fn edition_keyword() {
-    assert_eq!(StageEr::r#gen().to_string(), "StageEr::Gen");
+    assert_eq!(StageErr::r#gen().to_string(), "StageErr::Gen");
 }

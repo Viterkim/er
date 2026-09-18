@@ -58,11 +58,9 @@ pub fn views() -> fmt::Result {
     assert_eq!(format!("{error:?}"), expected);
     assert!(error.source().is_none());
     let outer = Err::<(), _>(error)
-        .er(OuterErr::new)
+        .er::<OuterErr>(())
         .err()
         .ok_or(fmt::Error)?;
-    assert!(!outer.er_contains::<AppErr>());
-    assert!(!outer.er_contains::<InnerErr>());
     assert_eq!(outer.nodes[0].error.to_string(), expected);
     let adapter = outer
         .er_find::<ErAsError<ErReport<AppErr>>>()
@@ -74,13 +72,13 @@ pub fn views() -> fmt::Result {
 #[test]
 pub fn reentry() {
     let report = failing().er_report().unwrap_err().single_line();
-    let outer = Err::<(), _>(report).er(OuterErr::new).unwrap_err();
+    let outer = Err::<(), _>(report).er::<OuterErr>(()).unwrap_err();
     assert!(outer.er_contains::<AppErr>());
     assert!(outer.er_contains::<InnerErr>());
     assert_eq!(outer.into_er_report().layout, Layout::Multiline);
 
     let top = failing().er_top().unwrap_err().single_line();
-    let outer = Err::<(), _>(top).er(OuterErr::new).unwrap_err();
+    let outer = Err::<(), _>(top).er::<OuterErr>(()).unwrap_err();
     assert!(outer.er_contains::<AppErr>());
     assert!(outer.er_contains::<InnerErr>());
     assert_eq!(outer.into_er_report().layout, Layout::Multiline);

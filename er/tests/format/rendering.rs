@@ -12,7 +12,7 @@ pub fn parse_port(input: &str) -> Er<u16, ParsePortErr> {
 #[derive(Er)]
 pub struct LoadConfigErr;
 pub fn load_config(port: &str) -> Er<u16, LoadConfigErr> {
-    parse_port(port).er(LoadConfigErr::new)
+    parse_port(port).er(())
 }
 
 #[test]

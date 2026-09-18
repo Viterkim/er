@@ -2,7 +2,7 @@
 #![cfg_attr(feature = "macros", doc = include_str!("../docs/examples.md"))]
 #![cfg_attr(
     not(feature = "macros"),
-    doc = "Error trees with context. Enable `macros` for the derives and their examples. The runtime works with your own error impls too, start with [`ErError`] and [`ErResult`]."
+    doc = "Error trees with context. Enable `macros` for the derives and their examples. The runtime works with your own error impls too, start with [`ErError`] and [`ErContext`]."
 )]
 
 extern crate alloc;
