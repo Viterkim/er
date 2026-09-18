@@ -1,7 +1,18 @@
-pub use crate::types::LineError;
-pub use crate::types_helpers::Lines;
 use alloc::string::String;
 use core::{convert::Infallible, fmt};
+
+/// Formatting or callback failure.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LineError<E> {
+    Format(fmt::Error),
+    Callback(E),
+}
+
+pub struct Lines<F, E> {
+    pub buffer: String,
+    pub emit: F,
+    pub error: Option<E>,
+}
 
 /// Only formats once, no line endings.
 pub fn for_each_line(

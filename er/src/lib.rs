@@ -17,7 +17,6 @@ pub mod render;
 pub mod snapshot;
 pub mod traits;
 pub mod types;
-mod types_helpers;
 #[cfg(feature = "test")]
 pub mod types_test;
 pub mod walk;
@@ -29,6 +28,10 @@ pub use er_macros::{Er, ErFormat};
 #[doc(inline)]
 pub use lazy::{ErLazy, ErLazyError};
 #[doc(inline)]
+pub use lines::LineError;
+#[doc(inline)]
+pub use snapshot::*;
+#[doc(inline)]
 pub use traits::*;
 #[doc(inline)]
 pub use types::*;
@@ -36,4 +39,4 @@ pub use types::*;
 #[doc(inline)]
 pub use types_test::*;
 #[doc(inline)]
-pub use walk::MAX_SOURCE_HOPS;
+pub use walk::{ErEntries, ErEntry, ErEntryKind, ErNodes, ErSources, MAX_SOURCE_HOPS};
