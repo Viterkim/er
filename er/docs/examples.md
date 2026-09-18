@@ -372,7 +372,7 @@ pub fn the_best_test() -> ErTest {
 ```text
 Error: ErTest @ tests/the_best_test.rs:12:23
 `- ReadPortErr @ tests/the_best_test.rs:7:19
-   `- invalid digit found in string @ tests/the_best_test.rs:7:19
+   `- invalid digit found in string
 test the_best_test ... FAILED
 ```
 

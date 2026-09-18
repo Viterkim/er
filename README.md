@@ -38,7 +38,7 @@ Er turns the `&str` into a `PathBuf` only on failure (And we keep the `io::Error
 `.er_report()` gives us:
 ```text
 FileErr("/tmp/file.txt") @ er/runnable_examples/context.rs:7:37
-`- No such file or directory (os error 2) @ er/runnable_examples/context.rs:7:37
+`- No such file or directory (os error 2)
 ```
 
 We can also just 'yeet' it up with an empty struct, still adding the implicit context (where it happened).
@@ -53,7 +53,7 @@ pub fn analyze() -> Er<String, AnalyzeErr> {
 ```text
 AnalyzeErr @ er/runnable_examples/context.rs:14:32
 `- FileErr("/tmp/file.txt") @ er/runnable_examples/context.rs:7:37
-   `- No such file or directory (os error 2) @ er/runnable_examples/context.rs:7:37
+   `- No such file or directory (os error 2)
 ```
 
 And when things get spicy
@@ -95,7 +95,7 @@ Report printed `.er_report()`:
 StartupErr("some config checks failed") @ er/runnable_examples/context.rs:69:5
 |- ConfigErr { machine: "HaandboldFuglen", token: *CENSORED* } @ er/runnable_examples/context.rs:60:21
 |  `- PortErr { invalid_port: "aint_even_a_number_cmon_man" } @ er/runnable_examples/context.rs:22:35
-|     `- invalid digit found in string @ er/runnable_examples/context.rs:22:35
+|     `- invalid digit found in string
 `- ConfigErr { machine: "ComputerKatten", token: *CENSORED* } @ er/runnable_examples/context.rs:61:21
    `- ModeErr::MissingMode @ er/runnable_examples/context.rs:31:21
 ```

@@ -1061,7 +1061,7 @@ println!("{}", error.er_report());
 
 ```text
 ListenErr::InvalidInput { input: "127.0.0.1:nope" } @ src/bin/er.rs:24:36
-`- invalid digit found in string @ src/bin/er.rs:24:36
+`- invalid digit found in string
 ```
 
 ## Eros

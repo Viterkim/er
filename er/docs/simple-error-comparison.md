@@ -766,7 +766,7 @@ println!("{}", error.er_report());
 
 ```text
 PortErr @ examples/er_lazy.rs:7:35
-`- invalid digit found in string @ examples/er_lazy.rs:7:35
+`- invalid digit found in string
 ```
 
 Exn 2 electric boogalo now with macros and shortened syntax (and some internal changes that has ramifications), but like exn an empty type still gets us a name, a location and the original failure.
@@ -788,7 +788,7 @@ println!("{}", error.er_report());
 
 ```text
 PortErr { input: "aint_even_a_number_cmon_man" } @ examples/er_context.rs:8:35
-`- invalid digit found in string @ examples/er_context.rs:8:35
+`- invalid digit found in string
 ```
 
 # Er weird stuff
