@@ -87,6 +87,13 @@ pub fn write_entries<'a, W: fmt::Write + ?Sized>(
     }
 }
 
+pub fn valid_depth(previous: Option<usize>, depth: usize) -> bool {
+    match previous {
+        None => depth == 0,
+        Some(previous) => depth <= previous.saturating_add(1),
+    }
+}
+
 #[cfg(feature = "src_locations")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct EntryLocation<'a> {
@@ -124,11 +131,16 @@ pub fn write_multiline<'a, W: fmt::Write + ?Sized>(
     entries: impl IntoIterator<Item = impl Into<ReportEntry<'a>>>,
 ) -> fmt::Result {
     let mut prefix = String::new();
+    let mut previous_depth = None;
     #[cfg(feature = "src_locations")]
     let mut locations = Vec::new();
 
     for entry in entries {
         let entry = entry.into();
+        if !valid_depth(previous_depth, entry.depth) {
+            return Err(fmt::Error);
+        }
+        previous_depth = Some(entry.depth);
         #[cfg(feature = "src_locations")]
         let mut entry = entry;
         #[cfg(feature = "src_locations")]
@@ -160,11 +172,16 @@ pub fn write_single_line<'a, W: fmt::Write + ?Sized>(
     entries: impl IntoIterator<Item = impl Into<ReportEntry<'a>>>,
 ) -> fmt::Result {
     let mut depth = 0;
+    let mut previous_depth = None;
     #[cfg(feature = "src_locations")]
     let mut locations = Vec::new();
 
     for entry in entries {
         let entry = entry.into();
+        if !valid_depth(previous_depth, entry.depth) {
+            return Err(fmt::Error);
+        }
+        previous_depth = Some(entry.depth);
         #[cfg(feature = "src_locations")]
         let mut entry = entry;
         #[cfg(feature = "src_locations")]

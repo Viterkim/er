@@ -1,5 +1,8 @@
 use crate::lines;
-use crate::render::{report::write_entries, write_top};
+use crate::render::{
+    report::{valid_depth, write_entries},
+    write_top,
+};
 use crate::{
     ErEntryKind, ErSnapshot, ErSnapshotEntry, ErSnapshotReport, ErSnapshotTop, Layout, LineError,
 };
@@ -65,6 +68,14 @@ impl Deref for ErSnapshotReport<'_> {
 }
 impl fmt::Display for ErSnapshotReport<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut previous_depth = None;
+        for entry in &self.snapshot.entries {
+            if !valid_depth(previous_depth, entry.depth) {
+                return formatter.write_str("ER_INVALID_SNAPSHOT");
+            }
+            previous_depth = Some(entry.depth);
+        }
+
         write_entries(formatter, self.snapshot.er_entries(), self.layout)
     }
 }
