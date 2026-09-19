@@ -161,7 +161,7 @@ pub trait ErPresentation {
     ///
     /// !WARNING! Normal `.er()` boxes a Wrap with `std_error`, so you can't find its children.
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_from_wrap<A, F>(self, error: F) -> Er<Self::Ok, A>
+    fn er_wrap<A, F>(self, error: F) -> Er<Self::Ok, A>
     where
         Self: Sized,
         Self::Err: Error + Send + Sync + 'static,

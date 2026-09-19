@@ -225,7 +225,7 @@ pub fn std_error() {
     assert_eq!(format!("{wrapped:?}"), expected);
 
     let _line = line!() + 1;
-    let result = Err::<(), _>(wrapped).er_from_wrap(HandlerErr::new);
+    let result = Err::<(), _>(wrapped).er_wrap(HandlerErr::new);
     let tree = result.unwrap_err();
 
     assert_eq!(tree.er_find_all::<Tracked>().count(), 2);
@@ -247,7 +247,7 @@ pub fn std_error() {
     assert_eq!(outer.nodes[0].error.to_string(), expected);
 
     let mut called = false;
-    let success = Ok::<_, StandardErrWrap<u8>>(7).er_from_wrap(|| {
+    let success = Ok::<_, StandardErrWrap<u8>>(7).er_wrap(|| {
         called = true;
         HandlerErr
     });

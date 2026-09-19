@@ -436,7 +436,7 @@ let json = serde_json::to_string_pretty(&snapshot).unwrap();
 std::fs::write("/tmp/error.json", &json).unwrap();
 ```
 
-## If you want Error on report (opaque)
+## Opaque (edge case)
 
 You can make your own public type and attach a string report, or a snapshot, check the `Public error` example above.
 

@@ -1,20 +1,18 @@
 # 0.2.0
 
-## Functionality
-
 Struct errors can now also use `.er(())`, `.er(|| path)` or `.er(|| (machine, token))` without repeating the error name.
 
 Reports now only print the source location the first time if it's repeated.
 
-TestEr is now ErTest and now uses the regular `.er(())`. (still used the 'test' feature).
+TestEr is now ErTest and now uses the regular `.er(())`. (still used the `test` feature).
 
-Added ErLazy i don't recommend using.
+Added option for ErLazy(I don't recommend using it, enabled with the `lazy` feature).
 
-## Docs
+`.er_from_wrap(...)` is now `.er_wrap(...)`.
 
-Recommending `Err` for error names like `NameErr` instead of `NameEr`. And recommend using `NameError` for the public external non Er types.
+Docs: Recommending `Err` for error names like `NameErr` instead of `NameEr`. And recommend using `NameError` for the public external non Er types.
 
-Tricky-error-comparison.md docs added (foreign errors, own errors, the original error, string context, typed context, using / consuming, public boundary).
+Docs: `Tricky-error-comparison.md` docs added (foreign errors, own errors, the original error, string context, typed context, using / consuming, public boundary).
 
 # 0.1.3
 

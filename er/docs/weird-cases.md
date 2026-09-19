@@ -29,4 +29,4 @@ If an error puts its source's message in its own text AND returns it from `sourc
 
 ## Wrap with std_error
 
-If a foreign trait needs your Wrap to implement `Error`, you can use `std_error`. Then normal `.er()` boxes the Wrap and `.er_find()` can't see inside it. Use `.er_from_wrap()` when the Wrap comes back. This is probably the worst bit of Er right now. [The example](macros.md#wrap-with-error) shows it.
+If a foreign trait needs your Wrap to implement `Error`, you can use `std_error`. Then normal `.er()` boxes the Wrap and `.er_find()` can't see inside it. Use `.er_wrap()` when the Wrap comes back. This is probably the worst bit of Er right now. [The example](macros.md#wrap-with-error) shows it.

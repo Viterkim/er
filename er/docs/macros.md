@@ -218,7 +218,7 @@ Want Display/Debug on the Wrap itself? Add `output = report` or `output = top`. 
 
 ## Wrap with Error
 
-!WARNING! ONLY add std_error if the foreign trait needs Error on the Wrap itself (Axum doesn't). You HAVE to use `.er_from_wrap()` after that because `.er()` hides sub errors from find!
+!WARNING! ONLY add std_error if the foreign trait needs Error on the Wrap itself (Axum doesn't). You HAVE to use `.er_wrap()` after that because `.er()` hides sub errors from find!
 
 If the trait needs `Error` on the Wrap itself, add `std_error` with `output`.
 
@@ -239,7 +239,7 @@ When you get its Result back, use this instead of `.er()`
 #[derive(Er)]
 pub struct RequestErr;
 pub fn request(input: &str) -> Er<u16, RequestErr> {
-    handler(input).er_from_wrap(RequestErr::new)
+    handler(input).er_wrap(RequestErr::new)
 }
 ```
 
