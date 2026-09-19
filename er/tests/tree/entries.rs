@@ -1,5 +1,6 @@
 use er::*;
 use std::io::Error as IoError;
+use std::marker::PhantomPinned;
 use std::{error::Error, fmt};
 
 #[derive(Er)]
@@ -202,6 +203,9 @@ pub fn lazy_matches() {
         }],
     );
 
+    assert!(tree.er_find_all::<SharedSource>().next().is_some());
+    assert_eq!(calls.load(Ordering::Relaxed), 0);
+
     let mut matches = tree.er_find_all::<Leaf>();
     assert_eq!(calls.load(Ordering::Relaxed), 0);
 
@@ -214,6 +218,46 @@ pub fn lazy_matches() {
 
     assert!(matches.next().is_none());
     assert!(matches.next().is_none());
+}
+
+#[test]
+pub fn nested_matches() {
+    let tree = ErTree::new(
+        Leaf(0),
+        [
+            ErTree::new(Leaf(1), [ErTree::new(Leaf(2), [Leaf(3)]), Leaf(4).er()]),
+            Leaf(5).er(),
+        ],
+    );
+    let entries = tree
+        .er_entries()
+        .filter_map(|entry| entry.error.downcast_ref::<Leaf>())
+        .map(|leaf| leaf.0)
+        .collect::<Vec<_>>();
+    let matches = tree
+        .er_find_all::<Leaf>()
+        .map(|leaf| leaf.0)
+        .collect::<Vec<_>>();
+
+    assert_eq!(matches, entries);
+    assert_eq!(matches, [0, 1, 2, 3, 4, 5]);
+}
+
+#[derive(Debug)]
+pub struct Pinned(pub PhantomPinned);
+impl fmt::Display for Pinned {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("pinned")
+    }
+}
+impl Error for Pinned {}
+
+#[test]
+pub fn find_all_is_unpin() {
+    pub fn needs_unpin(_: impl Unpin) {}
+
+    let tree = Pinned(PhantomPinned).er();
+    needs_unpin(tree.er_find_all::<Pinned>());
 }
 
 #[test]
@@ -249,7 +293,7 @@ pub fn src_locations() {
     let plain: Result<(), Leaf> = Err(Leaf(1));
     let existing: Er<(), Leaf> = Err(direct);
     let line = line!() + 1;
-    let tree = er_all!(|| Leaf(2), [plain, existing]).unwrap_err();
+    let tree: ErTree<Leaf> = er_all!(|| Leaf(2), [plain, existing]).unwrap_err();
 
     assert_eq!(tree.src_location.line(), line);
     assert_eq!(tree.nodes[0].src_location.line(), line);
@@ -257,7 +301,7 @@ pub fn src_locations() {
 
     let missing: Option<()> = None;
     let line = line!() + 1;
-    let tree = missing.er(|| Leaf(3)).unwrap_err();
+    let tree = missing.er::<Leaf>(|| Leaf(3)).unwrap_err();
 
     assert_eq!(tree.src_location.line(), line);
 
@@ -266,15 +310,20 @@ pub fn src_locations() {
 
     assert_eq!(tree.src_location.line(), line);
 
-    let boxed: Box<dyn Error + Send + Sync> = Box::new(Leaf(5));
+    let line = line!() + 1;
+    let tree = ErTree::new(Leaf(5), [Leaf(6)]);
+
+    assert_eq!(tree.nodes[0].src_location.line(), line);
+
+    let boxed: Box<dyn Error + Send + Sync> = Box::new(Leaf(7));
     let result: Result<(), BoxError> = Err(boxed);
     let line = line!() + 1;
-    let tree = result.er(|| Leaf(6)).unwrap_err();
+    let tree = result.er::<Leaf>(|| Leaf(8)).unwrap_err();
 
     assert_eq!(tree.src_location.line(), line);
     assert_eq!(tree.nodes[0].src_location.line(), line);
 
-    let boxed: BoxError = Box::new(Leaf(7));
+    let boxed: BoxError = Box::new(Leaf(9));
     let line = line!() + 1;
     let node = boxed.into_er_node();
 

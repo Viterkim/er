@@ -1,13 +1,13 @@
 use er::*;
 
 #[derive(Er)]
-pub struct ReadPortEr;
-pub fn read_port(input: &str) -> Er<u16, ReadPortEr> {
-    input.parse().er(ReadPortEr::new)
+pub struct ReadPortErr;
+pub fn read_port(input: &str) -> Er<u16, ReadPortErr> {
+    input.parse().er(())
 }
 
 // main accepts the report as its error.
-pub fn main() -> Result<(), ErReport<ReadPortEr>> {
+pub fn main() -> Result<(), ErReport<ReadPortErr>> {
     read_port("85").er_report()?;
 
     Ok(())

@@ -12,7 +12,7 @@ pub fn parse_port(input: &str) -> Er<u16, ParsePortErr> {
 #[derive(Er)]
 pub struct LoadConfigErr;
 pub fn load_config(port: &str) -> Er<u16, LoadConfigErr> {
-    parse_port(port).er(LoadConfigErr::new)
+    parse_port(port).er(())
 }
 
 #[test]
@@ -21,13 +21,19 @@ pub fn causal_chain() {
 
     #[cfg(feature = "src_locations")]
     let expected = format!(
-        "LoadConfigErr @ {}\n`- ParsePortErr(\"aint_even_a_number_cmon_man\") @ {}\n   `- invalid digit found in string @ {}",
-        error.src_location, error.nodes[0].src_location, error.nodes[0].nodes[0].src_location,
+        "LoadConfigErr @ {}\n`- ParsePortErr(\"aint_even_a_number_cmon_man\") @ {}\n   `- invalid digit found in string",
+        error.src_location, error.nodes[0].src_location,
     );
     #[cfg(not(feature = "src_locations"))]
     let expected = "LoadConfigErr\n`- ParsePortErr(\"aint_even_a_number_cmon_man\")\n   `- invalid digit found in string";
 
     assert_eq!(error.er_report().to_string(), expected);
+
+    #[cfg(feature = "src_locations")]
+    {
+        let entries: Vec<_> = error.er_entries().collect();
+        assert_eq!(entries[1].src_location, entries[2].src_location);
+    }
 }
 
 #[test]
@@ -81,10 +87,7 @@ pub fn multiline() {
     ] {
         let tree = ErTree::new(WrapErr, [Message(message)]);
         #[cfg(feature = "src_locations")]
-        let expected = format!(
-            "WrapErr @ {}\n`- {expected} @ {}",
-            tree.src_location, tree.nodes[0].src_location,
-        );
+        let expected = format!("WrapErr @ {}\n`- {expected}", tree.src_location,);
         #[cfg(not(feature = "src_locations"))]
         let expected = format!("WrapErr\n`- {expected}");
 
@@ -114,11 +117,8 @@ pub fn branches() {
     );
     #[cfg(feature = "src_locations")]
     let expected = format!(
-        "WrapErr @ {}\n|- MidErr @ {}\n|  `- alpha\n|     beta @ {}\n`- gamma @ {}",
-        tree.src_location,
-        tree.nodes[0].src_location,
-        tree.nodes[0].nodes[0].src_location,
-        tree.nodes[1].src_location,
+        "WrapErr @ {}\n|- MidErr @ {}\n|  `- alpha\n|     beta\n`- gamma @ {}",
+        tree.src_location, tree.nodes[0].src_location, tree.nodes[1].src_location,
     );
     #[cfg(not(feature = "src_locations"))]
     let expected = "WrapErr\n|- MidErr\n|  `- alpha\n|     beta\n`- gamma";
@@ -127,11 +127,8 @@ pub fn branches() {
 
     #[cfg(feature = "src_locations")]
     let expected = format!(
-        "WrapErr @ {} [MidErr @ {} [alpha beta @ {}] | gamma @ {}]",
-        tree.src_location,
-        tree.nodes[0].src_location,
-        tree.nodes[0].nodes[0].src_location,
-        tree.nodes[1].src_location,
+        "WrapErr @ {} [MidErr @ {} [alpha beta] | gamma @ {}]",
+        tree.src_location, tree.nodes[0].src_location, tree.nodes[1].src_location,
     );
     #[cfg(not(feature = "src_locations"))]
     let expected = "WrapErr [MidErr [alpha beta] | gamma]";
@@ -155,20 +152,14 @@ pub fn message_text() {
     ] {
         let tree = ErTree::new(Message(message), [Message(message)]);
         #[cfg(feature = "src_locations")]
-        let expected = format!(
-            "{message} @ {}\n`- {indented} @ {}",
-            tree.src_location, tree.nodes[0].src_location,
-        );
+        let expected = format!("{message} @ {}\n`- {indented}", tree.src_location,);
         #[cfg(not(feature = "src_locations"))]
         let expected = format!("{message}\n`- {indented}");
 
         assert_eq!(tree.er_report().to_string(), expected);
 
         #[cfg(feature = "src_locations")]
-        let expected = format!(
-            "{flat} @ {} [{flat} @ {}]",
-            tree.src_location, tree.nodes[0].src_location,
-        );
+        let expected = format!("{flat} @ {} [{flat}]", tree.src_location,);
         #[cfg(not(feature = "src_locations"))]
         let expected = format!("{flat} [{flat}]");
 

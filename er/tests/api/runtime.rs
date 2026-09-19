@@ -9,11 +9,11 @@ pub fn read_port(input: &str) -> Er<u16, Error> {
 pub fn without_derives() {
     assert_eq!(read_port("85").er_report().unwrap(), 85);
 
-    let error = er_all!(
+    let error: ErTree<Error> = er_all!(
         || Error::other("config"),
         [
             read_port("fakenumber"),
-            None::<()>.er(|| Error::new(ErrorKind::NotFound, "mode")),
+            None::<()>.er::<Error>(|| Error::new(ErrorKind::NotFound, "mode")),
         ]
     )
     .err()
@@ -60,8 +60,8 @@ pub fn manual_wrap() {
 
 #[cfg(feature = "test")]
 #[test]
-pub fn test_helpers() -> TestEr {
-    let port = read_port("85").t_er()?;
+pub fn test_helpers() -> ErTest {
+    let port = read_port("85").er(())?;
     assert_eq!(port, 85);
 
     Ok(())

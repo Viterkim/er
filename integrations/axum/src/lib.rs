@@ -18,7 +18,7 @@ pub fn lookup(name: &str) -> Er<&str, NotFoundErr> {
 #[er(wrap)]
 pub struct HandlerErr;
 pub fn handler(name: &str) -> Result<&str, HandlerErrWrap> {
-    let value = lookup(name).er(HandlerErr::new)?;
+    let value = lookup(name).er(())?;
     Ok(value)
 }
 

@@ -15,7 +15,9 @@ use proc_macro::TokenStream;
 use syn::{DeriveInput, parse_macro_input};
 
 #[proc_macro_derive(Er, attributes(er))]
-/// Makes Error + matching Display/Debug, and public constructors (unless you use #[er(no_constructors)]).
+/// Makes Error, matching Display/Debug, and public constructors.
+/// Structs also work with `.er(|| path)`, so you don't have to name the error again there.
+/// `#[er(no_constructors)]` turns off the constructors and this field conversion for that type.
 ///
 /// Options: `format`, `skip`, `censor`, `exact`, `no_constructors`, `wrap`, and `crate`.
 ///

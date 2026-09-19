@@ -3,9 +3,9 @@
 use er::*;
 
 #[derive(Er)]
-pub struct DeviceEr;
-pub fn diagnostic() -> ErTree<DeviceEr> {
-    ErTree::new(DeviceEr, [DeviceEr])
+pub struct DeviceErr;
+pub fn diagnostic() -> ErTree<DeviceErr> {
+    ErTree::new(DeviceErr, [DeviceErr])
 }
 
 #[cfg(test)]

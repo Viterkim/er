@@ -56,10 +56,27 @@ pub fn constructors(input: &Input<'_>) -> syn::Result<TokenStream> {
         });
     }
 
+    let empty_from = if input.cases.len() == 1
+        && input.cases[0].variant.is_none()
+        && input.cases[0].fields.is_empty()
+    {
+        let body = with_fields(&input.cases[0], quote!(Self), &[]);
+        quote! {
+            impl #impl_generics ::core::convert::From<()> for #name #type_generics #where_clause {
+                fn from(_: ()) -> Self {
+                    #body
+                }
+            }
+        }
+    } else {
+        TokenStream::new()
+    };
+
     Ok(quote! {
         impl #impl_generics #name #type_generics #where_clause {
             #(#methods)*
         }
+        #empty_from
     })
 }
 

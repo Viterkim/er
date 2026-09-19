@@ -26,6 +26,7 @@ sed -i -E 's@\]\((\./)?er/@](https://github.com/Viterkim/er/blob/HEAD/er/@g' "$r
 # examples.md also becomes the rustdoc front page
 sed -i -E \
     -e 's@\]\((\./)?macros\.md([)#])@](https://github.com/Viterkim/er/blob/HEAD/er/docs/macros.md\2@g' \
+    -e 's@\]\((\./)?tricky-error-comparison\.md([)#])@](https://github.com/Viterkim/er/blob/HEAD/er/docs/tricky-error-comparison.md\2@g' \
     -e 's@\]\(\.\./\.\./integrations/@](https://github.com/Viterkim/er/blob/HEAD/integrations/@g' \
     "$release_dir/er/docs/examples.md"
 cd -- "$release_dir"

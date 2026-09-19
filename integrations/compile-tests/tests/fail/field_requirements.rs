@@ -3,7 +3,7 @@ use er::*;
 pub struct NotDebug;
 
 #[derive(Er)]
-pub struct VisibleEr {
+pub struct VisibleErr {
     pub details: NotDebug,
 }
 
@@ -11,11 +11,11 @@ pub struct VisibleEr {
 pub struct Owned;
 
 #[derive(Er)]
-pub struct ConversionEr {
+pub struct ConversionErr {
     pub value: Owned,
 }
 
 pub fn main() {
     let value = Owned;
-    let _ = ConversionEr::new(&value);
+    let _ = ConversionErr::new(&value);
 }

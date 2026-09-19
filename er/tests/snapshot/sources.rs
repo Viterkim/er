@@ -1,5 +1,6 @@
 use super::Message;
 use core::{error::Error, fmt};
+use er::walk::MAX_SOURCE_HOPS;
 use er::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -49,6 +50,11 @@ pub fn cycles() {
 
         assert!(tree.er_find::<fmt::Error>().is_none());
         assert_eq!(tree.er_find::<Message>().unwrap().text, "healthy");
+        assert!(tree.er_find_all::<fmt::Error>().next().is_none());
+        assert_eq!(
+            tree.er_find_all::<Message>().next().unwrap().text,
+            "healthy"
+        );
 
         let entries: Vec<_> = tree.er_entries().collect();
         assert_eq!(entries.len(), MAX_SOURCE_HOPS + 2);
@@ -98,6 +104,7 @@ pub fn boundaries() {
         let mut sources = tree.er_sources();
         assert_eq!(sources.by_ref().count(), expected);
         assert_eq!(sources.truncated, truncated);
+        assert_eq!(tree.er_find_all::<Message>().count(), expected + 1);
 
         let entries: Vec<_> = tree.er_entries().collect();
         assert_eq!(entries.len(), expected + 1);
@@ -107,6 +114,10 @@ pub fn boundaries() {
     }
 
     let tree = ErTree::new(chain(MAX_SOURCE_HOPS + 1), [chain(MAX_SOURCE_HOPS).er()]);
+    assert_eq!(
+        tree.er_find_all::<Message>().count(),
+        2 * (MAX_SOURCE_HOPS + 1)
+    );
     let saved = tree.er_snapshot();
     assert_eq!(saved.entries.len(), (MAX_SOURCE_HOPS + 1) * 2);
     let stopped = saved.er_entries().filter(|e| e.source_truncated).count();

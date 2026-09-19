@@ -11,6 +11,7 @@ cargo +1.89.0 check -p er --no-default-features --all-targets
 test_core() {
     cargo "$@" test --workspace --all-features
     cargo "$@" test -p er --no-default-features --test api --test snapshot
+    cargo "$@" test -p er --no-default-features --features lazy --test api
     cargo "$@" test -p er --no-default-features --features src_locations,test --test api
     cargo "$@" test -p er --no-default-features --features macros,test
     cargo "$@" test -p er --no-default-features --features macros,src_locations --test format
