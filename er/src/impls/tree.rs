@@ -16,7 +16,8 @@ impl<E: Error + 'static> ErTree<E> {
     /// Put existing errors below this one, even if the list is empty.
     #[cfg_attr(feature = "src_locations", track_caller)]
     pub fn new(error: E, nodes: impl IntoIterator<Item = impl IntoErNode>) -> Self {
-        let mut collected = Vec::new();
+        let nodes = nodes.into_iter();
+        let mut collected = Vec::with_capacity(nodes.size_hint().0);
         for node in nodes {
             collected.push(IntoErNode::into_er_node(node));
         }
