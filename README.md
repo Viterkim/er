@@ -147,9 +147,9 @@ Having an easy to use macro with the defaults you want, is the thing that makes 
 
 [Macros](er/docs/macros.md).
 
-[Weird cases](er/docs/weird-cases.md).
+[Weird cases](er/docs/extra/weird-cases.md).
 
-[Performance](er/docs/performance.md).
+[Performance](er/docs/extra/performance.md).
 
 [Github Repo](https://github.com/Viterkim/er)
 

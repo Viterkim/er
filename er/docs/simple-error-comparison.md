@@ -497,7 +497,7 @@ let saved: ErSnapshot = serde_json::from_str(&json).unwrap();
 println!("{}", saved.er_report());
 ```
 
-There's `.single_line()` and `for_each_line()` for printing too, mostly because logging multiline errors can be [complete shit](systemd.md).
+There's `.single_line()` and `for_each_line()` for printing too, mostly because logging multiline errors can be [complete shit](extra/systemd.md).
 
 And my most hot take:
 

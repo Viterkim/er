@@ -81,20 +81,6 @@ pub fn cycles() {
     let tree = ErTree::new(Message::new("root"), [branch]);
     assert!(tree.er_find::<fmt::Error>().is_none());
     assert_eq!(tree.nodes[0].er_find::<Message>().unwrap().text, "healthy");
-
-    let tree = ErTree::new(
-        Message::new("root"),
-        [
-            ErTree::new(&SELF, [Message::new("left")]),
-            ErTree::new(&LEFT, [Message::new("right")]),
-        ],
-    );
-    assert_eq!(
-        tree.er_find_all::<Message>()
-            .map(|message| message.text)
-            .collect::<Vec<_>>(),
-        ["root", "left", "right"]
-    );
 }
 
 pub fn chain(sources: usize) -> Message {
@@ -118,6 +104,7 @@ pub fn boundaries() {
         let mut sources = tree.er_sources();
         assert_eq!(sources.by_ref().count(), expected);
         assert_eq!(sources.truncated, truncated);
+        assert_eq!(tree.er_find_all::<Message>().count(), expected + 1);
 
         let entries: Vec<_> = tree.er_entries().collect();
         assert_eq!(entries.len(), expected + 1);
@@ -127,6 +114,10 @@ pub fn boundaries() {
     }
 
     let tree = ErTree::new(chain(MAX_SOURCE_HOPS + 1), [chain(MAX_SOURCE_HOPS).er()]);
+    assert_eq!(
+        tree.er_find_all::<Message>().count(),
+        2 * (MAX_SOURCE_HOPS + 1)
+    );
     let saved = tree.er_snapshot();
     assert_eq!(saved.entries.len(), (MAX_SOURCE_HOPS + 1) * 2);
     let stopped = saved.er_entries().filter(|e| e.source_truncated).count();

@@ -32,9 +32,10 @@ Eight successful layers allocate nothing. Eight failed layers above one foreign 
 
 ## Lots of errors
 
-Mixed IO error, JSON error and an integer parsing error. Then 50% failures on 8 layers. 
+Tiny custom error, then 8 functions add their own error on top, and 50% fail. 
 
 ```text
+               per item       per failure
 thiserror      14.8 ns     0 allocations
 SNAFU          14.8 ns     0 allocations
 Eros           42.9 ns    10 allocations and 1 reallocation
@@ -50,7 +51,7 @@ The typed errors and SNAFU keep their source chain in the type. Er and the repor
 
 Aggregating failures took about '156 ns' per item for Er, 40 ns for thiserror and 25 ns for SNAFU.
 
-Used similar kind of context as the [tricky comparison](tricky-error-comparison.md).
+Used similar kind of context as the [tricky comparison](../tricky-error-comparison.md).
 
 ## Unsafe
 
@@ -70,4 +71,3 @@ Eros uses it to move real errors back out of its erased union when narrowing it 
 Rootcause uses a lot for its erased Arc report, attachments and switching between typed and dynamic views. 
 
 Error-stack only has a few small casts and pinned Future helpers.
-
