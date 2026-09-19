@@ -1,9 +1,6 @@
 #![no_std]
-#![cfg_attr(feature = "macros", doc = include_str!("../docs/examples.md"))]
-#![cfg_attr(
-    not(feature = "macros"),
-    doc = "Error trees with context. Enable `macros` for the derives and their examples. The runtime works with your own error impls too, start with [`ErError`] and [`ErContext`]."
-)]
+#![doc = include_str!("../docs/examples.md")]
+#![doc = include_str!("../docs/macros.md")]
 
 extern crate alloc;
 
@@ -28,7 +25,7 @@ pub use er_macros::{Er, ErFormat};
 #[doc(inline)]
 pub use lazy::{ErLazy, ErLazyError};
 #[doc(inline)]
-pub use lines::LineError;
+pub use lines::ErLineError;
 #[doc(inline)]
 pub use snapshot::*;
 #[doc(inline)]
@@ -39,4 +36,4 @@ pub use types::*;
 #[doc(inline)]
 pub use types_test::*;
 #[doc(inline)]
-pub use walk::{ErEntries, ErEntry, ErEntryKind, ErNodes, ErSources, MAX_SOURCE_HOPS};
+pub use walk::{ErEntries, ErEntry, ErEntryKind, ErNodes, ErSources};

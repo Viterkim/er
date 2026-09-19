@@ -4,7 +4,7 @@ use crate::render::{
     write_top,
 };
 use crate::{
-    ErEntryKind, ErSnapshot, ErSnapshotEntry, ErSnapshotReport, ErSnapshotTop, Layout, LineError,
+    ErEntryKind, ErLineError, ErSnapshot, ErSnapshotEntry, ErSnapshotReport, ErSnapshotTop, Layout,
 };
 use core::{error::Error, fmt, ops::Deref, slice};
 
@@ -55,7 +55,7 @@ impl ErSnapshotReport<'_> {
     pub fn try_for_each_line<X>(
         &self,
         emit: impl FnMut(&str) -> Result<(), X>,
-    ) -> Result<(), LineError<X>> {
+    ) -> Result<(), ErLineError<X>> {
         lines::try_for_each_line(self, emit)
     }
 }
@@ -103,7 +103,7 @@ impl ErSnapshotTop<'_> {
     pub fn try_for_each_line<X>(
         &self,
         emit: impl FnMut(&str) -> Result<(), X>,
-    ) -> Result<(), LineError<X>> {
+    ) -> Result<(), ErLineError<X>> {
         lines::try_for_each_line(self, emit)
     }
 }

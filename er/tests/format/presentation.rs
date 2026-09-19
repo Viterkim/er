@@ -133,7 +133,7 @@ pub fn display_only() -> fmt::Result {
     assert_eq!(lines, ["first", "second"]);
     assert_eq!(
         top.try_for_each_line(|_| Err(7)),
-        Err(LineError::Callback(7))
+        Err(ErLineError::Callback(7))
     );
 
     let owned = tree.into_er_top();
@@ -144,7 +144,7 @@ pub fn display_only() -> fmt::Result {
     assert_eq!(lines, ["first", "second"]);
     assert_eq!(
         owned.try_for_each_line(|_| Err(8)),
-        Err(LineError::Callback(8))
+        Err(ErLineError::Callback(8))
     );
 
     Ok(())

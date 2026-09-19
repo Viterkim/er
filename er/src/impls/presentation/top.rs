@@ -1,8 +1,8 @@
 use crate::lines;
 use crate::render::write_top;
 use crate::{
-    ErAsError, ErNodes, ErOpaqueError, ErSources, ErTop, ErTopRef, ErTree, IntoErNode, IntoErTree,
-    Layout, LineError,
+    ErAsError, ErLineError, ErNodes, ErOpaqueError, ErSources, ErTop, ErTopRef, ErTree, IntoErNode,
+    IntoErTree, Layout,
 };
 use core::{error::Error, fmt};
 
@@ -39,7 +39,7 @@ impl<E: fmt::Display> ErTopRef<'_, E> {
     pub fn try_for_each_line<X>(
         &self,
         emit: impl FnMut(&str) -> Result<(), X>,
-    ) -> Result<(), LineError<X>> {
+    ) -> Result<(), ErLineError<X>> {
         lines::try_for_each_line(self, emit)
     }
 }
@@ -113,7 +113,7 @@ impl<E: fmt::Display> ErTop<E> {
     pub fn try_for_each_line<X>(
         &self,
         emit: impl FnMut(&str) -> Result<(), X>,
-    ) -> Result<(), LineError<X>> {
+    ) -> Result<(), ErLineError<X>> {
         lines::try_for_each_line(self, emit)
     }
 }

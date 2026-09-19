@@ -1,6 +1,6 @@
 # Macros
 
-## What the macros actually do
+## Generated code
 
 ```rust
 #[derive(Er)]
@@ -134,35 +134,6 @@ impl ModeErr {
 }
 ```
 
-## Why the tree doesn't implement Debug
-
-It's just a way to force the user (you) to pick between a report/top error, it's very easy to accidentally do a error!("{er:?}") or error!("{er}") and get a random result you did not expect.
-
-```rust
-#[derive(Er)]
-pub struct PortErr;
-pub fn read_port(input: &str) -> Er<u16, PortErr> {
-    input.parse().er(())
-}
-
-pub fn main() {
-    let port = read_port("85").er_report().unwrap();
-    println!("{port}");
-
-    let tree = read_port("fakenumber").unwrap_err();
-    println!("{}", tree.er_top());
-    println!("{}", tree.er_report());
-}
-```
-
-You probably thought `unwrap()` and `expect()` needed Error right(so did i, but it doesn't matter we don't even impl it for Report)?
-
-But it's actually Debug, so do `.er_report()` or `.er_top()` first.
-
-A `main` can return `Result<(), ErReport<AppErr>>` or `Result<(), ErTop<AppErr>>`.
-
-Just want your own typed error? `tree.top`. Still your type, no downcast.
-
 ## Wrap
 
 When you need to implement a trait for your error type it would usally be fine, but in Er (and other crates) you don't own `ErTree`. [Rust's orphan rule](https://doc.rust-lang.org/reference/items/implementations.html#trait-implementation-coherence).
@@ -216,7 +187,7 @@ Want Display/Debug on the Wrap itself? Add `output = report` or `output = top`. 
 
 [The Axum integration](../../integrations/axum/src/lib.rs) shows another example.
 
-## Wrap with Error
+## Wrap with std_err
 
 !WARNING! ONLY add std_error if the foreign trait needs Error on the Wrap itself (Axum doesn't). You HAVE to use `.er_wrap()` after that because `.er()` hides sub errors from find!
 

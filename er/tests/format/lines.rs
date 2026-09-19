@@ -71,7 +71,7 @@ pub fn callback_failure() {
 
     assert!(matches!(
         result,
-        Err(LineError::Callback(e)) if std::ptr::eq(e, &stop)
+        Err(ErLineError::Callback(e)) if std::ptr::eq(e, &stop)
     ));
     assert_eq!(calls, 1);
 
@@ -86,7 +86,7 @@ pub fn callback_failure() {
         Ok(())
     });
 
-    assert_eq!(result, Err(LineError::Callback(17)));
+    assert_eq!(result, Err(ErLineError::Callback(17)));
     assert_eq!(lines, ["first", "second"]);
 
     let result = lines::try_for_each_line(&"unterminated", |line| {
@@ -96,7 +96,7 @@ pub fn callback_failure() {
 
     assert!(matches!(
         result,
-        Err(LineError::Callback(e)) if std::ptr::eq(e, &stop)
+        Err(ErLineError::Callback(e)) if std::ptr::eq(e, &stop)
     ));
 }
 
@@ -146,5 +146,5 @@ pub fn format_failure() {
         .into_er_top()
         .try_for_each_line(|_| Ok::<(), ()>(()));
 
-    assert_eq!(outcome, Err(LineError::Format(fmt::Error)));
+    assert_eq!(outcome, Err(ErLineError::Format(fmt::Error)));
 }

@@ -52,7 +52,7 @@ pub fn callbacks() {
         calls += 1;
         Err(&failure)
     });
-    assert_eq!(result, Err(LineError::Callback(&failure)));
+    assert_eq!(result, Err(ErLineError::Callback(&failure)));
     assert_eq!(calls, 1);
 }
 

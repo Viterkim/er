@@ -1,7 +1,7 @@
-use crate::{LineError, lines::Lines};
+use crate::{ErLineError, lines::Lines};
 use core::{error::Error, fmt};
 
-impl<E: fmt::Display> fmt::Display for LineError<E> {
+impl<E: fmt::Display> fmt::Display for ErLineError<E> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Format(e) => fmt::Display::fmt(e, formatter),
@@ -9,7 +9,7 @@ impl<E: fmt::Display> fmt::Display for LineError<E> {
         }
     }
 }
-impl<E: Error + 'static> Error for LineError<E> {
+impl<E: Error + 'static> Error for ErLineError<E> {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Format(e) => Some(e),

@@ -259,7 +259,7 @@ if let Err(error) = public_read_port("fakenumber") {
 }
 ```
 
-## A tricky example
+## Tricky example (combination)
 
 Foreign errors, own errors, the original error, string context, typed context, using / consuming, public boundary
 

@@ -1,5 +1,6 @@
 use super::Message;
 use core::{error::Error, fmt};
+use er::walk::MAX_SOURCE_HOPS;
 use er::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
