@@ -36,4 +36,4 @@ pub use types::*;
 #[doc(inline)]
 pub use types_test::*;
 #[doc(inline)]
-pub use walk::{ErEntries, ErEntry, ErEntryKind, ErNodes, ErSources};
+pub use walk::{ErEntries, ErEntry, ErEntryKind, ErFindAll, ErNodes, ErSources};

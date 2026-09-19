@@ -6,13 +6,19 @@ Reports now only print the source location the first time if it's repeated.
 
 TestEr is now ErTest and now uses the regular `.er(())`. (still used the `test` feature).
 
-Added option for ErLazy(I don't recommend using it, enabled with the `lazy` feature).
+Add option for ErLazy (I don't recommend using it, enabled with the `lazy` feature).
 
 `.er_from_wrap(...)` is now `.er_wrap(...)`.
 
+`er_find()` chains no longer allocate while searching (and inlined some iter stuff).
+
+`er_find_all()` uses a faster lazy search.
+
 Docs: Recommending `Err` for error names like `NameErr` instead of `NameEr`. And recommend using `NameError` for the public external non Er types.
 
-Docs: `Tricky-error-comparison.md` docs added (foreign errors, own errors, the original error, string context, typed context, using / consuming, public boundary).
+Docs: `tricky-error-comparison.md` docs added (foreign errors, own errors, the original error, string context, typed context, using / consuming, public boundary).
+
+Docs: `performance.md` hot loop advice docs added.
 
 # 0.1.3
 

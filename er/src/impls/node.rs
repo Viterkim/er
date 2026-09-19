@@ -1,10 +1,11 @@
-use crate::{BoxError, ErEntries, ErNode, ErNodes, ErSources, IntoErNode};
+use crate::{BoxError, ErFindAll, ErNode, ErNodes, ErSources, IntoErNode};
 use alloc::vec::Vec;
 #[cfg(feature = "src_locations")]
 use core::panic::Location;
 use core::{error::Error, mem::take};
 
 impl ErNode {
+    #[inline]
     pub fn er_sources(&self) -> ErSources<'_> {
         ErSources::new(self.error.source())
     }
@@ -20,20 +21,25 @@ impl ErNode {
             return Some(found);
         }
 
-        self.er_descendants().find_map(Self::er_find_here::<T>)
+        // The usual Er tree is one error under another (walk without a traversal vec)
+        let mut nodes = self.nodes.as_slice();
+        loop {
+            match nodes {
+                [] => return None,
+                [node] => {
+                    if let Some(found) = node.er_find_here::<T>() {
+                        return Some(found);
+                    }
+                    nodes = &node.nodes;
+                }
+                nodes => return ErNodes::new(nodes).find_map(Self::er_find_here::<T>),
+            }
+        }
     }
 
     /// Finds all the instances of an error type, for when you have duplicates.
-    pub fn er_find_all<T: Error + 'static>(&self) -> impl Iterator<Item = &T> {
-        ErEntries::new(
-            &*self.error,
-            &self.nodes,
-            #[cfg(feature = "src_locations")]
-            Some(self.src_location),
-            #[cfg(not(feature = "src_locations"))]
-            None,
-        )
-        .filter_map(|entry| entry.error.downcast_ref::<T>())
+    pub fn er_find_all<T: Error + 'static>(&self) -> ErFindAll<'_, T> {
+        ErFindAll::new(&*self.error, &self.nodes)
     }
 
     /// Searches this error and its native sources, but not stored children.

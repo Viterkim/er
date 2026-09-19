@@ -50,6 +50,11 @@ pub fn cycles() {
 
         assert!(tree.er_find::<fmt::Error>().is_none());
         assert_eq!(tree.er_find::<Message>().unwrap().text, "healthy");
+        assert!(tree.er_find_all::<fmt::Error>().next().is_none());
+        assert_eq!(
+            tree.er_find_all::<Message>().next().unwrap().text,
+            "healthy"
+        );
 
         let entries: Vec<_> = tree.er_entries().collect();
         assert_eq!(entries.len(), MAX_SOURCE_HOPS + 2);
@@ -76,6 +81,20 @@ pub fn cycles() {
     let tree = ErTree::new(Message::new("root"), [branch]);
     assert!(tree.er_find::<fmt::Error>().is_none());
     assert_eq!(tree.nodes[0].er_find::<Message>().unwrap().text, "healthy");
+
+    let tree = ErTree::new(
+        Message::new("root"),
+        [
+            ErTree::new(&SELF, [Message::new("left")]),
+            ErTree::new(&LEFT, [Message::new("right")]),
+        ],
+    );
+    assert_eq!(
+        tree.er_find_all::<Message>()
+            .map(|message| message.text)
+            .collect::<Vec<_>>(),
+        ["root", "left", "right"]
+    );
 }
 
 pub fn chain(sources: usize) -> Message {

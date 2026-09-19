@@ -1,9 +1,9 @@
 #[cfg(feature = "src_locations")]
 use crate::ErSnapshotLocation;
 use crate::{
-    ErEntries, ErEntry, ErMake, ErNode, ErNodes, ErPayload, ErReport, ErReportRef, ErSnapshot,
-    ErSnapshotEntry, ErSources, ErTop, ErTopRef, ErTree, ErTreeContext, IntoErNode, IntoErTree,
-    Layout,
+    ErEntries, ErEntry, ErFindAll, ErMake, ErNode, ErNodes, ErPayload, ErReport, ErReportRef,
+    ErSnapshot, ErSnapshotEntry, ErSources, ErTop, ErTopRef, ErTree, ErTreeContext, IntoErNode,
+    IntoErTree, Layout,
 };
 #[cfg(feature = "src_locations")]
 use alloc::string::ToString;
@@ -79,6 +79,7 @@ impl<E: Error + 'static> ErTree<E> {
     }
 
     /// Follows the root's `source()` chain.
+    #[inline]
     pub fn er_sources(&self) -> ErSources<'_> {
         ErSources::new(self.top.source())
     }
@@ -102,9 +103,8 @@ impl<E: Error + 'static> ErTree<E> {
     /// Finds all the instances of an error type, for when you have duplicates.
     ///
     /// `error.er_find_all::<PortErr>().find(|e| e.input == "aint_even_a_number_cmon_man")`
-    pub fn er_find_all<T: Error + 'static>(&self) -> impl Iterator<Item = &T> {
-        self.er_entries()
-            .filter_map(|entry| entry.error.downcast_ref::<T>())
+    pub fn er_find_all<T: Error + 'static>(&self) -> ErFindAll<'_, T> {
+        ErFindAll::new(&self.top, &self.nodes)
     }
 
     /// Save the messages, tree structure and locations, without keeping the errors.
