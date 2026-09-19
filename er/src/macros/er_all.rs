@@ -1,11 +1,11 @@
-/// Keep every error, drop oks. The parent only gets made if something fails.
+/// Keep every error, drop oks. The top error only gets made if something fails.
 /// Does not stop early, every result is evaluated.
 ///
 /// `er_all!((), [read_port(port), read_mode(mode)])?;`
 /// An existing collection works too: `er_all!((), results)?;`
 #[macro_export]
 macro_rules! er_all {
-    ($parent:expr, [$($result:expr),* $(,)?] $(,)?) => {{
+    ($top:expr, [$($result:expr),* $(,)?] $(,)?) => {{
         let __er_results: [::core::result::Result<(), $crate::ErNode>; _] = [$(
             match $result {
                 ::core::result::Result::Ok(__er_success) => {
@@ -19,9 +19,9 @@ macro_rules! er_all {
                 }
             }
         ),*];
-        $crate::aggregate::collect(|| $parent, __er_results)
+        $crate::aggregate::collect(|| $top, __er_results)
     }};
-    ($parent:expr, $results:expr $(,)?) => {{
-        $crate::aggregate::collect(|| $parent, $results)
+    ($top:expr, $results:expr $(,)?) => {{
+        $crate::aggregate::collect(|| $top, $results)
     }};
 }

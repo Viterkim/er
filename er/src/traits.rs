@@ -34,7 +34,6 @@ impl<A, F: FnOnce() -> A> ErMake<A, ErBuilt> for F {
         self()
     }
 }
-
 impl<A: From<(P,)>, P, F: FnOnce() -> P> ErMake<A, ErFields> for F {
     fn er_make(self) -> A {
         ErPayload::<A, ErFields>::er_payload(self())
@@ -71,8 +70,8 @@ pub trait ErError: Error + Sized + 'static {
         A: Error + 'static,
         P: ErPayload<A, Mode>,
     {
-        let parent = error(&self).er_payload();
-        ErTree::new(parent, [self])
+        let top = error(&self).er_payload();
+        ErTree::new(top, [self])
     }
 }
 
@@ -149,17 +148,17 @@ pub trait ErPresentation {
 
     /// Just the outer error, leaves Ok alone.
     ///
-    /// `read_port("85").er_top().unwrap();`
+    /// `read_port("85").er_top()?;`
     fn er_top(self) -> Result<Self::Ok, ErTop<Self::Err>>;
 
     /// The whole report, leaves Ok alone.
     ///
-    /// `read_port("85").er_report().unwrap();`
+    /// `read_port("85").er_report()?;`
     fn er_report(self) -> Result<Self::Ok, ErReport<Self::Err>>;
 
     /// Take the tree out of a Wrap with `std_error` and add context. Leaves Ok alone.
     ///
-    /// !WARNING! Normal `.er()` boxes a Wrap with `std_error`, so you can't find its children.
+    /// !WARNING! Normal `.er()` boxes a Wrap with `std_error`, so you can't find the errors inside it.
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er_wrap<A, F>(self, error: F) -> Er<Self::Ok, A>
     where

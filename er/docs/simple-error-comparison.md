@@ -160,7 +160,7 @@ Printing with `{}` or `.to_string()` only gives `invalid port "aint_even_a_numbe
 
 Backtraces can be enabled though. [Printing](https://docs.rs/anyhow/1.0.104/anyhow/struct.Error.html#display-representations)
 
-You can still downcast to the original error, context can be even be struct. The return type just doesn't name your operation's error. [Context](https://docs.rs/anyhow/1.0.104/anyhow/trait.Context.html)
+You can still downcast to the original error, context can even be a struct. The return type just doesn't name your operation's error. [Context](https://docs.rs/anyhow/1.0.104/anyhow/trait.Context.html)
 
 ## SNAFU (0.9.2)
 
@@ -370,7 +370,7 @@ Now the return type requires `PortError` as top, with the parser error kept as a
 
 `{}` prints the report (other crates would do the report on {:?}), it has attachments, sub reports, lookup and shared cloning too, actually many many features. [Report](https://docs.rs/rootcause/0.13.0/rootcause/struct.Report.html)
 
-It also has global hooks for creating and formatting reports, operation context attachments feel like a band aid to me, why not put the data in a small error type. 
+It also has global hooks for creating and formatting reports, operation context attachments feel like a band aid to me, why not put the data in a small error type.
 
 It's pretty good, the lazy version feels like anyhow with locations, and the typed version does require that top type, but you write those types yourself or use another derive.
 
@@ -417,7 +417,7 @@ PortError, at examples/exn_lazy.rs:9:37
 `-- invalid digit found in string, at examples/exn_lazy.rs:9:37
 ```
 
-This is what i like, even when we can't be bothered adding fields we atleast have a unique type(forced to add context a layer up if they also have a another type) AND there's a name and a location.
+This is what i like, even when we can't be bothered adding fields we atleast have a unique type(forced to add context a layer up if they also have another type) AND there's a name and a location.
 
 ### With context
 
@@ -450,21 +450,21 @@ Same but the diff to add input is so small so might as well do it when it makes 
 
 `raise_all` collects several failures (has to be the same type, and makes a new Exn (the tree/report type)).
 
-Native sources get copied into child frames as text(like error-stack), those copies lose downcasting, BUT the error owning the source can still do it [Construction](https://docs.rs/exn/0.3.1/exn/struct.Exn.html#method.new)
+Native sources get copied into another frame as text(like error-stack), those copies lose downcasting, BUT the error owning the source can still do it [Construction](https://docs.rs/exn/0.3.1/exn/struct.Exn.html#method.new)
 
 Ok extended opinion piece inc:
 
-I love exn, but i got tired of typing .or_raise() everywhere, ok_or_raise(), no macros to help creating types. 
+I love exn, but i got tired of typing .or_raise() everywhere, ok_or_raise(), no macros to help creating types.
 
-It's also funny, because exn came about because they were tired of error-stack and typing `change_context_lazy(||)` and i aint gonna lie man `.ok_or_raise(||)` for options is the same lol. 
+It's also funny, because exn came about because they were tired of error-stack and typing `change_context_lazy(||)` and i aint gonna lie man `.ok_or_raise(||)` for options is the same lol.
 
 An exn maintainer `_tison` wrote: `"The real trigger is I'd prefer or_raise over change_context_lazy very much, lol"` from [Reddit link](https://www.reddit.com/r/rust/comments/1qs68cn/comment/o2wtdwq/) where he also says errorstacks code and error chains are overcomplicated.
 
 Bro i just want to use crate_name::*; and do the same thing everywhere. And hot take, error handling is a huge part of most apps, needs to be easy to type, and i dont want to rely on snippets or ai, or huge proc macros spanning the entire function (The error type is fine imo).
 
-And the moment you add tiny friction on making errors, people aren't gonna want to do it. 
+And the moment you add tiny friction on making errors, people aren't gonna want to do it.
 
-When trying to convince other people of how great exn was, the examples aren't the easiest and it's confusing for people that you're doing std::Result<T, Exn<E>>, and people immediately wanna do .map_err(||) and ruin that poor error reports for good.
+When trying to convince other people of how great exn was, the examples aren't the easiest and it's confusing for people that you're doing std::Result<T, Exn<E>>, and people immediately wanna do .map_err(||) and ruin that poor error report for good.
 
 ### Exn vs Er
 
@@ -481,11 +481,11 @@ Still keeps the old error and everything below it. Exn can do this with `map_err
 
 `.er_find::<io::Error>()` finds the actual error, including inside native `source()` chains. `.er_find_all::<PortErr>()` gets all the bad ports.
 
-Exn keeps the actual errors you give it too. BUT if a library gives you a `ReadError` with an `io::Error` inside its `source()`, exn copies that source's message into a child frame. So you can SEE the io error in the report, try to find its type in that frame and get nothing. [Exn construction](https://docs.rs/exn/0.3.1/exn/struct.Exn.html#method.new).
+Exn keeps the actual errors you give it too. BUT if a library gives you a `ReadError` with an `io::Error` inside its `source()`, exn copies that source's message into another frame. So you can SEE the io error in the report, try to find its type in that frame and get nothing. [Exn construction](https://docs.rs/exn/0.3.1/exn/struct.Exn.html#method.new).
 
 The real io error is still there in the normal `source()` of `ReadError`. You don't even have to know it was a `ReadError` to find it. But that means a find function has to check both the Exn frames AND the normal `source()` chains. [This one from the Exn issue](https://github.com/fast/exn/issues/65) only checks frames, so it misses the io error. `.er_find()` checks both.
 
-`er_all!((), [a(), b()])` lets the results have different types. It runs all of them, keeps the failures and drops the oks. Exn's `raise_all` needs the children to convert to the same `Exn<T>` type.
+`er_all!((), [a(), b()])` lets the results have different types. It runs all of them, keeps the failures and drops the oks. Exn's `raise_all` needs every error to convert to the same `Exn<T>` type.
 
 Snapshots in Er for storing/having owned string version of the reports:
 
@@ -620,7 +620,7 @@ fn file_port(path: &str) -> eros::Result<u16, FilePortError> {
 }
 ```
 
-Now the angle here is we aren't handling the error or composing it for our caller, we're just providing our caller with 'what could have gone wrong' which in my opinion is 'just thiserror but you dont make the enum everytime', so yes it avoids the pyramid, but it still making a 'stepped pyramid' and not handling/providing our caller with convenience.
+Now the angle here is we aren't handling the error or composing it for our caller, we're just providing our caller with 'what could have gone wrong' which in my opinion is 'just thiserror but you dont make the enum everytime', so yes it avoids the pyramid, but it's still making a 'stepped pyramid' and not handling/providing our caller with convenience.
 
 I think eros is great for the use case where you 'throw together the actual types of the errors you got', but i feel like it gets messy once you want custom error types with typed context. The [tricky example](tricky-error-comparison.md#eros-080-rc1--thiserror-1) shows the union and context, then separately makes a plain public error.
 
@@ -732,13 +732,13 @@ Caused by:
 
 Leave the source in Display and it prints twice, thats twice the value for half the price. Display printed it once, then Report followed `source()` and printed it again.
 
-Treats debug and display the same. It seems like the secret meanings behind random text formats that suddenly gained sentient meanings were left behind (Which i think is a good move). 
+Treats debug and display the same. It seems like the secret meanings behind random text formats that suddenly gained sentient meanings were left behind (Which i think is a good move).
 
-Report prints what you already have, it doesn't add context. Single line by default, `.pretty(true)` for this output. 
+Report prints what you already have, it doesn't add context. Single line by default, `.pretty(true)` for this output.
 
 [Nightly Docs](https://doc.rust-lang.org/std/error/struct.Report.html)
 
-## Others 
+## Others
 
 [terrors](https://docs.rs/terrors/0.3.3/terrors/) is closer to Eros, with a set of possible errors where you can handle one and pass the rest up. [error_set](https://docs.rs/error_set/0.9.2/error_set/) actually makes enums with your own variants, and lets you combine smaller sets. I haven't tried either in the tricky example.
 
@@ -793,7 +793,7 @@ PortErr { input: "aint_even_a_number_cmon_man" } @ examples/er_context.rs:8:35
 
 # Er weird stuff
 
-Returning `Er<T, E>` means the caller is in Er world now. On public boundaries make a normal error and convert. [Checkout the example](examples.md#public-error).
+Returning `Er<T, E>` means the caller is in Er world now. On public boundaries make a normal error and convert. [Check out the example](examples.md#public-error).
 
 The tree has no Display, Debug, or Error. Pick `.er_report()` or `.er_top()`, then Display and Debug do the same. (Designed this way, to avoid mistakes).
 

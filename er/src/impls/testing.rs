@@ -12,7 +12,6 @@ impl fmt::Debug for TestError {
     }
 }
 impl Error for TestError {}
-
 impl From<()> for TestError {
     fn from(_: ()) -> Self {
         Self

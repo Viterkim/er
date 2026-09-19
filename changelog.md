@@ -4,7 +4,7 @@ Struct errors can now also use `.er(())`, `.er(|| path)` or `.er(|| (machine, to
 
 Reports now only print the source location the first time if it's repeated.
 
-TestEr is now ErTest and now uses the regular `.er(())`. (still used the `test` feature).
+TestEr is now ErTest and now uses the regular `.er(())`. (still uses the `test` feature).
 
 Add option for ErLazy (I don't recommend using it, enabled with the `lazy` feature).
 

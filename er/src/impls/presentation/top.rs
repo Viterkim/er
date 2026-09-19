@@ -72,6 +72,14 @@ impl<E: fmt::Display> fmt::Debug for ErTopRef<'_, E> {
         fmt::Display::fmt(self, formatter)
     }
 }
+impl<E: fmt::Display> ErOpaqueError for ErTopRef<'_, E> {
+    type Output = ErAsError<Self>;
+
+    fn opaque_err(self) -> Self::Output {
+        ErAsError(self)
+    }
+}
+
 impl<E> ErTop<E> {
     pub fn layout(self, layout: Layout) -> Self {
         Self { layout, ..self }
@@ -151,16 +159,7 @@ impl<E: Error + Send + Sync + 'static> IntoErNode for ErTop<E> {
         self.tree.into_er_node()
     }
 }
-
 impl<E: fmt::Display> ErOpaqueError for ErTop<E> {
-    type Output = ErAsError<Self>;
-
-    fn opaque_err(self) -> Self::Output {
-        ErAsError(self)
-    }
-}
-
-impl<E: fmt::Display> ErOpaqueError for ErTopRef<'_, E> {
     type Output = ErAsError<Self>;
 
     fn opaque_err(self) -> Self::Output {

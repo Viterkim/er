@@ -4,13 +4,13 @@ use core::error::Error;
 
 /// The collection loop behind `er_all!`.
 #[cfg_attr(feature = "src_locations", track_caller)]
-pub fn collect<A, Mode, Parent, E, T>(
-    parent: impl FnOnce() -> Parent,
+pub fn collect<A, Mode, Top, E, T>(
+    top: impl FnOnce() -> Top,
     results: impl IntoIterator<Item = Result<T, E>>,
 ) -> Er<(), A>
 where
     A: Error + 'static,
-    Parent: ErMake<A, Mode>,
+    Top: ErMake<A, Mode>,
     E: IntoErNode,
 {
     let mut nodes = Vec::new();
@@ -26,7 +26,7 @@ where
     } else {
         Err(ErTree {
             nodes,
-            ..ErTree::from(parent().er_make())
+            ..ErTree::from(top().er_make())
         })
     }
 }

@@ -43,11 +43,11 @@ The derive writes those impls. `.er()` comes from the lib. (.er() is implemented
 
 Enums get a constructor per variant.
 
-Fields use Debug by default, including foreign types. `#[er(format = "{input}")]` if you want options `skip` leaves a field out, `censor` prints japanese styled.
+Fields are debug printed by default, foreign types too. In `#[er(format = "{input}")]`, `input` uses Display, or the classic `{input:?}` for Debug. `skip` leaves a field out, `censor` prints japanese styled.
 
 `ErFormat` gives the same constructors and Debug/Display, but no Error. Useful for structs inside your error.
 
-`er_all!((), [a(), b()])` runs both, keeps the errors and drops the oks. They can be different types in that list (a Vec needs them to match). The parent only gets made if something failed.
+`er_all!((), [a(), b()])` runs both, keeps the errors and drops the oks. They can be different types in that list (a Vec needs them to match). The top error only gets made if something failed.
 
 ## Constructors
 
@@ -64,7 +64,7 @@ pub struct FileErr(pub PathBuf);
 fs::read_to_string(path).er(|| path)?;
 ```
 
-For more fields, use a tuple in field order: `.er(|| (machine, token))`. Enums still need the variant name, like `.er(|| ModeErr::missing(input))`.
+For more fields, use a tuple in field order: `.er(|| (machine, token))`. Enums still need the variant name, like `.er(|| ModeErr::unknown(input))`.
 
 If Rust can't tell which error you mean, name it: `.er::<FileErr>(|| path)`. You'll usually need that on the first `.er` when you chain two of them.
 
@@ -72,13 +72,13 @@ This works with `er-macros` on its own too. It makes the field conversions when 
 
 Variants get snakecase names. Args follow field order. Strings accept `&str`, numbers keep their exact type. `#[er(exact)]` asks for the field's exact type too.
 
-Heres some examples of writing some stuff and getting some bullshit out. 
+Here's some examples of writing some stuff and getting some bullshit out.
 
 ```rust,ignore
 // You write this
 #[derive(Er)]
 pub struct StartErr;
-// You get this 
+// You get this
 impl StartErr {
     #[must_use]
     pub fn new() -> Self {
@@ -89,7 +89,7 @@ impl StartErr {
 // You write this
 #[derive(Er)]
 pub struct PortErr(pub String);
-// You get this 
+// You get this
 impl PortErr {
     #[must_use]
     pub fn new(value: impl Into<String>) -> Self {
@@ -104,7 +104,7 @@ pub struct FindErr {
     pub query: String,
     pub account: u64,
 }
-// You get this 
+// You get this
 impl FindErr {
     #[must_use]
     pub fn new(query: impl Into<String>, account: u64) -> Self {
@@ -119,7 +119,7 @@ pub enum ModeErr {
     Missing,
     Unknown { input: String },
 }
-// You get this 
+// You get this
 impl ModeErr {
     #[must_use]
     pub fn missing() -> Self {
@@ -136,11 +136,12 @@ impl ModeErr {
 
 ## Wrap
 
-When you need to implement a trait for your error type it would usally be fine, but in Er (and other crates) you don't own `ErTree`. [Rust's orphan rule](https://doc.rust-lang.org/reference/items/implementations.html#trait-implementation-coherence).
+When you need to implement a trait for your error type it would usually be fine, but in Er (and other crates) you don't own `ErTree`. [Rust's orphan rule](https://doc.rust-lang.org/reference/items/implementations.html#trait-implementation-coherence).
 
-That means its GG because in rust you can't implement a foreign trait for a foreign type.
+That means it's GG because in Rust you can't implement a foreign trait for a foreign type.
 
 So Wrap is just a wrapper around ErTree:
+
 ```rust
 // You write this
 #[derive(Er)]
@@ -153,7 +154,7 @@ pub struct BaseErrWrap {
 }
 ```
 
-Lets look at the `Axum` example, where they own the trait `IntoResponse`.
+Let's look at the `Axum` example, where we own `BaseErrWrap` and can implement Axum's `IntoResponse` for it.
 
 ```rust
 use axum::{
@@ -166,13 +167,12 @@ pub struct BaseErr {
     pub input: String,
 }
 
-// You can From<NonWrapped> for you <Wrapped> as seen here with '?'
+// ? turns the normal Er tree into our Wrap
 pub fn read_port(input: &str) -> Result<u16, BaseErrWrap> {
     let port = input.parse().er(|| input)?;
     Ok(port)
 }
 
-// The trait from Axum 
 impl IntoResponse for BaseErrWrap {
     fn into_response(self) -> Response {
         let response = (StatusCode::BAD_REQUEST, "invalid port");
@@ -181,17 +181,15 @@ impl IntoResponse for BaseErrWrap {
 }
 ```
 
-Wrap still works with `.er()`, `.er_report()` and `.er_top()`. 
+Wrap still works with `.er()`, `.er_report()` and `.er_top()`.
 
 Want Display/Debug on the Wrap itself? Add `output = report` or `output = top`. Axum doesn't care.
 
-[The Axum integration](../../integrations/axum/src/lib.rs) shows another example.
+If the `er` crate has another name, give Wrap its path with `#[er(crate = other_name, wrap)]`.
 
-## Wrap with std_err
+## Wrap with std_error
 
-!WARNING! ONLY add std_error if the foreign trait needs Error on the Wrap itself (Axum doesn't). You HAVE to use `.er_wrap()` after that because `.er()` hides sub errors from find!
-
-If the trait needs `Error` on the Wrap itself, add `std_error` with `output`.
+!WARNING! ONLY add std_error with `output` if the foreign trait needs Error on the Wrap itself (Axum doesn't). You HAVE to use `.er_wrap()` after that because `.er()` hides sub errors from find!
 
 ```rust
 #[derive(Er)]

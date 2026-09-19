@@ -18,7 +18,7 @@ er = "0.2"
 
 ## Initial Example
 
-Use `.er` on basically any result/error/option/tree, even different types. 
+Use `.er` on basically any result/error/option/tree, even different types.
 
 You add relevant context(or none), Er keeps the original error and adds line number and file name.
 
@@ -68,7 +68,7 @@ pub fn read_config(machine: &str, token: &str, port: &str, mode: Option<&str>) -
     // add local context
     let er = || (machine, token);
 
-    // 3 different types 
+    // 3 different types
     authenticate(machine, token).er(er)?;
     read_port(port).er(er)?;
     read_mode(mode).er(er)?;
@@ -133,7 +133,7 @@ If you NEED a value from the old error, use `.er_with(|t| t.top.code)`. It keeps
 
 Convenience for actually typing out stuff yourself, and to avoid having good error handling take up 70% of the line, which often means you avoid doing it.
 
-I believe that people do worse error handling because the ergonomics are bad. I'll even argue it reads better as well once you know it. People take what they know for granted, manual `.map_err(||)` everywhere  is nuts, and people only like it because they are used to it.
+I believe that people do worse error handling because the ergonomics are bad. I'll even argue it reads better as well once you know it. People take what they know for granted, manual `.map_err(||)` everywhere is nuts.
 
 Exaggerated but i want to avoid: `thing.add_lazy_context_and_its_tuesday(|something_here| #[now_theres_a_macro_here_for_some_reason] YouGetThePoint { a: "85".to_string() } )`.
 

@@ -181,7 +181,7 @@ pub fn check_config(port: &str, enabled: &str) -> Er<(), ConfigErr> {
 }
 ```
 
-Or if the collections is there already.
+Or pass a collection you already have.
 
 ```rust
 #[derive(Er)]
@@ -420,7 +420,7 @@ if let Err(error) = read_port("fakenumber") {
 }
 ```
 
-Can still print `.er_top()` or `.er_report()`. Each entry has its parent and depth.
+Can still print `.er_top()` or `.er_report()`. Each entry has its depth and the index of the error above it.
 
 Enable `serde` on Er, then add `serde_json` (or toml, or whatever) in your own crate if you want to save it. Er doesn't have `to_json()`.
 
@@ -475,7 +475,7 @@ println!("{error}");
 
 `{field}` uses Display, `{field:?}` uses Debug. Tuple fields use `{0}` and `{1:?}`. Put `format` on a struct or enum variant.
 
-`#[er(skip)]` leaves a field out. `#[er(censor)]` prints `*CENSORED*` (data still there). 
+`#[er(skip)]` leaves a field out. `#[er(censor)]` prints `*CENSORED*` (data still there).
 
 `#[er(no_constructors)]` on the struct/enum skips `new` and all variant constructors, for either derive.
 

@@ -39,9 +39,9 @@ pub struct Pending<'a> {
     pub sources_left: usize,
 }
 
-/// Root, native sources, then nodes.
+/// Each error, then its native sources and stored sub errors.
 /// Longer native chains stop at [`MAX_SOURCE_HOPS`], setting the last entry's `source_truncated`.
-/// Filtering keeps the original indices, parents, depths, and `is_last` values.
+/// Filtering keeps the original indices, links between entries, depths, and `is_last` values.
 #[derive(Clone)]
 #[must_use]
 pub struct ErEntries<'a> {
@@ -49,7 +49,7 @@ pub struct ErEntries<'a> {
     pub next_index: usize,
 }
 
-/// Child nodes, in tree order. Excludes the root and native sources.
+/// Sub errors, in tree order. Excludes the root and native sources.
 #[derive(Clone)]
 #[must_use]
 pub struct ErNodes<'a> {

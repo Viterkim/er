@@ -17,7 +17,7 @@ impl ErSnapshot {
         self.er_entries().for_each(visit);
     }
 
-    /// Stored child errors, skips the root and native sources.
+    /// Stored sub errors, skips the root and native sources.
     pub fn er_descendants(&self) -> impl Iterator<Item = &ErSnapshotEntry> {
         self.er_entries()
             .filter(|entry| entry.kind == ErEntryKind::Node)

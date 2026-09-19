@@ -50,7 +50,7 @@ impl<'a> Iterator for ErEntries<'a> {
         self.next_index += 1;
 
         for (index, node) in nodes.iter().enumerate().rev() {
-            let child = ErEntry {
+            let sub_entry = ErEntry {
                 error: &*node.error,
                 kind: ErEntryKind::Node,
                 index: 0,
@@ -63,7 +63,7 @@ impl<'a> Iterator for ErEntries<'a> {
             };
 
             self.pending.push(Pending {
-                entry: child,
+                entry: sub_entry,
                 nodes: &node.nodes,
                 sources_left: MAX_SOURCE_HOPS,
             });
@@ -75,7 +75,7 @@ impl<'a> Iterator for ErEntries<'a> {
                 return Some(entry);
             }
 
-            let child = ErEntry {
+            let sub_entry = ErEntry {
                 error: source,
                 kind: ErEntryKind::Source,
                 index: 0,
@@ -88,7 +88,7 @@ impl<'a> Iterator for ErEntries<'a> {
             };
 
             self.pending.push(Pending {
-                entry: child,
+                entry: sub_entry,
                 nodes: &[],
                 sources_left: sources_left - 1,
             });

@@ -103,21 +103,21 @@ struct EntryLocation<'a> {
 }
 
 #[cfg(feature = "src_locations")]
-fn hide_same_parent_location<'a>(
+fn hide_repeated_location<'a>(
     entry: &mut ReportEntry<'a>,
     locations: &mut Vec<Option<EntryLocation<'a>>>,
 ) {
     let location = entry
         .src_location
         .map(|(file, line, column)| EntryLocation { file, line, column });
-    let parent = entry
+    let above = entry
         .depth
         .checked_sub(1)
         .and_then(|depth| locations.get(depth))
         .copied()
         .flatten();
 
-    if location.is_some() && location == parent {
+    if location.is_some() && location == above {
         entry.src_location = None;
     }
 
@@ -144,7 +144,7 @@ pub fn write_multiline<'a, W: fmt::Write + ?Sized>(
         #[cfg(feature = "src_locations")]
         let mut entry = entry;
         #[cfg(feature = "src_locations")]
-        hide_same_parent_location(&mut entry, &mut locations);
+        hide_repeated_location(&mut entry, &mut locations);
         if entry.depth > 0 {
             prefix.truncate((entry.depth - 1) * 3);
             writer.write_char('\n')?;
@@ -185,7 +185,7 @@ pub fn write_single_line<'a, W: fmt::Write + ?Sized>(
         #[cfg(feature = "src_locations")]
         let mut entry = entry;
         #[cfg(feature = "src_locations")]
-        hide_same_parent_location(&mut entry, &mut locations);
+        hide_repeated_location(&mut entry, &mut locations);
         if entry.depth > depth {
             writer.write_str(" [")?;
         } else if entry.index > 0 {

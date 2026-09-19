@@ -80,6 +80,14 @@ impl<E: Error + 'static> fmt::Debug for ErReportRef<'_, E> {
         fmt::Display::fmt(self, formatter)
     }
 }
+impl<E: Error + 'static> ErOpaqueError for ErReportRef<'_, E> {
+    type Output = ErAsError<Self>;
+
+    fn opaque_err(self) -> Self::Output {
+        ErAsError(self)
+    }
+}
+
 impl<E> ErReport<E> {
     pub fn layout(self, layout: Layout) -> Self {
         Self { layout, ..self }
@@ -167,16 +175,7 @@ impl<E: Error + Send + Sync + 'static> IntoErNode for ErReport<E> {
         self.tree.into_er_node()
     }
 }
-
 impl<E: Error + 'static> ErOpaqueError for ErReport<E> {
-    type Output = ErAsError<Self>;
-
-    fn opaque_err(self) -> Self::Output {
-        ErAsError(self)
-    }
-}
-
-impl<E: Error + 'static> ErOpaqueError for ErReportRef<'_, E> {
     type Output = ErAsError<Self>;
 
     fn opaque_err(self) -> Self::Output {

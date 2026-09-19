@@ -8,7 +8,6 @@ pub type ErLazy<T = ()> = Er<T, ErLazyError>;
 /// The context added by `.er(())` or `.er(|| message)`.
 #[derive(Debug)]
 pub struct ErLazyError(pub Option<String>);
-
 impl fmt::Display for ErLazyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.0.as_deref().unwrap_or("failed"))

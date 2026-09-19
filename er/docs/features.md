@@ -2,21 +2,21 @@
 
 The crate is `no_std` but requires `alloc`
 
-### default features
+## default features
 
 `macros, src_locations`
 
-### non-default features
+## non-default features
 
 `small_path_src, serde, lazy`
 
-### non-default dev/testing feature
+## non-default dev/testing feature
 
 `test`
 
 ## macros
 
-Convenience macros that kinda is the point of Er, you get `#[derive(Er)]` and `#[derive(ErFormat)]` etc.
+Convenience macros that kinda are the point of Er, you get `#[derive(Er)]` and `#[derive(ErFormat)]` etc.
 
 ## src_locations
 

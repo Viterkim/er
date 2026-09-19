@@ -19,7 +19,7 @@ pub struct ErTree<E> {
 /// A boxed error that can go in the tree.
 pub type BoxError = Box<dyn Error + Send + Sync + 'static>;
 
-/// One stored error and its children.
+/// One stored error and the sub errors below it.
 #[must_use]
 pub struct ErNode {
     pub error: BoxError,

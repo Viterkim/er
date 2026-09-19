@@ -37,14 +37,14 @@ impl<E: Error + 'static> ErTree<E> {
     ///
     /// `let error = error.er_with(|t| t.top.code);`
     #[cfg_attr(feature = "src_locations", track_caller)]
-    pub fn er_with<A, P, Mode>(self, parent: impl FnOnce(&Self) -> P) -> ErTree<A>
+    pub fn er_with<A, P, Mode>(self, top: impl FnOnce(&Self) -> P) -> ErTree<A>
     where
         E: Send + Sync,
         A: Error + 'static,
         P: ErPayload<A, Mode>,
     {
-        let parent = parent(&self).er_payload();
-        ErTree::new(parent, [self])
+        let top = top(&self).er_payload();
+        ErTree::new(top, [self])
     }
 
     pub fn into_er_node(self) -> ErNode
@@ -145,19 +145,17 @@ impl<E: Error + 'static> ErTree<E> {
         ErSnapshot { entries }
     }
 }
-
 impl<E: Error + Send + Sync + 'static, Mode> ErTreeContext<Mode> for ErTree<E> {
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er<A>(self, parent: impl ErMake<A, Mode>) -> ErTree<A>
+    fn er<A>(self, top: impl ErMake<A, Mode>) -> ErTree<A>
     where
         A: Error + 'static,
     {
-        ErTree::new(parent.er_make(), [self])
+        ErTree::new(top.er_make(), [self])
     }
 }
-
 impl<E> ErTree<E> {
-    /// The stored children, no root or native sources.
+    /// The stored sub errors, no root or native sources.
     pub fn er_descendants(&self) -> ErNodes<'_> {
         ErNodes::new(&self.nodes)
     }

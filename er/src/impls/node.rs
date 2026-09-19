@@ -42,7 +42,7 @@ impl ErNode {
         ErFindAll::new(&*self.error, &self.nodes)
     }
 
-    /// Searches this error and its native sources, but not stored children.
+    /// Searches this error and its native sources, but not stored sub errors.
     pub fn er_find_here<T: Error + 'static>(&self) -> Option<&T> {
         let error: &(dyn Error + 'static) = &*self.error;
 
@@ -60,6 +60,11 @@ impl Drop for ErNode {
         }
     }
 }
+impl IntoErNode for ErNode {
+    fn into_er_node(self) -> Self {
+        self
+    }
+}
 
 impl<E: Into<BoxError>> IntoErNode for E {
     #[cfg_attr(feature = "src_locations", track_caller)]
@@ -73,10 +78,5 @@ impl<E: Into<BoxError>> IntoErNode for E {
             #[cfg(feature = "src_locations")]
             src_location: Location::caller(),
         }
-    }
-}
-impl IntoErNode for ErNode {
-    fn into_er_node(self) -> Self {
-        self
     }
 }

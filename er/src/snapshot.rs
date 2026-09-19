@@ -6,7 +6,7 @@ use alloc::{string::String, vec::Vec};
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[must_use]
 pub struct ErSnapshot {
-    /// Tree order, with parent indices pointing into this list.
+    /// Tree order, with indices linking each error to the one above it.
     /// Don't reorder these unless you also fix everything that says where they belong in the tree.
     pub entries: Vec<ErSnapshotEntry>,
 }

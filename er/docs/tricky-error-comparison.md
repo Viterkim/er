@@ -56,9 +56,9 @@ The hottest take from me is that each library (because of ergonomics and inner w
 
 In some cases you COULD make them more similar, but you're fighting an uphill battle. Er/Exn makes you always design your errors, Eros makes you narrow/widen what inner errors could occur, and thiserror makes you map the original error up.
 
-My biggest point is, why is the most inner error sacred/something your caller above you should ever handle/know? As long as you have the original message, i think that's exactly what you need, and if original context is there with something like an error codes, that should be brought up into your own type.
+My biggest point is, why is the most inner error sacred/something your caller above you should ever handle/know? As long as you have the original message, i think that's exactly what you need, and if original context is there with something like an error code, that should be brought up into your own type.
 
-If your caller needs to do stuff with variants, your caller should not get a pyramid of nested chained types, they should be getting 1 type of what happened they can match on. And if they don't care about what happened they should just be forced to (at a type level) to yeet it up one layer so the next layer also adds the call location(which is why i don't think you should have an AppErr in Er, so you can just '?' it at every step).
+If your caller needs to do stuff with variants, your caller should not get a pyramid of nested chained types, they should be getting 1 type of what happened they can match on. And if they don't care about what happened they should just be forced (at a type level) to yeet it up one layer so the next layer also adds the call location(which is why i don't think you should have an AppErr in Er, so you can just '?' it at every step).
 
 I don't think you should ever give a serde error, or an io error to someone else, you should give them a typed error that is handled or set up for handling.
 
@@ -734,13 +734,11 @@ use std::{error::Error, fmt, io};
 pub struct DriverError {
     source: io::Error,
 }
-
 impl fmt::Display for DriverError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("device failed")
     }
 }
-
 impl Error for DriverError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         Some(&self.source)

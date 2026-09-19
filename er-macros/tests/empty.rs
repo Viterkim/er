@@ -12,7 +12,6 @@ pub struct FileErr(pub String);
 #[derive(Er)]
 #[er(no_constructors)]
 pub struct ManualEmpty;
-
 impl From<()> for ManualEmpty {
     fn from(_: ()) -> Self {
         Self
