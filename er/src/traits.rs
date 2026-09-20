@@ -7,23 +7,6 @@ pub struct ErBuilt;
 /// Build the new top error from the fields returned by the closure.
 pub struct ErFields;
 
-/// Turn callback output into the new top error.
-pub trait ErPayload<A, Mode> {
-    fn er_payload(self) -> A;
-}
-
-impl<A> ErPayload<A, ErBuilt> for A {
-    fn er_payload(self) -> A {
-        self
-    }
-}
-
-impl<A: From<(P,)>, P> ErPayload<A, ErFields> for P {
-    fn er_payload(self) -> A {
-        A::from((self,))
-    }
-}
-
 /// How `.er()` makes its new top error.
 pub trait ErMake<A, Mode> {
     fn er_make(self) -> A;
@@ -34,9 +17,9 @@ impl<A, F: FnOnce() -> A> ErMake<A, ErBuilt> for F {
         self()
     }
 }
-impl<A: From<(P,)>, P, F: FnOnce() -> P> ErMake<A, ErFields> for F {
+impl<A: From<(P,)>, P, F: FnOnce(()) -> P> ErMake<A, ErFields> for F {
     fn er_make(self) -> A {
-        ErPayload::<A, ErFields>::er_payload(self())
+        A::from((self(()),))
     }
 }
 
@@ -62,15 +45,14 @@ pub trait ErError: Error + Sized + 'static {
     /// |e| is the old error.
     /// Use this when the new error needs something from the old one.
     ///
-    /// `return Err(device.er_with(|e| e.code));`
+    /// `return Err(device.er_with(|e| AnalyzeErr::new(e.code)));`
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_with<A, P, Mode>(self, error: impl FnOnce(&Self) -> P) -> ErTree<A>
+    fn er_with<A>(self, error: impl FnOnce(&Self) -> A) -> ErTree<A>
     where
         Self: Send + Sync,
         A: Error + 'static,
-        P: ErPayload<A, Mode>,
     {
-        let top = error(&self).er_payload();
+        let top = error(&self);
         ErTree::new(top, [self])
     }
 }
@@ -84,8 +66,8 @@ pub trait ErContext<Mode> {
     ///
     /// ```rust,ignore
     /// result.er(())?; // Empty struct
-    /// result.er(|| path)?; // One field
-    /// result.er(|| (machine, token))?; // More fields
+    /// result.er(|_| path)?; // One field
+    /// result.er(|_| (machine, token))?; // More fields
     /// result.er(|| EnumErr::variant_name(arg1))?; // Enum variant
     /// ```
     #[cfg_attr(feature = "src_locations", track_caller)]
@@ -113,12 +95,11 @@ pub trait ErResult {
     /// Use this when the new error needs something from the old one.
     /// Otherwise use `.er()`.
     ///
-    /// `result.er_with(|t| t.top.code)?;`
+    /// `result.er_with(|t| AnalyzeErr::new(t.top.code))?;`
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_with<A, P, Mode>(self, error: impl FnOnce(&Self::Err) -> P) -> Er<Self::Ok, A>
+    fn er_with<A>(self, error: impl FnOnce(&Self::Err) -> A) -> Er<Self::Ok, A>
     where
         A: Error + 'static,
-        P: ErPayload<A, Mode>,
         Self::Err: IntoErNode;
 
     /// For values that don't implement `Error`, like `Err(85)`.

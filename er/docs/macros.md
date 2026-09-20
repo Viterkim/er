@@ -55,18 +55,21 @@ Both `Er` and `ErFormat` make these. Put `#[er(no_constructors)]` on the struct/
 
 For an empty struct, use `.er(())`. `no_constructors` turns that off too.
 
-For a struct with fields, `.er(|| path)` lets you skip its name at the call site too:
+For a struct with fields, `.er(|_| path)` lets you skip typing out the name.
 
 ```rust
 #[derive(Er)]
 pub struct FileErr(pub PathBuf);
 
-fs::read_to_string(path).er(|| path)?;
+// Less typing yesyes
+fs::read_to_string(path).er(|_| path)?;
 ```
 
-For more fields, use a tuple in field order: `.er(|| (machine, token))`. Enums still need the variant name, like `.er(|| ModeErr::unknown(input))`.
+For more fields, use a tuple `.er(|_| (machine, token))`. 
 
-If Rust can't tell which error you mean, name it: `.er::<FileErr>(|| path)`. You'll usually need that on the first `.er` when you chain two of them.
+Enums still need the variant name, like `.er(|| ModeErr::unknown(input))`.
+
+If Rust can't tell which error you mean(chaining): `.er::<FileErr>(|_| path)`.
 
 This works with `er-macros` on its own too. It makes the field conversions when you derive `Er`, and `no_constructors` skips those as well.
 
@@ -169,7 +172,7 @@ pub struct BaseErr {
 
 // ? turns the normal Er tree into our Wrap
 pub fn read_port(input: &str) -> Result<u16, BaseErrWrap> {
-    let port = input.parse().er(|| input)?;
+    let port = input.parse().er(|_| input)?;
     Ok(port)
 }
 
@@ -181,7 +184,7 @@ impl IntoResponse for BaseErrWrap {
 }
 ```
 
-Wrap still works with `.er()`, `.er_report()` and `.er_top()`.
+Results using Wrap still work with `.er()`, `.er_report()` and `.er_top()`.
 
 Want Display/Debug on the Wrap itself? Add `output = report` or `output = top`. Axum doesn't care.
 

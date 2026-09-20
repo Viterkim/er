@@ -4,7 +4,7 @@ use std::{fs::read_to_string, path::PathBuf};
 #[derive(Er)]
 pub struct FileErr(pub PathBuf);
 pub fn read_file(path: &str) -> Er<String, FileErr> {
-    let text = read_to_string(path).er(|| path)?;
+    let text = read_to_string(path).er(|_| path)?;
     Ok(text)
 }
 
@@ -19,7 +19,7 @@ pub struct PortErr {
     pub invalid_port: String,
 }
 pub fn read_port(input: &str) -> Er<u16, PortErr> {
-    let port: u16 = input.parse().er(|| input)?;
+    let port: u16 = input.parse().er(|_| input)?;
     Ok(port)
 }
 
@@ -54,11 +54,11 @@ pub fn read_config(
     port: &str,
     mode: Option<&str>,
 ) -> Er<(), ConfigErr> {
-    let er = || (machine, token);
+    let e = |_| (machine, token);
 
-    authenticate(machine, token).er(er)?;
-    read_port(port).er(er)?;
-    read_mode(mode).er(er)?;
+    authenticate(machine, token).er(e)?;
+    read_port(port).er(e)?;
+    read_mode(mode).er(e)?;
 
     Ok(())
 }
@@ -67,7 +67,7 @@ pub fn read_config(
 pub struct StartupErr(pub String);
 pub fn startup() -> Er<(), StartupErr> {
     er_all!(
-        || "some config checks failed",
+        |_| "some config checks failed",
         [
             read_config(
                 "HaandboldFuglen",

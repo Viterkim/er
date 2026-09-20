@@ -1,10 +1,10 @@
 # 0.2.0
 
-Struct errors can now also use `.er(())`, `.er(|| path)` or `.er(|| (machine, token))` without repeating the error name.
+Struct errors can now also use `.er(())`, `.er(|_| path)` or `.er(|_| (machine, token))` without repeating the error name.
 
 Reports now only print the source location the first time if it's repeated.
 
-TestEr is now ErTest and now uses the regular `.er(())`. (still uses the `test` feature).
+`TestEr` is now `ErTest` and now uses the regular `.er(())`. (still uses the `test` feature).
 
 Add option for ErLazy (I don't recommend using it, enabled with the `lazy` feature).
 
@@ -14,11 +14,11 @@ Add option for ErLazy (I don't recommend using it, enabled with the `lazy` featu
 
 `er_find_all()` uses a faster lazy search.
 
-Docs: Recommending `Err` for error names like `NameErr` instead of `NameEr`. And recommend using `NameError` for the public external non Er types.
+Docs: Recommending `Err` for error names like `NameErr` instead of `NameEr`. And recommend using `NameError` for the public external non Er types. And `let e = ||` for closures.
 
 Docs: `tricky-error-comparison.md` docs added (foreign errors, own errors, the original error, string context, typed context, using / consuming, public boundary).
 
-Docs: `performance.md` hot loop advice docs added.
+Docs: `performance.md`, niche little thing.
 
 # 0.1.3
 

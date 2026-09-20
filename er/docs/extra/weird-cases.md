@@ -1,24 +1,5 @@
 # Weird cases
 
-## When .er() has two choices
-
-The boxed field takes any error. When `existing` is already a `BoxErr`, `.er(|| existing)` could use it as the top error or put it in the box of a new one. Rust refuses to guess and gives a compiler error. An `io::Error` only fits the box, so that works normally.
-
-```rust
-#[derive(Er)]
-pub struct BoxErr(pub Box<dyn std::error::Error + Send + Sync>);
-
-// Use the BoxErr we already made
-pub fn use_existing(result: Result<(), io::Error>, existing: BoxErr) -> Er<(), BoxErr> {
-    ErContext::<ErBuilt>::er(result, || existing)
-}
-
-// Put it inside a new BoxErr
-pub fn wrap_existing(result: Result<(), io::Error>, existing: BoxErr) -> Er<(), BoxErr> {
-    ErContext::<ErFields>::er(result, || existing)
-}
-```
-
 ## A sub error needs Send + Sync
 
 Your error can hold an `Rc` while it's on top. If you add another error above it, the old one becomes a sub error and needs `Send + Sync + 'static`.

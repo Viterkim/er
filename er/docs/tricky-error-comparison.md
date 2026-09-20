@@ -6,21 +6,19 @@ Read the [simple comparison](simple-error-comparison.md) first (basic usage, con
 
 ### Links - Sections
 
+[Printed errors](#what-gets-printed)
+
 [Original errors](#getting-the-original-errors)
 
 [Public errors](#public-errors)
 
-[Printed errors](#what-gets-printed)
-
 ### Links - Libraries
 
-[Er](#er-020-1)
+[thiserror, lazy style](#thiserror-lazy-style-2020-1)
 
-[Eros](#eros-080-rc1--thiserror-1)
+[thiserror, verbose style](#thiserror-verbose-style-2020-1)
 
-[thiserror](#thiserror-2020-1)
-
-[Anyhow](#anyhow-10104--thiserror-1)
+[Anyhow](#anyhow-10104-1)
 
 [SNAFU](#snafu-092-1)
 
@@ -29,6 +27,10 @@ Read the [simple comparison](simple-error-comparison.md) first (basic usage, con
 [rootcause](#rootcause-0130--thiserror-1)
 
 [exn](#exn-031--thiserror-1)
+
+[Er](#er-020-1)
+
+[Eros](#eros-080-rc1--thiserror-1)
 
 [Problemo](#problemo-0013-1)
 
@@ -42,7 +44,7 @@ A bad Ip or port we'll group to bad input. (Two parser errors we turn into one `
 
 Port `85` is sacred, and not allowed. (An error we made up ourselves, so nothing to map from).
 
-If bind fails, we'll go looking for other available ports and grab `kind()` from the io error. If the address is already in use, the caller can show the ports we found (digging for info in the error beneath).
+If bind fails, we'll go looking for other available ports and grab `kind()` from the io error. If the address is already in use, the caller can show the ports we found (digging for info in the error below).
 
 Then we'll try another thing. Say a dependency gives us an error with an io error inside it. Can we get both actual errors back, or do we just get their messages?
 
@@ -52,59 +54,670 @@ Done on Rust 1.98.1
 
 ## Opinion
 
-The hottest take from me is that each library (because of ergonomics and inner workings) ALWAYS forces you to do a thing in a certain way. The way `Er`, `eros` and `thiserror` (3 very different cases) each works makes you structure errors fundamentally different.
+The hottest take from me is that each library (because of ergonomics and inner workings) forces you to do a thing in a certain way. The way each works makes you structure errors fundamentally different, and if you think it's about "using it correctly", i don't think you are being honest.
 
-In some cases you COULD make them more similar, but you're fighting an uphill battle. Er/Exn makes you always design your errors, Eros makes you narrow/widen what inner errors could occur, and thiserror makes you map the original error up.
+In some cases you COULD make them more similar, but you're fighting an uphill battle. Er/Exn makes you always design your errors, Eros makes you narrow/widen what inner errors could occur, and thiserror lets you `?` the original errors or makes you map them into your own.
 
 My biggest point is, why is the most inner error sacred/something your caller above you should ever handle/know? As long as you have the original message, i think that's exactly what you need, and if original context is there with something like an error code, that should be brought up into your own type.
 
 If your caller needs to do stuff with variants, your caller should not get a pyramid of nested chained types, they should be getting 1 type of what happened they can match on. And if they don't care about what happened they should just be forced (at a type level) to yeet it up one layer so the next layer also adds the call location(which is why i don't think you should have an AppErr in Er, so you can just '?' it at every step).
 
-I don't think you should ever give a serde error, or an io error to someone else, you should give them a typed error that is handled or set up for handling.
+I don't think you should ever give a serde error, or an io error to someone else, you should give them a typed error that is handled or set up for handling. I think people's resistance to this is just because they are used to it.
 
 ## TLDR (libraries compared, pain points, experience)
 
-### Er (0.2.0)
+### thiserror, lazy style (2.0.20)
 
-We get one typed error with the stuff our caller cares about. `.er_with()` can read the failed error and keep it underneath. Everything below `.top` needs a search. And `.er()` can't also put that old error in a typed source field on the enum variant, like a classic thiserror enum. The tree owns it.
+One variant per error we got, then `?` works and the originals stay typed. We don't get the `input`, address or available ports though, and bad IP / bad port are separate cases instead of one `InvalidInput`. This is the thiserror pyramid people actually write because it's easy, then at night you get a 'file not found' and you have no clue where. (yes you can add context, do people do it everywhere? no, or well maybe they do but then their code base is 80% that).
 
-### Eros (0.8.0-rc.1) (+ thiserror)
+### thiserror, verbose style (2.0.20)
 
-Eros gives us a union of the original error types. That's nice if those types are what the caller wants. Here bad Ip and bad port stay different types even though they're both bad input to us. The ports sit in separate context, so matching the io error doesn't guarantee we have them. We can map into our own errors, but then we have to make and map them ourselves.
+Now we make the cases around what our caller cares about and keep the original errors too. `InvalidInput` needs another error enum underneath because IP and port parsing are different types. We also write every `map_err`, source field and bit of context ourselves.
 
-### thiserror (2.0.20)
+### Anyhow (1.0.104)
 
-We get a normal enum. Each variant can have its own typed source field, so the caller knows what it contains. Our `InvalidInput` drops the two parser errors. Keeping both under one variant means boxing them or making another type, and we write the `map_err` calls ourselves.
-
-### Anyhow (1.0.104) (+ thiserror)
-
-Easy to add context and keep the old errors. But the caller gets `anyhow::Error`, so our own cases take a runtime lookup. Reading `kind()` while adding the bind context takes a manual `map_err`. Anyhow can still find an error inside a normal `source()` chain.
+`?` everything and add string context where it matters. It's short, the report is good and the original errors stay there for downcasting. Our `InvalidInput`, sacred port and available ports are just text though, so the caller can't match on them or pass the ports to `show_available_ports`.
 
 ### SNAFU (0.9.2)
 
-We get an enum with typed source fields, and its context callback can see the failed error. That makes the bind case pretty nice here. To put both parser errors under one `InvalidInput`, we box them, so that source field no longer tells us which parser failed.
+We get an enum with typed source fields, and its context callback can see the failed error. That makes the bind case pretty nice here. To put both parser errors under one `InvalidInput`, we box them, so now you gotta downcast the source to know which parser failed. I think it's fine and SNAFU can 'technically' cover most cases, i just think that... I'm not gonna type all that.
+
+### Eros (0.8.0-rc.1) (+ thiserror)
+
+Eros gives us a union of the original error types. That's nice if those types are what the caller wants. Here bad Ip and bad port stay different types even though they're both bad input to us. The ports sit in separate context, so matching the io error doesn't guarantee we have them. We can map into our own errors, but then we have to make and map them ourselves. It avoids the pyramid but it has the same philosophy of caring about the original errors type and yeeting that up that i don't agree with. 
 
 ### error-stack (0.8.0) (+ thiserror)
 
-We get a typed current error with the old errors kept in a report. But its lazy context callback can't see the failed error, so bind needs `map_err`. Its lookup finds the error we gave it, but misses the real io error inside that error. That nested error was copied into a frame as text.
+We get a typed current error with the old errors kept in a report. But its lazy context callback can't see the failed error, so bind needs `map_err`. Its lookup finds the error we gave it, but misses the real io error inside that error. That nested error was copied into a frame as text. (i feel like its like exn but with a worse user experience)
 
 ### rootcause (0.13.0) (+ thiserror)
 
-We get a typed current error. `context_transform` can read the failed io error, but it replaces it. So we get the kind and lose the original io error. Adding context instead keeps it, but that callback can't read it. Finding an error inside another one takes some digging through reports and sources.
+We get a typed current error with the old error kept underneath. Reading `kind()` while adding context takes `map_err`. Finding an error inside another one takes some digging through reports and sources.
 
 ### exn (0.3.1) (+ thiserror)
 
-We get a typed top error and a tree underneath. Exn keeps the old errors, but doesn't give us a find by type. It also copies native sources into frames as text, so searching just the frames still misses the real error inside another one. Reading `kind()` at bind needs `map_err`.
+We get a typed top error and a tree underneath. Exn keeps the old errors, but has no built-in type search. It also copies native sources into frames as text, so searching just the frames still misses the real error inside another one. Reading `kind()` at bind needs `map_err`. I think exn is very close to being insanely good (which is why i made Er).
+
+### Er (0.2.0)
+
+We get one typed error with the stuff our caller cares about. `.er_with()` can read the failed error and keep it underneath. Everything below `.top` needs a search. AND `.er()` can't put that old error in a typed source field on the enum variant as well (like a classic thiserror enum) because the tree owns it (this is the biggest limitation, which i don't think is a negative, i don't think you should be doing that, and it applies to all the report styled error handling crates anyway).
 
 ### Problemo (0.0.13)
 
-Tags say what happened, attachments hold the data. The caller has to look up both, and finding a tag doesn't guarantee its attachment is there. Problemo can find errors inside normal `source()` chains. Reading `kind()` at bind still needs `map_err`.
+Tags say what happened and attachments hold the data. The caller has to look up both, and finding a tag doesn't even guarantee its attachment is there. Problemo can find errors inside normal `source()` chains. Reading `kind()` at bind still needs `map_err`.
+
+# What gets printed
+
+First lets look at what actually comes out, `127.0.0.1:nope` is entered and the port parser only says `invalid digit found in string`, so what happens? (keep reading, you don't even have to wait until the next episode).
+
+```rust
+let error = listen("127.0.0.1:nope").unwrap_err();
+```
+
+## Er
+
+```rust
+println!("{}", error.er_report());
+```
+
+```text
+ListenErr::InvalidInput { input: "127.0.0.1:nope" } @ src/bin/er.rs:24:36
+`- invalid digit found in string
+```
+
+## Eros
+
+```rust
+println!("{error:?}");
+```
+
+```text
+invalid digit found in string
+
+  Context (innermost first):
+    1. bad input: 127.0.0.1:nope
+
+Backtrace (disabled):
+```
+
+## thiserror, lazy style
+
+```rust
+println!("{error:?}");
+```
+
+```text
+InvalidPort(ParseIntError { kind: InvalidDigit })
+```
+
+The parser error is still there, but the input isn't.
+
+## thiserror, verbose style
+
+```rust
+println!("{error:?}");
+```
+
+```text
+InvalidInput { input: "127.0.0.1:nope", source: Port(ParseIntError { kind: InvalidDigit }) }
+```
+
+Now both are there. Getting that one `InvalidInput` case takes the extra error enum in the full example.
+
+## Anyhow
+
+```rust
+println!("{error:?}");
+```
+
+```text
+bad input: 127.0.0.1:nope
+
+Caused by:
+    invalid digit found in string
+```
+
+## SNAFU
+
+```rust
+println!("{}", snafu::Report::from_error(error));
+```
+
+```text
+bad input: 127.0.0.1:nope
+
+Caused by this error:
+  1: invalid digit found in string
+```
+
+## error-stack
+
+```rust
+println!("{error:?}");
+```
+
+```text
+bad input: 127.0.0.1:nope
+├╴at src/bin/error-stack.rs:29:10
+│
+╰─▶ invalid digit found in string
+    ╰╴at src/bin/error-stack.rs:29:10
+```
+
+## rootcause
+
+```rust
+println!("{error}");
+```
+
+```text
+
+ ● bad input: 127.0.0.1:nope
+ ├ src/bin/rootcause.rs:29
+ │
+ ● invalid digit found in string
+ ╰ src/bin/rootcause.rs:29
+```
+
+## exn
+
+```rust
+println!("{error:?}");
+```
+
+```text
+bad input: 127.0.0.1:nope, at src/bin/exn.rs:29:10
+`-- invalid digit found in string, at src/bin/exn.rs:29:10
+```
+
+## Problemo
+
+```rust
+println!("{error}");
+```
+
+```text
+bad input: invalid digit found in string
+```
+
+The input is still in the `Input` attachment. This printout doesn't show it.
+
+# Tricky Error Comparison - Full Examples
 
 ## Shared functions
 
 Let's imagine `find_available_ports(address: SocketAddrV4) -> Vec<u16>` finds ports to suggest, `show_available_ports(ports: &[u16]) -> ()` shows them, and `start_server(listener: TcpListener) -> ()` starts the server.
 
-# Tricky Error Comparison - Full Examples
+## thiserror, lazy style (2.0.20)
+
+One variant for each error we get, then `?` does the rest. (I know i have done this many many times).
+
+```rust
+// Making it
+#[derive(Debug, thiserror::Error)]
+pub enum ListenError {
+    #[error("invalid IP: {0}")]
+    InvalidIp(#[from] AddrParseError),
+    #[error("invalid port: {0}")]
+    InvalidPort(#[from] ParseIntError),
+    #[error("port 85 is sacred")]
+    SacredPort,
+    #[error("couldn't bind: {0}")]
+    Bind(#[from] io::Error),
+}
+
+pub fn listen(input: &str) -> Result<TcpListener, ListenError> {
+    // Normal stuff
+    let (ip, port) = input.split_once(':').unwrap_or((input, ""));
+
+    // First 2 errors, `?` picks their variant
+    let ip = ip.parse::<Ipv4Addr>()?;
+    let port = port.parse::<u16>()?;
+
+    // Third error, our own rule that port 85 is sacred
+    if port == 85 {
+        return Err(ListenError::SacredPort);
+    }
+
+    // Fourth error, another `?`
+    let address = SocketAddrV4::new(ip, port);
+    Ok(TcpListener::bind(address)?)
+}
+
+// Using it
+fn main() {
+    let input = "127.0.0.1:8080";
+    match listen(input) {
+        Ok(listener) => start_server(listener),
+        Err(ListenError::InvalidIp(_) | ListenError::InvalidPort(_)) => {
+            eprintln!("bad input: {input}")
+        },
+        Err(ListenError::SacredPort) => eprintln!("port 85 is sacred"),
+        Err(ListenError::Bind(source)) => eprintln!("couldn't bind: {source}"),
+    }
+}
+```
+
+All the original errors are there and most of `listen` is just `?`. We didn't make one `InvalidInput` though, or keep the address and available ports for the caller.
+
+The problem is, it looks so cool in the function, we get to exploit '?', the problem is it fucking sucks reading the error, and you've not designed anything you've just thrown the errors up one layer with a typed boilerplate thingy.
+
+## thiserror, verbose style (2.0.20)
+
+Now the error is shaped around the task, without dropping those parser errors.
+
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum InvalidInputError {
+    #[error(transparent)]
+    Ip(#[from] AddrParseError),
+    #[error(transparent)]
+    Port(#[from] ParseIntError),
+}
+
+// Making it
+#[derive(Debug, thiserror::Error)]
+pub enum ListenError {
+    #[error("bad input: {input}")]
+    InvalidInput {
+        input: String,
+        #[source]
+        source: InvalidInputError,
+    },
+    #[error("port 85 is sacred")]
+    SacredPort,
+    #[error("couldn't bind {address}: {kind:?}")]
+    BindFailed {
+        address: SocketAddrV4,
+        kind: io::ErrorKind,
+        available_ports: Vec<u16>,
+        #[source]
+        source: io::Error,
+    },
+}
+
+pub fn listen(input: &str) -> Result<TcpListener, ListenError> {
+    // Normal stuff
+    let (ip, port) = input.split_once(':').unwrap_or((input, ""));
+
+    // First 2 errors, to us they're both just bad input
+    let ip = ip
+        .parse::<Ipv4Addr>()
+        .map_err(|source| ListenError::InvalidInput {
+            input: input.to_owned(),
+            source: source.into(),
+        })?;
+    let port = port
+        .parse::<u16>()
+        .map_err(|source| ListenError::InvalidInput {
+            input: input.to_owned(),
+            source: source.into(),
+        })?;
+
+    // Third error, our own rule that port 85 is sacred
+    if port == 85 {
+        return Err(ListenError::SacredPort);
+    }
+
+    // Fourth error, we might want to match on what happened
+    let address = SocketAddrV4::new(ip, port);
+
+    TcpListener::bind(address).map_err(|source| {
+        let kind = source.kind();
+        let available_ports = find_available_ports(address);
+        ListenError::BindFailed { address, kind, available_ports, source }
+    })
+}
+
+// Using it
+fn main() {
+    let input = "127.0.0.1:8080";
+    match listen(input) {
+        Ok(listener) => start_server(listener),
+        Err(error) => {
+            match &error {
+                ListenError::InvalidInput { input, .. } => eprintln!("bad input: {input}"),
+                ListenError::SacredPort => eprintln!("port 85 is sacred"),
+                ListenError::BindFailed { address, kind: io::ErrorKind::AddrInUse, available_ports, .. } => {
+                    eprintln!("{address} is already in use");
+                    show_available_ports(available_ports.as_slice());
+                },
+                ListenError::BindFailed { address, .. } => eprintln!("couldn't bind {address}"),
+            }
+        }
+    }
+}
+```
+
+Now both parser errors become `InvalidInput` and stay underneath it. That's what the task asked for, it just took another enum and all the manual mapping.
+
+Is this bad? No ofcourse not, but i'll bet you that you are used and biased... think about it more. The amount of code exploded, if you saw this and didn't know it, you would probably think this was crazy.
+
+As a reminder this:
+```rust
+  let ip = ip.parse::<Ipv4Addr>()?;
+```
+Turned into this:
+```rust
+  let ip = ip
+      .parse::<Ipv4Addr>()
+      .map_err(|source| ListenError::InvalidInput {
+          input: input.to_owned(),
+          source: source.into(),
+      })?;
+```
+
+## Anyhow (1.0.104)
+
+```rust
+use anyhow::{Context, bail};
+
+fn listen(input: &str) -> anyhow::Result<TcpListener> {
+    // Normal stuff
+    let (ip, port) = input.split_once(':').unwrap_or((input, ""));
+
+    // First 2 errors, same context is enough here
+    let ip = ip.parse::<Ipv4Addr>()
+        .with_context(|| format!("bad input: {input}"))?;
+    let port = port.parse::<u16>()
+        .with_context(|| format!("bad input: {input}"))?;
+
+    // Third error, our own rule that port 85 is sacred
+    if port == 85 {
+        bail!("port 85 is sacred");
+    }
+
+    // Fourth error, put what we found in the report
+    let address = SocketAddrV4::new(ip, port);
+    TcpListener::bind(address).with_context(|| {
+        let available_ports = find_available_ports(address);
+        format!("couldn't bind {address}, available ports: {available_ports:?}")
+    })
+}
+
+// Using it
+fn main() {
+    match listen("127.0.0.1:8080") {
+        Ok(listener) => start_server(listener),
+        Err(error) => eprintln!("{error:?}"),
+    }
+}
+```
+
+This is the Anyhow ish style many people do, and i would even say many people don't even add context but just do the old classic '?' and get on with their day. The io error is still there though so we can downcast and read its `kind()`. 
+
+Available ports are in the message not a `Vec<u16>` the caller can use, if we wanna get the typed experience some people combine it with thiserror afaik, but i mean then whats the point. 
+
+## SNAFU (0.9.2)
+
+```rust
+use snafu::ResultExt;
+
+// Making it
+#[derive(Debug, snafu::Snafu)]
+pub enum ListenError {
+    #[snafu(display("bad input: {input}"))]
+    InvalidInput { input: String, source: Box<dyn std::error::Error + Send + Sync> },
+    #[snafu(display("port 85 is sacred"))]
+    SacredPort,
+    #[snafu(display("couldn't bind {address}: {source}"))]
+    BindFailed {
+        address: SocketAddrV4,
+        kind: io::ErrorKind,
+        available_ports: Vec<u16>,
+        source: io::Error,
+    },
+}
+
+pub fn listen(input: &str) -> Result<TcpListener, ListenError> {
+    // Normal stuff
+    let (ip, port) = input.split_once(':').unwrap_or((input, ""));
+
+    // First 2 errors, to us they're both just bad input
+    let ip = ip.parse::<Ipv4Addr>()
+        .boxed()
+        .context(InvalidInputSnafu { input })?;
+    let port = port.parse::<u16>()
+        .boxed()
+        .context(InvalidInputSnafu { input })?;
+
+    // Third error, our own rule that port 85 is sacred
+    if port == 85 {
+        return Err(ListenError::SacredPort);
+    }
+
+    // Fourth error, we might want to match on what happened
+    let address = SocketAddrV4::new(ip, port);
+
+    TcpListener::bind(address).with_context(|source| {
+        let available_ports = find_available_ports(address);
+        BindFailedSnafu { address, kind: source.kind(), available_ports }
+    })
+}
+
+// Using it
+fn main() {
+    let input = "127.0.0.1:8080";
+    match listen(input) {
+        Ok(listener) => start_server(listener),
+        Err(error) => {
+            match &error {
+                ListenError::InvalidInput { input, .. } => eprintln!("bad input: {input}"),
+                ListenError::SacredPort => eprintln!("port 85 is sacred"),
+                ListenError::BindFailed { address, kind: io::ErrorKind::AddrInUse, available_ports, .. } => {
+                    eprintln!("{address} is already in use");
+                    show_available_ports(available_ports.as_slice());
+                },
+                ListenError::BindFailed { address, .. } => eprintln!("couldn't bind {address}"),
+            }
+        }
+    }
+}
+```
+
+I think snafu is just anyhow++, that ain't bad, its ok.
+
+## error-stack (0.8.0) (+ thiserror)
+
+```rust
+use error_stack::{Report, ResultExt};
+
+// Making it
+#[derive(Debug, thiserror::Error)]
+pub enum ListenError {
+    #[error("bad input: {input}")]
+    InvalidInput { input: String },
+    #[error("port 85 is sacred")]
+    SacredPort,
+    #[error("couldn't bind {address}")]
+    BindFailed { address: SocketAddrV4, kind: io::ErrorKind, available_ports: Vec<u16> },
+}
+
+fn listen(input: &str) -> Result<TcpListener, Report<ListenError>> {
+    // Normal stuff
+    let (ip, port) = input.split_once(':').unwrap_or((input, ""));
+
+    // First 2 errors, to us they're both just bad input
+    let ip = ip.parse::<Ipv4Addr>()
+        .change_context_lazy(|| ListenError::InvalidInput { input: input.to_owned() })?;
+    let port = port.parse::<u16>()
+        .change_context_lazy(|| ListenError::InvalidInput { input: input.to_owned() })?;
+
+    // Third error, our own rule that port 85 is sacred
+    if port == 85 {
+        return Err(Report::new(ListenError::SacredPort));
+    }
+
+    // Fourth error, we might want to match on what happened
+    let address = SocketAddrV4::new(ip, port);
+
+    // change_context_lazy can't read kind() for us, so we map this bind.
+    TcpListener::bind(address).map_err(|source| {
+        let kind = source.kind();
+        let available_ports = find_available_ports(address);
+        Report::new(source).change_context(ListenError::BindFailed {
+            address,
+            kind,
+            available_ports,
+        })
+    })
+}
+
+// Using it
+fn main() {
+    match listen("127.0.0.1:8080") {
+        Ok(listener) => start_server(listener),
+        Err(error) => {
+            match error.current_context() {
+                ListenError::InvalidInput { input } => eprintln!("bad input: {input}"),
+                ListenError::SacredPort => eprintln!("port 85 is sacred"),
+                ListenError::BindFailed { address, kind: io::ErrorKind::AddrInUse, available_ports } => {
+                    eprintln!("{address} is already in use");
+                    show_available_ports(available_ports.as_slice());
+                },
+                ListenError::BindFailed { address, .. } => eprintln!("couldn't bind {address}"),
+            }
+        }
+    }
+}
+```
+
+I feel like its exn but more verbose.
+
+## rootcause (0.13.0) (+ thiserror)
+
+```rust
+use rootcause::{prelude::*, Report};
+
+// Making it
+#[derive(Debug, thiserror::Error)]
+pub enum ListenError {
+    #[error("bad input: {input}")]
+    InvalidInput { input: String },
+    #[error("port 85 is sacred")]
+    SacredPort,
+    #[error("couldn't bind {address}")]
+    BindFailed { address: SocketAddrV4, kind: io::ErrorKind, available_ports: Vec<u16> },
+}
+
+fn listen(input: &str) -> Result<TcpListener, Report<ListenError>> {
+    // Normal stuff
+    let (ip, port) = input.split_once(':').unwrap_or((input, ""));
+
+    // First 2 errors, to us they're both just bad input
+    let ip = ip.parse::<Ipv4Addr>()
+        .context_with(|| ListenError::InvalidInput { input: input.to_owned() })?;
+    let port = port.parse::<u16>()
+        .context_with(|| ListenError::InvalidInput { input: input.to_owned() })?;
+
+    // Third error, our own rule that port 85 is sacred
+    if port == 85 {
+        return Err(rootcause::report!(ListenError::SacredPort));
+    }
+
+    // Fourth error, we might want to match on what happened
+    let address = SocketAddrV4::new(ip, port);
+
+    // We CANNOT use `context_transform`, it can read the failed io error, but it replaces it. So we get the kind but lose the original io error. Adding context keeps it, but that callback can't read it.
+    // So gotta use map_err
+    TcpListener::bind(address).map_err(|source| {
+        let kind = source.kind();
+        let available_ports = find_available_ports(address);
+        Report::new(source).context(ListenError::BindFailed {
+            address,
+            kind,
+            available_ports,
+        })
+    })
+}
+
+// Using it
+fn main() {
+    match listen("127.0.0.1:8080") {
+        Ok(listener) => start_server(listener),
+        Err(error) => {
+            match error.current_context() {
+                ListenError::InvalidInput { input } => eprintln!("bad input: {input}"),
+                ListenError::SacredPort => eprintln!("port 85 is sacred"),
+                ListenError::BindFailed { address, kind: io::ErrorKind::AddrInUse, available_ports } => {
+                    eprintln!("{address} is already in use");
+                    show_available_ports(available_ports.as_slice());
+                },
+                ListenError::BindFailed { address, .. } => eprintln!("couldn't bind {address}"),
+            }
+        }
+    }
+}
+```
+
+Similar to error-stack.
+
+## exn (0.3.1) (+ thiserror)
+
+```rust
+use exn::{Exn, ResultExt};
+
+// Making it
+#[derive(Debug, thiserror::Error)]
+pub enum ListenError {
+    #[error("bad input: {input}")]
+    InvalidInput { input: String },
+    #[error("port 85 is sacred")]
+    SacredPort,
+    #[error("couldn't bind {address}")]
+    BindFailed { address: SocketAddrV4, kind: io::ErrorKind, available_ports: Vec<u16> },
+}
+
+fn listen(input: &str) -> exn::Result<TcpListener, ListenError> {
+    // Normal stuff
+    let (ip, port) = input.split_once(':').unwrap_or((input, ""));
+
+    // First 2 errors, to us they're both just bad input
+    let ip = ip.parse::<Ipv4Addr>()
+        .or_raise(|| ListenError::InvalidInput { input: input.to_owned() })?;
+    let port = port.parse::<u16>()
+        .or_raise(|| ListenError::InvalidInput { input: input.to_owned() })?;
+
+    // Third error, our own rule that port 85 is sacred
+    if port == 85 {
+        return Err(Exn::new(ListenError::SacredPort));
+    }
+
+    // Fourth error, we might want to match on what happened
+    let address = SocketAddrV4::new(ip, port);
+
+    // or_raise doesn't get the io error, so we read its kind first.
+    TcpListener::bind(address).map_err(|source| {
+        let kind = source.kind();
+        let available_ports = find_available_ports(address);
+        Exn::new(source).raise(ListenError::BindFailed {
+            address,
+            kind,
+            available_ports,
+        })
+    })
+}
+
+// Using it
+fn main() {
+    match listen("127.0.0.1:8080") {
+        Ok(listener) => start_server(listener),
+        Err(error) => {
+            match &*error {
+                ListenError::InvalidInput { input } => eprintln!("bad input: {input}"),
+                ListenError::SacredPort => eprintln!("port 85 is sacred"),
+                ListenError::BindFailed { address, kind: io::ErrorKind::AddrInUse, available_ports } => {
+                    eprintln!("{address} is already in use");
+                    show_available_ports(available_ports.as_slice());
+                },
+                ListenError::BindFailed { address, .. } => eprintln!("couldn't bind {address}"),
+            }
+        }
+    }
+}
+```
+
+Similar to error-stack and rootcause.
 
 ## Er (0.2.0)
 
@@ -125,6 +738,8 @@ pub fn listen(input: &str) -> Er<TcpListener, ListenErr> {
     // First 2 errors, to us they're both just bad input
     let ip = ip.parse::<Ipv4Addr>().er(|| ListenErr::invalid_input(input))?;
     let port = port.parse::<u16>().er(|| ListenErr::invalid_input(input))?;
+    // If it was a struct error, it would be even shorter with like:
+    // `let ip = ip.parse::<Ipv4Addr>().er(|_| input)?;`
 
     // Third error, our own rule that port 85 is sacred
     if port == 85 {
@@ -241,406 +856,11 @@ fn main_with_union() {
 
 Both parses get the same message, but they're still two types in the union. The ports are in `BindContext`, which the caller has to look up. The kind is on the io error. This version didn't give us one `InvalidInput` or a bind case with both pieces of data. Eros can turn these into our own errors too, but then we have to make those types and map into them.
 
-## thiserror (2.0.20)
-
-```rust
-// Making it
-#[derive(Debug, thiserror::Error)]
-pub enum ListenError {
-    #[error("bad input: {input}")]
-    InvalidInput { input: String },
-    #[error("port 85 is sacred")]
-    SacredPort,
-    #[error("couldn't bind {address}: {kind:?}")]
-    BindFailed {
-        address: SocketAddrV4,
-        kind: io::ErrorKind,
-        available_ports: Vec<u16>,
-        source: io::Error,
-    },
-}
-
-pub fn listen(input: &str) -> Result<TcpListener, ListenError> {
-    // Normal stuff
-    let (ip, port) = input.split_once(':').unwrap_or((input, ""));
-
-    // First 2 errors, to us they're both just bad input
-    // We drop the parser errors here.
-    let ip = ip.parse::<Ipv4Addr>()
-        .map_err(|_| ListenError::InvalidInput { input: input.to_owned() })?;
-    let port = port.parse::<u16>()
-        .map_err(|_| ListenError::InvalidInput { input: input.to_owned() })?;
-
-    // Third error, our own rule that port 85 is sacred
-    if port == 85 {
-        return Err(ListenError::SacredPort);
-    }
-
-    // Fourth error, we might want to match on what happened
-    let address = SocketAddrV4::new(ip, port);
-
-    TcpListener::bind(address).map_err(|source| {
-        let kind = source.kind();
-        let available_ports = find_available_ports(address);
-        ListenError::BindFailed { address, kind, available_ports, source }
-    })
-}
-
-// Using it
-fn main() {
-    let input = "127.0.0.1:8080";
-    match listen(input) {
-        Ok(listener) => start_server(listener),
-        Err(error) => {
-            match &error {
-                ListenError::InvalidInput { input } => eprintln!("bad input: {input}"),
-                ListenError::SacredPort => eprintln!("port 85 is sacred"),
-                ListenError::BindFailed { address, kind: io::ErrorKind::AddrInUse, available_ports, .. } => {
-                    eprintln!("{address} is already in use");
-                    show_available_ports(available_ports.as_slice());
-                },
-                ListenError::BindFailed { address, .. } => eprintln!("couldn't bind {address}"),
-            }
-        }
-    }
-}
-```
-
-Both parser errors become `InvalidInput`, but we threw the original errors away. Keeping both under that one variant would need a box or another enum.
-
-## Anyhow (1.0.104) (+ thiserror)
-
-```rust
-use anyhow::Context;
-
-// Making it
-#[derive(Debug, thiserror::Error)]
-pub enum ListenError {
-    #[error("bad input: {input}")]
-    InvalidInput { input: String },
-    #[error("port 85 is sacred")]
-    SacredPort,
-    #[error("couldn't bind {address}")]
-    BindFailed { address: SocketAddrV4, kind: io::ErrorKind, available_ports: Vec<u16> },
-}
-
-fn listen(input: &str) -> anyhow::Result<TcpListener> {
-    // Normal stuff
-    let (ip, port) = input.split_once(':').unwrap_or((input, ""));
-
-    // First 2 errors, to us they're both just bad input
-    let ip = ip.parse::<Ipv4Addr>()
-        .with_context(|| ListenError::InvalidInput { input: input.to_owned() })?;
-    let port = port.parse::<u16>()
-        .with_context(|| ListenError::InvalidInput { input: input.to_owned() })?;
-
-    // Third error, our own rule that port 85 is sacred
-    if port == 85 {
-        return Err(ListenError::SacredPort.into());
-    }
-
-    // Fourth error, we might want to match on what happened
-    let address = SocketAddrV4::new(ip, port);
-
-    // with_context doesn't get the io error, and we want its kind.
-    TcpListener::bind(address).map_err(|source| {
-        let kind = source.kind();
-        let available_ports = find_available_ports(address);
-        anyhow::Error::new(source).context(ListenError::BindFailed {
-            address,
-            kind,
-            available_ports,
-        })
-    })
-}
-
-// Using it
-fn main() {
-    let input = "127.0.0.1:8080";
-    match listen(input) {
-        Ok(listener) => start_server(listener),
-        Err(error) => {
-            // Anyhow doesn't tell Rust which error we put inside it, so check.
-            if let Some(case) = error.downcast_ref::<ListenError>() {
-                match case {
-                    ListenError::InvalidInput { input } => eprintln!("bad input: {input}"),
-                    ListenError::SacredPort => eprintln!("port 85 is sacred"),
-                    ListenError::BindFailed { address, kind: io::ErrorKind::AddrInUse, available_ports } => {
-                        eprintln!("{address} is already in use");
-                        show_available_ports(available_ports.as_slice());
-                    },
-                    ListenError::BindFailed { address, .. } => eprintln!("couldn't bind {address}"),
-                }
-            } else {
-                eprintln!("{error}");
-            }
-        },
-    }
-}
-```
-
-## SNAFU (0.9.2)
-
-```rust
-use snafu::ResultExt;
-
-// Making it
-#[derive(Debug, snafu::Snafu)]
-pub enum ListenError {
-    #[snafu(display("bad input: {input}"))]
-    InvalidInput { input: String, source: Box<dyn std::error::Error + Send + Sync> },
-    #[snafu(display("port 85 is sacred"))]
-    SacredPort,
-    #[snafu(display("couldn't bind {address}: {source}"))]
-    BindFailed {
-        address: SocketAddrV4,
-        kind: io::ErrorKind,
-        available_ports: Vec<u16>,
-        source: io::Error,
-    },
-}
-
-pub fn listen(input: &str) -> Result<TcpListener, ListenError> {
-    // Normal stuff
-    let (ip, port) = input.split_once(':').unwrap_or((input, ""));
-
-    // First 2 errors, to us they're both just bad input
-    let ip = ip.parse::<Ipv4Addr>()
-        .boxed()
-        .context(InvalidInputSnafu { input })?;
-    let port = port.parse::<u16>()
-        .boxed()
-        .context(InvalidInputSnafu { input })?;
-
-    // Third error, our own rule that port 85 is sacred
-    if port == 85 {
-        return Err(ListenError::SacredPort);
-    }
-
-    // Fourth error, we might want to match on what happened
-    let address = SocketAddrV4::new(ip, port);
-
-    TcpListener::bind(address).with_context(|source| {
-        let available_ports = find_available_ports(address);
-        BindFailedSnafu { address, kind: source.kind(), available_ports }
-    })
-}
-
-// Using it
-fn main() {
-    let input = "127.0.0.1:8080";
-    match listen(input) {
-        Ok(listener) => start_server(listener),
-        Err(error) => {
-            match &error {
-                ListenError::InvalidInput { input, .. } => eprintln!("bad input: {input}"),
-                ListenError::SacredPort => eprintln!("port 85 is sacred"),
-                ListenError::BindFailed { address, kind: io::ErrorKind::AddrInUse, available_ports, .. } => {
-                    eprintln!("{address} is already in use");
-                    show_available_ports(available_ports.as_slice());
-                },
-                ListenError::BindFailed { address, .. } => eprintln!("couldn't bind {address}"),
-            }
-        }
-    }
-}
-```
-
-## error-stack (0.8.0) (+ thiserror)
-
-```rust
-use error_stack::{Report, ResultExt};
-
-// Making it
-#[derive(Debug, thiserror::Error)]
-pub enum ListenError {
-    #[error("bad input: {input}")]
-    InvalidInput { input: String },
-    #[error("port 85 is sacred")]
-    SacredPort,
-    #[error("couldn't bind {address}")]
-    BindFailed { address: SocketAddrV4, kind: io::ErrorKind, available_ports: Vec<u16> },
-}
-
-fn listen(input: &str) -> Result<TcpListener, Report<ListenError>> {
-    // Normal stuff
-    let (ip, port) = input.split_once(':').unwrap_or((input, ""));
-
-    // First 2 errors, to us they're both just bad input
-    let ip = ip.parse::<Ipv4Addr>()
-        .change_context_lazy(|| ListenError::InvalidInput { input: input.to_owned() })?;
-    let port = port.parse::<u16>()
-        .change_context_lazy(|| ListenError::InvalidInput { input: input.to_owned() })?;
-
-    // Third error, our own rule that port 85 is sacred
-    if port == 85 {
-        return Err(Report::new(ListenError::SacredPort));
-    }
-
-    // Fourth error, we might want to match on what happened
-    let address = SocketAddrV4::new(ip, port);
-
-    // change_context_lazy can't read kind() for us, so we map this bind.
-    TcpListener::bind(address).map_err(|source| {
-        let kind = source.kind();
-        let available_ports = find_available_ports(address);
-        Report::new(source).change_context(ListenError::BindFailed {
-            address,
-            kind,
-            available_ports,
-        })
-    })
-}
-
-// Using it
-fn main() {
-    match listen("127.0.0.1:8080") {
-        Ok(listener) => start_server(listener),
-        Err(error) => {
-            match error.current_context() {
-                ListenError::InvalidInput { input } => eprintln!("bad input: {input}"),
-                ListenError::SacredPort => eprintln!("port 85 is sacred"),
-                ListenError::BindFailed { address, kind: io::ErrorKind::AddrInUse, available_ports } => {
-                    eprintln!("{address} is already in use");
-                    show_available_ports(available_ports.as_slice());
-                },
-                ListenError::BindFailed { address, .. } => eprintln!("couldn't bind {address}"),
-            }
-        }
-    }
-}
-```
-
-## rootcause (0.13.0) (+ thiserror)
-
-```rust
-use rootcause::{prelude::*, Report};
-
-// Making it
-#[derive(Debug, thiserror::Error)]
-pub enum ListenError {
-    #[error("bad input: {input}")]
-    InvalidInput { input: String },
-    #[error("port 85 is sacred")]
-    SacredPort,
-    #[error("couldn't bind {address}")]
-    BindFailed { address: SocketAddrV4, kind: io::ErrorKind, available_ports: Vec<u16> },
-}
-
-fn listen(input: &str) -> Result<TcpListener, Report<ListenError>> {
-    // Normal stuff
-    let (ip, port) = input.split_once(':').unwrap_or((input, ""));
-
-    // First 2 errors, to us they're both just bad input
-    let ip = ip.parse::<Ipv4Addr>()
-        .context_with(|| ListenError::InvalidInput { input: input.to_owned() })?;
-    let port = port.parse::<u16>()
-        .context_with(|| ListenError::InvalidInput { input: input.to_owned() })?;
-
-    // Third error, our own rule that port 85 is sacred
-    if port == 85 {
-        return Err(rootcause::report!(ListenError::SacredPort));
-    }
-
-    // Fourth error, we might want to match on what happened
-    let address = SocketAddrV4::new(ip, port);
-
-    TcpListener::bind(address).context_transform(|source| {
-        let kind = source.kind();
-        let available_ports = find_available_ports(address);
-        ListenError::BindFailed { address, kind, available_ports }
-    })
-}
-
-// Using it
-fn main() {
-    match listen("127.0.0.1:8080") {
-        Ok(listener) => start_server(listener),
-        Err(error) => {
-            match error.current_context() {
-                ListenError::InvalidInput { input } => eprintln!("bad input: {input}"),
-                ListenError::SacredPort => eprintln!("port 85 is sacred"),
-                ListenError::BindFailed { address, kind: io::ErrorKind::AddrInUse, available_ports } => {
-                    eprintln!("{address} is already in use");
-                    show_available_ports(available_ports.as_slice());
-                },
-                ListenError::BindFailed { address, .. } => eprintln!("couldn't bind {address}"),
-            }
-        }
-    }
-}
-```
-
-For bind failures, `context_transform` gets us the kind but replaces the `io::Error` with `BindFailed`.
-
-## exn (0.3.1) (+ thiserror)
-
-```rust
-use exn::{Exn, ResultExt};
-
-// Making it
-#[derive(Debug, thiserror::Error)]
-pub enum ListenError {
-    #[error("bad input: {input}")]
-    InvalidInput { input: String },
-    #[error("port 85 is sacred")]
-    SacredPort,
-    #[error("couldn't bind {address}")]
-    BindFailed { address: SocketAddrV4, kind: io::ErrorKind, available_ports: Vec<u16> },
-}
-
-fn listen(input: &str) -> exn::Result<TcpListener, ListenError> {
-    // Normal stuff
-    let (ip, port) = input.split_once(':').unwrap_or((input, ""));
-
-    // First 2 errors, to us they're both just bad input
-    let ip = ip.parse::<Ipv4Addr>()
-        .or_raise(|| ListenError::InvalidInput { input: input.to_owned() })?;
-    let port = port.parse::<u16>()
-        .or_raise(|| ListenError::InvalidInput { input: input.to_owned() })?;
-
-    // Third error, our own rule that port 85 is sacred
-    if port == 85 {
-        return Err(Exn::new(ListenError::SacredPort));
-    }
-
-    // Fourth error, we might want to match on what happened
-    let address = SocketAddrV4::new(ip, port);
-
-    // or_raise doesn't get the io error, so we read its kind first.
-    TcpListener::bind(address).map_err(|source| {
-        let kind = source.kind();
-        let available_ports = find_available_ports(address);
-        Exn::new(source).raise(ListenError::BindFailed {
-            address,
-            kind,
-            available_ports,
-        })
-    })
-}
-
-// Using it
-fn main() {
-    match listen("127.0.0.1:8080") {
-        Ok(listener) => start_server(listener),
-        Err(error) => {
-            match &*error {
-                ListenError::InvalidInput { input } => eprintln!("bad input: {input}"),
-                ListenError::SacredPort => eprintln!("port 85 is sacred"),
-                ListenError::BindFailed { address, kind: io::ErrorKind::AddrInUse, available_ports } => {
-                    eprintln!("{address} is already in use");
-                    show_available_ports(available_ports.as_slice());
-                },
-                ListenError::BindFailed { address, .. } => eprintln!("couldn't bind {address}"),
-            }
-        }
-    }
-}
-```
+I think it feels great in `listen()` but not so much in consuming it.
 
 ## Problemo (0.0.13)
 
-Problemo's [guide](https://docs.rs/crate/problemo/0.0.13/source/README.md) suggests small tags for what happened, and attachments for the data.
+Problemo's [guide](https://docs.rs/crate/problemo/0.0.13/source/README.md) says small tags for what happened and attachments for the data.
 
 ```rust
 use problemo::*;
@@ -721,11 +941,11 @@ fn main() {
 }
 ```
 
-Both parses get the same bad input tag. Finding the bind tag still doesn't tell us `BindDetails` is attached, so the caller checks for that too.
+Both parses get the same bad input tag. Finding the bind tag still doesn't tell us `BindDetails` is attached, so the caller has to check for that.
 
 # Getting the original errors
 
-Say a dependency gives us `DriverError`, with an io error inside it. After we add context, can we still get both actual errors back?
+If we get `DriverError`, with an io error inside it, and we add context can we still get both actual errors back?
 
 ```rust
 use std::{error::Error, fmt, io};
@@ -752,7 +972,7 @@ fn read_device() -> Result<(), DriverError> {
 }
 ```
 
-`DriverError.source()` points at the io error. It returns `dyn Error`, though, so we still have to check the type when we get there.
+`DriverError.source()` points at the io error(but it returns `dyn Error` so we still have to check the type).
 
 ## Er
 
@@ -885,7 +1105,7 @@ We search the reports for `DriverError`. For the io error inside it, we ask each
 
 ## exn
 
-Exn keeps `DriverError` in a frame, but doesn't give us a way to find it by type. The [find_error people asked to add](https://github.com/fast/exn/issues/65) only searches frames. Exn [copies the io source's message into another frame as text](https://docs.rs/exn/0.3.1/exn/struct.Exn.html#method.new), so that search still wouldn't find the real `io::Error` inside `DriverError`. The real one is still there, but we'd have to follow `source()` ourselves.
+Exn keeps `DriverError` in a frame, but has no built in search. The [find_error people issues/request](https://github.com/fast/exn/issues/65) only searches frames. Exn [copies the io source's message into another frame as text](https://docs.rs/exn/0.3.1/exn/struct.Exn.html#method.new), so that search still wouldn't find the real `io::Error` inside `DriverError`. The real one is still there, but we'd have to follow `source()` manually.
 
 ## Problemo
 
@@ -962,30 +1182,29 @@ pub fn public_error_example(input: &str) -> Result<TcpListener, ApiError> {
 }
 ```
 
-## thiserror
+## thiserror, lazy style
 
-`listen()` already returns our `ListenError`. The caller can match on it without using thiserror.
+`listen()` returns a normal enum, so the caller can match on it without using thiserror. Its cases are still the errors we got though, and the bind case doesn't have the address or ports we wanted to give them.
+
+## thiserror, verbose style
+
+This `ListenError` already has the cases and fields we chose for the caller. They can match on it without using thiserror.
 
 ## Anyhow
 
-We look up our context and turn it into `ApiError`.
+The context is text now, so there aren't typed stuff to get out, can still give the caller a plain error.
 
 ```rust
 pub fn public_error_example(input: &str) -> Result<TcpListener, ApiError> {
-    listen(input).map_err(|error| match error.downcast::<ListenError>() {
-        Ok(ListenError::InvalidInput { input }) => ApiError::InvalidInput { input },
-        Ok(ListenError::SacredPort) => ApiError::SacredPort,
-        Ok(ListenError::BindFailed { address, available_ports, .. }) => {
-            ApiError::BindFailed { address, available_ports }
-        },
-        Err(other) => ApiError::Other(other.to_string()),
-    })
+    listen(input).map_err(|error| ApiError::Other(format!("{error:#}")))
 }
 ```
 
+The parser and io errors are still in there and can be downcast, but sacred port and the available ports only exist in our messages. If the public caller needs those as real variants/data, we gotta make that typed before throwing it into Anyhow.
+
 ## SNAFU
 
-`listen()` already returns our `ListenError` here too. The caller can match on it without using SNAFU.
+`listen()` already returns our `ListenError`, so the caller can match on it without using SNAFU. The parser errors are behind the boxed source, if they care which one failed they gotta downcast it.
 
 ## error-stack
 
@@ -1043,126 +1262,12 @@ pub fn public_error_example(input: &str) -> Result<TcpListener, ApiError> {
 }
 ```
 
-# What gets printed
+# Conclusion
 
-Someone entered `127.0.0.1:nope`, and the port parser only says `invalid digit found in string`. But `listen()` knows what they entered. So what do we get?
+I don't know man I'm so biased, i just think people are too stubborn, use anything you like, just be more open minded and honest, they all have flaws in their own ways. I just want to type less on my little keyboard so 70% of my code isnt some fancy error handling api some guy invented who doesn't even use it (or if he does, then how much copium is he on, has to be atleast as much as me). 
 
-```rust
-let error = listen("127.0.0.1:nope").unwrap_err();
-```
+I can respect the people who just want to do '?' and be lazy, but i have a hard time seeing the point of people wanting giant verbose apis adding context, and i think if you give exn/er a try you'll like it. Things are always scary/weird until you give them a shot.
 
-## Er
+If you open the error libraries docs and they don't mention ANY flaws about their own thing (trying to make it sound completely jacked and perfect, sales person style), or if they don't compare themselves to other libraries atleast... I think that that's a bad sign. You as a user aren't picking between no libraries and an ideal case with no flaws, you are picking 1 error handling philosophy with their conveniences, but with a bunch of drawbacks as well, there are no perfect libraries they all suck in some way (yes also Er).
 
-```rust
-println!("{}", error.er_report());
-```
-
-```text
-ListenErr::InvalidInput { input: "127.0.0.1:nope" } @ src/bin/er.rs:24:36
-`- invalid digit found in string
-```
-
-## Eros
-
-```rust
-println!("{error:?}");
-```
-
-```text
-invalid digit found in string
-
-  Context (innermost first):
-    1. bad input: 127.0.0.1:nope
-
-Backtrace (disabled):
-```
-
-## thiserror
-
-```rust
-println!("{error:?}");
-```
-
-```text
-InvalidInput { input: "127.0.0.1:nope" }
-```
-
-Those `map_err(|_| ...)` calls threw away the parser error, so Debug has nothing more to show.
-
-## Anyhow
-
-```rust
-println!("{error:?}");
-```
-
-```text
-bad input: 127.0.0.1:nope
-
-Caused by:
-    invalid digit found in string
-```
-
-## SNAFU
-
-```rust
-println!("{}", snafu::Report::from_error(error));
-```
-
-```text
-bad input: 127.0.0.1:nope
-
-Caused by this error:
-  1: invalid digit found in string
-```
-
-## error-stack
-
-```rust
-println!("{error:?}");
-```
-
-```text
-bad input: 127.0.0.1:nope
-├╴at src/bin/error-stack.rs:29:10
-│
-╰─▶ invalid digit found in string
-    ╰╴at src/bin/error-stack.rs:29:10
-```
-
-## rootcause
-
-```rust
-println!("{error}");
-```
-
-```text
-
- ● bad input: 127.0.0.1:nope
- ├ src/bin/rootcause.rs:29
- │
- ● invalid digit found in string
- ╰ src/bin/rootcause.rs:29
-```
-
-## exn
-
-```rust
-println!("{error:?}");
-```
-
-```text
-bad input: 127.0.0.1:nope, at src/bin/exn.rs:29:10
-`-- invalid digit found in string, at src/bin/exn.rs:29:10
-```
-
-## Problemo
-
-```rust
-println!("{error}");
-```
-
-```text
-bad input: invalid digit found in string
-```
-
-The input is still in the `Input` attachment. This printout doesn't show it.
+Thanks for reading, remember to like and subscribe or something, i like cats.

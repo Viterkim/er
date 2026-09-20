@@ -24,7 +24,7 @@ pub struct ReadFileErr { // or `ReadFileErr(pub PathBuf)`
     pub path: PathBuf,
 }
 pub fn read_file(path: &Path) -> Er<String, ReadFileErr> {
-    fs::read_to_string(path).er(|| path)
+    fs::read_to_string(path).er(|_| path)
 }
 ```
 
@@ -50,48 +50,27 @@ pub fn read_mode(input: Option<&str>) -> Er<&str, ModeErr> {
 }
 ```
 
-## Don't destroy the tree (lose sub errors)
+## Use stuff from the previous error
 
-`.er()` keeps the old tree below your new error. The easy way to lose it is to make a fresh error in `map_err`.
+If you need something from the old error, `.er_with()` lets you look at it and still keep it in the tree. 
 
-```rust
-#[derive(Er)]
-pub struct AnalyzeErr;
-pub fn analyze() -> Er<(), AnalyzeErr> {
-    if let Err(previous_error_tree) = read_port("nope") {
-        // BAD: return Err(AnalyzeErr::new().er()); // old tree gone
-        // Good: add to the tree we already have
-        return Err(previous_error_tree.er(()));
-    }
-    Ok(())
-}
-```
-
-Same thing with `map_err`, using the types from the next example:
+If it's already an Er tree, `t.top` is the error you made.
 
 ```rust
-// BAD: we copied the code, but threw away the old error and its tree
-read_device().map_err(|t| AnalyzeErr::new(t.top.code).er())
-
-// Good: copies the code AND keeps the old error and its tree
-read_device().er_with(|t| t.top.code)
-```
-
-## Look at the previous error
-
-If you need something from the old error, `.er_with()` lets you look at it and still keeps it in the tree. If it's already an Er tree, `t.top` is the error you made:
-
-```rust
+// The old pal
 #[derive(Er)]
 pub struct DeviceErr {
     pub code: u8,
 }
+
+// Our new one
 #[derive(Er)]
 pub struct AnalyzeErr {
     pub code: u8,
 }
 pub fn analyze() -> Er<(), AnalyzeErr> {
-    read_device().er_with(|t| t.top.code)?;
+    // read_device returns Er<_, DeviceErr>
+    read_device().er_with(|t| AnalyzeErr::new(t.top.code))?;
     Ok(())
 }
 ```
@@ -99,10 +78,29 @@ pub fn analyze() -> Er<(), AnalyzeErr> {
 If its a plain error (not a tree yet), then the `|e|` is the error:
 
 ```rust
-return Err(device.er_with(|e| e.code));
+return Err(device.er_with(|e| AnalyzeErr::new(e.code)));
 ```
 
-If you need to own something from the old error, use `.clone()`, `.to_string()`, whatever Rust needs there.
+The convenience with |_| for struct errs does not work with `er_with(|old|)`... I can't get it to work sorry.
+
+Also... if you need to own something from the old stuff, you can always use `.clone()`, `.to_string()` etc.
+
+## Don't destroy the tree (lose sub errors)
+
+The `.er_with()` above adds to the old tree. Both of these copy the code into a fresh one and throw the old tree away:
+
+ALWAYS use .er_with() for those cases. NEVER EVER do stuff like this:
+
+```rust
+// ! BAD DONT DO THIS !
+read_device().map_err(|t| AnalyzeErr::new(t.top.code).er())
+
+// ! BAD DONT DO THIS, EASY TO DO BUT HURTS SO BAD !
+if let Err(t) = read_device() {
+    // the t tree is gone, (womp womp, sad sounds)
+    return Err(AnalyzeErr::new(t.top.code).er());
+}
+```
 
 ## Print report
 
@@ -175,7 +173,7 @@ pub struct ConfigErr {
 }
 pub fn check_config(port: &str, enabled: &str) -> Er<(), ConfigErr> {
     er_all!(
-        || (port, enabled),
+        |_| (port, enabled),
         [port.parse::<u16>(), enabled.parse::<bool>()],
     )
 }

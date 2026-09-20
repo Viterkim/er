@@ -474,7 +474,7 @@ If we also want the input from our `PortErr` in the next error:
 #[derive(Er)]
 pub struct ConfigErr(pub String);
 
-read_port(input).er_with(|t| t.top.input.clone())?;
+read_port(input).er_with(|t| ConfigErr::new(t.top.input.clone()))?;
 ```
 
 Still keeps the old error and everything below it. Exn can do this with `map_err` then `.raise()`, but here it's very easy to destroy your error tree and now I'm manually having to worry and do it.
@@ -779,7 +779,7 @@ pub struct PortErr {
     pub input: String,
 }
 pub fn read_port(input: &str) -> Er<u16, PortErr> {
-    let port: u16 = input.parse().er(|| input)?;
+    let port: u16 = input.parse().er(|_| input)?;
     Ok(port)
 }
 

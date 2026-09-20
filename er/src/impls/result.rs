@@ -1,6 +1,6 @@
 use crate::{
-    Er, ErContext, ErError, ErMake, ErOpaqueError, ErPayload, ErPresentation, ErReport, ErResult,
-    ErTop, ErTree, IntoErNode, IntoErTree,
+    Er, ErContext, ErError, ErMake, ErOpaqueError, ErPresentation, ErReport, ErResult, ErTop,
+    ErTree, IntoErNode, IntoErTree,
 };
 use alloc::vec;
 use core::error::Error;
@@ -38,16 +38,15 @@ impl<T, E> ErResult for Result<T, E> {
     type Err = E;
 
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_with<A, P, Mode>(self, error: impl FnOnce(&E) -> P) -> Er<T, A>
+    fn er_with<A>(self, error: impl FnOnce(&E) -> A) -> Er<T, A>
     where
         A: Error + 'static,
-        P: ErPayload<A, Mode>,
         E: IntoErNode,
     {
         match self {
             Ok(value) => Ok(value),
             Err(source) => {
-                let error = error(&source).er_payload();
+                let error = error(&source);
                 let nodes = vec![source.into_er_node()];
 
                 Err(ErTree {

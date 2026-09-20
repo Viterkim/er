@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 
 # https://github.com/rust-lang/cargo/issues/16865
@@ -20,14 +21,15 @@ fi
 
 release_dir=$(mktemp -d "${TMPDIR:-/tmp}/er-release.XXXXXX")
 git archive HEAD | tar -xf - -C "$release_dir"
+release_url="https://github.com/Viterkim/er/blob/$(git rev-parse HEAD)"
 
 # Only the published version gets full links
-sed -i -E 's@\]\((\./)?er/@](https://github.com/Viterkim/er/blob/HEAD/er/@g' "$release_dir/README.md"
+sed -i -E "s@\]\((\./)?er/@](${release_url}/er/@g" "$release_dir/README.md"
 # examples.md also becomes the rustdoc front page
 sed -i -E \
-    -e 's@\]\((\./)?macros\.md([)#])@](https://github.com/Viterkim/er/blob/HEAD/er/docs/macros.md\2@g' \
-    -e 's@\]\((\./)?tricky-error-comparison\.md([)#])@](https://github.com/Viterkim/er/blob/HEAD/er/docs/tricky-error-comparison.md\2@g' \
-    -e 's@\]\(\.\./\.\./integrations/@](https://github.com/Viterkim/er/blob/HEAD/integrations/@g' \
+    -e "s@\]\((\./)?macros\.md([)#])@](${release_url}/er/docs/macros.md\2@g" \
+    -e "s@\]\((\./)?tricky-error-comparison\.md([)#])@](${release_url}/er/docs/tricky-error-comparison.md\2@g" \
+    -e "s@\]\(\.\./\.\./integrations/@](${release_url}/integrations/@g" \
     "$release_dir/er/docs/examples.md"
 cd -- "$release_dir"
 cargo publish --workspace --dry-run

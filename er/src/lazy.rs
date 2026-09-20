@@ -5,7 +5,7 @@ use core::{error::Error, fmt};
 /// A result where the top error has optional string context.
 pub type ErLazy<T = ()> = Er<T, ErLazyError>;
 
-/// The context added by `.er(())` or `.er(|| message)`.
+/// The context added by `.er(())` or `.er(|_| message)`.
 #[derive(Debug)]
 pub struct ErLazyError(pub Option<String>);
 impl fmt::Display for ErLazyError {

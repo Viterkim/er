@@ -31,7 +31,7 @@ fn read_config() -> ErLazy<String> {
 
 // String context
 fn load() -> ErLazy<String> {
-    read_config().er(|| "loading config")
+    read_config().er(|_| "loading config")
 }
 
 // Already added context, it will NOT add anything more, be careful

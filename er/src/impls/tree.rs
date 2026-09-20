@@ -1,9 +1,9 @@
 #[cfg(feature = "src_locations")]
 use crate::ErSnapshotLocation;
 use crate::{
-    ErEntries, ErEntry, ErFindAll, ErMake, ErNode, ErNodes, ErPayload, ErReport, ErReportRef,
-    ErSnapshot, ErSnapshotEntry, ErSources, ErTop, ErTopRef, ErTree, ErTreeContext, IntoErNode,
-    IntoErTree, Layout,
+    ErEntries, ErEntry, ErFindAll, ErMake, ErNode, ErNodes, ErReport, ErReportRef, ErSnapshot,
+    ErSnapshotEntry, ErSources, ErTop, ErTopRef, ErTree, ErTreeContext, IntoErNode, IntoErTree,
+    Layout,
 };
 #[cfg(feature = "src_locations")]
 use alloc::string::ToString;
@@ -35,15 +35,14 @@ impl<E: Error + 'static> ErTree<E> {
     /// Use this when the new error needs something from the old one.
     /// Otherwise use `.er()`.
     ///
-    /// `let error = error.er_with(|t| t.top.code);`
+    /// `let error = error.er_with(|t| AnalyzeErr::new(t.top.code));`
     #[cfg_attr(feature = "src_locations", track_caller)]
-    pub fn er_with<A, P, Mode>(self, top: impl FnOnce(&Self) -> P) -> ErTree<A>
+    pub fn er_with<A>(self, top: impl FnOnce(&Self) -> A) -> ErTree<A>
     where
         E: Send + Sync,
         A: Error + 'static,
-        P: ErPayload<A, Mode>,
     {
-        let top = top(&self).er_payload();
+        let top = top(&self);
         ErTree::new(top, [self])
     }
 

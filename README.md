@@ -29,7 +29,7 @@ use std::{fs::read_to_string, path::PathBuf};
 #[derive(Er)]
 pub struct FileErr(pub PathBuf);
 pub fn read_file(path: &str) -> Er<String, FileErr> {
-    let text = read_to_string(path).er(|| path)?;
+    let text = read_to_string(path).er(|_| path)?;
     Ok(text)
 }
 ```
@@ -66,12 +66,12 @@ pub struct ConfigErr {
 }
 pub fn read_config(machine: &str, token: &str, port: &str, mode: Option<&str>) -> Er<(), ConfigErr> {
     // add local context
-    let er = || (machine, token);
+    let e = |_| (machine, token);
 
     // 3 different types
-    authenticate(machine, token).er(er)?;
-    read_port(port).er(er)?;
-    read_mode(mode).er(er)?;
+    authenticate(machine, token).er(e)?;
+    read_port(port).er(e)?;
+    read_mode(mode).er(e)?;
 
     Ok(())
 }
@@ -82,7 +82,7 @@ And aggregation/collection
 #[derive(Er)]
 pub struct StartupErr(pub String);
 pub fn startup() -> Er<(), StartupErr> {
-    er_all!(|| "some config checks failed", [
+    er_all!(|_| "some config checks failed", [
         read_config("HaandboldFuglen", "HaandboldFuglen_token", "aint_even_a_number_cmon_man", Some("microsoftjavaakacsharp")),
         read_config("ComputerKatten", "ComputerKatten_token", "85", None),
     ])?;
@@ -123,11 +123,13 @@ In many cases unit structs are enough, ONLY add context where it makes sense (us
 
 For empty structs use `.er(())`.
 
-For structs use `.er(|| arg1)` or `.er(|| (arg1, arg2))`.
+For structs use `.er(|_| arg1)` or `.er(|_| (arg1, arg2))`.
 
 For enums use `.er(EnumErr::variant_name)` and `.er(|| EnumErr::variant_name2(arg1))`.
 
-If you NEED a value from the old error, use `.er_with(|t| t.top.code)`. It keeps that old error in the tree too. A quick `map_err` can accidentally nuke it.
+If you NEED a value from the old error, use `.er_with(|t| NewErr::new(t.top.code))`. It keeps that old error in the tree too. A quick `map_err` can accidentally nuke it.
+
+`.er_with()` is the annoying explicit case, the convenient `|_|` pattern i can't get to work for that. 
 
 ## Why?
 
@@ -141,7 +143,9 @@ Forcing you to pick between report/top error. (Display/Debug meaning report is c
 
 Having an easy to use macro with the defaults you want, is the thing that makes each function have their own little `Er` type not be painful. And it means we don't have to rely on thiserror, and we can add convenience via the macro.
 
-## Links
+## Docs
+
+[Changelog](er/docs/changelog.md).
 
 [Features](er/docs/features.md).
 
@@ -150,6 +154,8 @@ Having an easy to use macro with the defaults you want, is the thing that makes 
 [Weird cases](er/docs/extra/weird-cases.md).
 
 [Performance](er/docs/extra/performance.md).
+
+## Links
 
 [Github Repo](https://github.com/Viterkim/er)
 

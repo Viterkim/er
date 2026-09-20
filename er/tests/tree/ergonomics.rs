@@ -1,5 +1,8 @@
 use er::*;
-use std::cell::Cell;
+use std::{
+    any::{Any, TypeId},
+    cell::Cell,
+};
 
 #[derive(Er)]
 pub struct AppErr;
@@ -93,6 +96,74 @@ pub fn local_error() -> LocalErr {
     LocalErr::new(Cell::new(7), "local")
 }
 
+#[derive(Er)]
+pub struct EmptyErr;
+
+#[derive(Er)]
+pub struct FieldErr(pub String);
+
+#[derive(Default, Er)]
+pub struct FactoryErr;
+impl From<FactoryErr> for String {
+    fn from(error: FactoryErr) -> Self {
+        error.to_string()
+    }
+}
+
+#[derive(Er)]
+pub enum PresetErr {
+    Invalid(u8),
+}
+
+#[derive(Er)]
+pub struct BoundaryErr;
+
+fn empty() -> Er<(), EmptyErr> {
+    Err::<(), _>(std::fmt::Error).er(())
+}
+
+fn fields() -> Er<(), FieldErr> {
+    Err::<(), _>(std::fmt::Error).er(|_| "field")
+}
+
+fn boundary<T, E>(result: Result<T, E>) -> Er<T, BoundaryErr>
+where
+    E: IntoErNode,
+{
+    result.er(())
+}
+
+#[test]
+pub fn context_spellings() {
+    assert!(empty().is_err());
+    assert_eq!(fields().unwrap_err().top.0, "field");
+
+    let made = Err::<(), _>(std::fmt::Error).er(FactoryErr::new);
+    assert_eq!(
+        Any::type_id(&made.as_ref().unwrap_err().top),
+        TypeId::of::<FactoryErr>()
+    );
+
+    let defaulted = Err::<(), _>(std::fmt::Error).er(FactoryErr::default);
+    assert_eq!(
+        Any::type_id(&defaulted.as_ref().unwrap_err().top),
+        TypeId::of::<FactoryErr>()
+    );
+
+    let input = 7;
+    let preset = Err::<(), _>(std::fmt::Error).er(|| PresetErr::invalid(input));
+    assert_eq!(
+        Any::type_id(&preset.as_ref().unwrap_err().top),
+        TypeId::of::<PresetErr>()
+    );
+
+    let factory = FactoryErr::new;
+    assert!(Err::<(), _>(std::fmt::Error).er(factory).is_err());
+    assert!(Err::<(), _>(std::fmt::Error).er(factory).is_err());
+
+    assert!(boundary(Err::<(), _>(std::fmt::Error).er(FactoryErr::new)).is_err());
+}
+
 #[test]
 pub fn local_roots() {
     let root = local_error().er();
@@ -149,15 +220,15 @@ pub fn er_with() {
     assert_eq!(calls.get(), 0);
 
     let result: Result<(), ChildErr> = Err(ChildErr(1));
-    let error: ErTree<ParentErr> = result.er_with(|e| ParentErr(e.0)).unwrap_err();
+    let error = result.er_with(|e| ParentErr(e.0)).unwrap_err();
     assert_eq!(error.top.0, 1);
     assert_eq!(error.er_find::<ChildErr>().unwrap().0, 1);
 
-    let error: ErTree<ParentErr> = ChildErr(2).er_with(|e| ParentErr(e.0));
+    let error = ChildErr(2).er_with(|e| ParentErr(e.0));
     assert_eq!(error.top.0, 2);
     assert_eq!(error.er_find::<ChildErr>().unwrap().0, 2);
 
-    let error: ErTree<ParentErr> = ChildErr(3).er().er_with(|t| ParentErr(t.top.0));
+    let error = ChildErr(3).er().er_with(|t| ParentErr(t.top.0));
     assert_eq!(error.top.0, 3);
     assert_eq!(error.er_find::<ChildErr>().unwrap().0, 3);
 }

@@ -12,7 +12,7 @@ fn pass_through() -> ErLazy {
 }
 
 fn with_context() -> ErLazy {
-    read().er(|| "loading config")?;
+    read().er(|_| "loading config")?;
     Ok(())
 }
 
