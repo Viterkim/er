@@ -5,14 +5,14 @@ pub fn cases() -> Vec<(&'static str, String, usize)> {
     let variants = (0..1000)
         .map(|i| format!("Variant{i} {{ input: String }},"))
         .collect::<String>();
-    let large_enum = format!("pub enum ManyEr {{ {variants} }}");
+    let large_enum = format!("pub enum ManyErr {{ {variants} }}");
 
     let nested = format!("{}Self{}", "Vec<(T, ".repeat(32), ")>".repeat(32));
     let recursive = format!("pub struct Recursive<T> {{ pub children: {nested} }}");
 
     vec![
-        ("unit", "pub struct ReadEr;".into(), 85),
-        ("named", "pub struct ReadEr { pub path: std::path::PathBuf, pub message: String }".into(), 85),
+        ("unit", "pub struct ReadErr;".into(), 85),
+        ("named", "pub struct ReadErr { pub path: std::path::PathBuf, pub message: String }".into(), 85),
         ("enum", large_enum, 3),
         ("recursive", recursive, 20),
         (
@@ -24,11 +24,11 @@ pub fn cases() -> Vec<(&'static str, String, usize)> {
             .into(),
             85,
         ),
-        ("wrap", "#[er(wrap)] pub struct ReadEr;".into(), 85),
+        ("wrap", "#[er(wrap)] pub struct ReadErr;".into(), 85),
         (
             "format",
             "#[er(format = \"{value} / {value:?} / {value:x}; {secret:>width$}\", wrap(output = report))]
-        pub struct SecretEr<T> {
+        pub struct SecretErr<T> {
             pub value: T,
             pub width: usize,
             #[er(censor)] pub secret: String,

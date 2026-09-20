@@ -1,15 +1,41 @@
 use crate::{Er, ErNode, ErReport, ErTop, ErTree};
-#[cfg(feature = "test")]
-use crate::{TestEr, TestError};
 use core::error::Error;
+
+/// Use the error returned by the closure as the new top error.
+pub struct ErBuilt;
+
+/// Build the new top error from the fields returned by the closure.
+pub struct ErFields;
+
+/// How `.er()` makes its new top error.
+pub trait ErMake<A, Mode> {
+    fn er_make(self) -> A;
+}
+
+impl<A, F: FnOnce() -> A> ErMake<A, ErBuilt> for F {
+    fn er_make(self) -> A {
+        self()
+    }
+}
+impl<A: From<(P,)>, P, F: FnOnce(()) -> P> ErMake<A, ErFields> for F {
+    fn er_make(self) -> A {
+        A::from((self(()),))
+    }
+}
+
+impl<A: From<()>> ErMake<A, ErFields> for () {
+    fn er_make(self) -> A {
+        A::from(())
+    }
+}
 
 /// Start a tree from an error.
 pub trait ErError: Error + Sized + 'static {
     /// Make a new Er error tree.
     ///
-    /// `return Err(PortEr::new(85).er());`
+    /// `return Err(PortErr::new(85).er());`
     ///
-    /// For adding context to a Result, see [`ErResult::er`].
+    /// For adding context to a Result, see [`ErContext::er`].
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er(self) -> ErTree<Self> {
         ErTree::from(self)
@@ -17,106 +43,80 @@ pub trait ErError: Error + Sized + 'static {
 
     /// Add your error on the top, move everything else below it.
     /// |e| is the old error.
-    /// Use instead of `.map_err(|err|)` when you need the value on the error
-    /// in the new error you are making, otherwise use `.er()`
+    /// Use this when the new error needs something from the old one.
     ///
-    /// `return Err(device.er_with(|e| AnalyzeEr { code: e.code }));`
+    /// `return Err(device.er_with(|e| AnalyzeErr::new(e.code)));`
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_with<A, F>(self, error: F) -> ErTree<A>
+    fn er_with<A>(self, error: impl FnOnce(&Self) -> A) -> ErTree<A>
     where
         Self: Send + Sync,
         A: Error + 'static,
-        F: FnOnce(&Self) -> A,
     {
-        let parent = error(&self);
-        ErTree::new(parent, [self])
+        let top = error(&self);
+        ErTree::new(top, [self])
     }
 }
 
-/// Add context to a Result, leave Ok alone.
+/// Add context to a Result or turn None into an error.
+pub trait ErContext<Mode> {
+    type Ok;
+
+    /// Add your error on the top, move everything else below it.
+    /// Only happens on Err or None.
+    ///
+    /// ```rust,ignore
+    /// result.er(())?; // Empty struct
+    /// result.er(|_| path)?; // One field
+    /// result.er(|_| (machine, token))?; // More fields
+    /// result.er(|| EnumErr::variant_name(arg1))?; // Enum variant
+    /// ```
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er<A>(self, error: impl ErMake<A, Mode>) -> Er<Self::Ok, A>
+    where
+        A: Error + 'static;
+}
+
+/// Add a new top error above an existing tree.
+pub trait ErTreeContext<Mode> {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er<A>(self, error: impl ErMake<A, Mode>) -> ErTree<A>
+    where
+        A: Error + 'static;
+}
+
+/// Other ways to work with a Result's error.
 pub trait ErResult {
     type Ok;
     type Err;
 
     /// Add your error on the top, move everything else below it.
     /// Only happens on failures.
-    ///
-    /// ```rust,ignore
-    /// result.er(OtherEr::new)?;                      // Empty struct
-    /// result.er(|| OtherEr::new(arg1))?;             // Struct with fields
-    /// result.er(|| EnumErr::variant_name(arg1))?;    // Enum variant
-    /// ```
-    #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er<A, F>(self, error: F) -> Er<Self::Ok, A>
-    where
-        A: Error + 'static,
-        F: FnOnce() -> A,
-        Self::Err: IntoErNode;
-
-    /// Add your error on the top, move everything else below it.
-    /// Only happens on failures.
     /// If the Err is already an Er tree, |t| is the tree. The error is `t.top`.
-    /// Use instead of `.map_err(|err|)` when you need the value on the error
-    /// in the new error you are making, otherwise use `.er(||)`
+    /// Use this when the new error needs something from the old one.
+    /// Otherwise use `.er()`.
     ///
-    /// `result.er_with(|t| AnalyzeEr { code: t.top.code })?;`
+    /// `result.er_with(|t| AnalyzeErr::new(t.top.code))?;`
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_with<A, F>(self, error: F) -> Er<Self::Ok, A>
+    fn er_with<A>(self, error: impl FnOnce(&Self::Err) -> A) -> Er<Self::Ok, A>
     where
         A: Error + 'static,
-        F: FnOnce(&Self::Err) -> A,
         Self::Err: IntoErNode;
 
     /// For values that don't implement `Error`, like `Err(85)`.
     ///
-    /// **Don't use this to add context to an existing tree! This makes a new tree,
-    /// it doesn't keep the old one for you. Use `.er(...)` for that.**
+    /// !WARNING! Don't use this to add context to an existing tree, you'll nuke it.
+    /// Use `.er()` for that.
     ///
     /// ```rust,ignore
-    /// // Err(85) calls DeviceEr::new(85)
-    /// // Same as `|v| DeviceEr::new(v)`
-    /// device_status().er_val(DeviceEr::new)?;
+    /// // Err(85) calls DeviceErr::new(85)
+    /// // Same as `|v| DeviceErr::new(v)`
+    /// device_status().er_val(DeviceErr::new)?;
     /// ```
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er_val<A, F>(self, error: F) -> Er<Self::Ok, A>
     where
         A: Error + 'static,
         F: FnOnce(Self::Err) -> A;
-
-    #[cfg(feature = "test")]
-    /// Add the test error, return a report.
-    #[cfg_attr(feature = "src_locations", track_caller)]
-    fn t_er(self) -> TestEr<Self::Ok>
-    where
-        Self: Sized,
-        Self::Err: IntoErNode,
-    {
-        self.er(|| TestError).er_report()
-    }
-}
-
-/// Turn None into your error.
-pub trait ErOption {
-    type Some;
-
-    /// Make None into an error, like `.ok_or_else()`.
-    ///
-    /// `mode.er(ConfigEr::missing_mode)?;`
-    #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er<A, F>(self, error: F) -> Er<Self::Some, A>
-    where
-        A: Error + 'static,
-        F: FnOnce() -> A;
-
-    #[cfg(feature = "test")]
-    /// Add the test error, return a report.
-    #[cfg_attr(feature = "src_locations", track_caller)]
-    fn t_er(self) -> TestEr<Self::Some>
-    where
-        Self: Sized,
-    {
-        self.er(|| TestError).er_report()
-    }
 }
 
 /// Get the tree or pick the output for a Result with a tree, Wrap or owned presentation.
@@ -129,19 +129,19 @@ pub trait ErPresentation {
 
     /// Just the outer error, leaves Ok alone.
     ///
-    /// `read_port("85").er_top().unwrap();`
+    /// `read_port("85").er_top()?;`
     fn er_top(self) -> Result<Self::Ok, ErTop<Self::Err>>;
 
     /// The whole report, leaves Ok alone.
     ///
-    /// `read_port("85").er_report().unwrap();`
+    /// `read_port("85").er_report()?;`
     fn er_report(self) -> Result<Self::Ok, ErReport<Self::Err>>;
 
     /// Take the tree out of a Wrap with `std_error` and add context. Leaves Ok alone.
     ///
-    /// **WARNING: normal `.er(...)` boxes a Wrap with `std_error` and makes its children NON SEARCHABLE.**
+    /// !WARNING! Normal `.er()` boxes a Wrap with `std_error`, so you can't find the errors inside it.
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_from_wrap<A, F>(self, error: F) -> Er<Self::Ok, A>
+    fn er_wrap<A, F>(self, error: F) -> Er<Self::Ok, A>
     where
         Self: Sized,
         Self::Err: Error + Send + Sync + 'static,

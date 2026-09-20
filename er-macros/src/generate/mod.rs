@@ -3,11 +3,13 @@ use crate::{
     input::{Input, bounds::format_generics},
     names::binding,
 };
+use construct::construct;
 use constructors::constructors;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::DeriveInput;
 
+pub mod construct;
 pub mod constructors;
 pub mod replace_self;
 pub mod wrap;
@@ -22,13 +24,15 @@ pub fn expand(item: &DeriveInput) -> syn::Result<TokenStream> {
     let formatting = format::implementations(&input, &generics, &formatter);
     let constructors = constructors(&input)?;
 
+    let construct = construct(&input);
+
     let wrap = match &input.options.wrap {
         Some(options) => {
-            let er_path = match input.options.er_path {
-                Some(path) => path,
+            let path = match &input.options.er_path {
+                Some(path) => path.clone(),
                 None => syn::parse_str("::er")?,
             };
-            wrap::expand(item, &er_path, options, &input.const_names, &formatter)?
+            wrap::expand(item, &path, options, &input.const_names, &formatter)?
         }
         None => TokenStream::new(),
     };
@@ -37,6 +41,7 @@ pub fn expand(item: &DeriveInput) -> syn::Result<TokenStream> {
         #formatting
         impl #impl_generics ::core::error::Error for #name #type_generics #where_clause {}
         #constructors
+        #construct
         #wrap
     })
 }

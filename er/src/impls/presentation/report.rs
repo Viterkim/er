@@ -1,8 +1,8 @@
 use crate::lines;
 use crate::render::report::write_entries;
 use crate::{
-    ErAsError, ErEntries, ErEntry, ErNodes, ErOpaqueError, ErReport, ErReportRef, ErSources,
-    ErTree, IntoErNode, IntoErTree, Layout, LineError,
+    ErAsError, ErEntries, ErEntry, ErLineError, ErNodes, ErOpaqueError, ErReport, ErReportRef,
+    ErSources, ErTree, IntoErNode, IntoErTree, Layout,
 };
 use core::{error::Error, fmt};
 
@@ -39,7 +39,7 @@ impl<'a, E: Error + 'static> ErReportRef<'a, E> {
     pub fn try_for_each_line<X>(
         &self,
         emit: impl FnMut(&str) -> Result<(), X>,
-    ) -> Result<(), LineError<X>> {
+    ) -> Result<(), ErLineError<X>> {
         lines::try_for_each_line(self, emit)
     }
 
@@ -80,6 +80,14 @@ impl<E: Error + 'static> fmt::Debug for ErReportRef<'_, E> {
         fmt::Display::fmt(self, formatter)
     }
 }
+impl<E: Error + 'static> ErOpaqueError for ErReportRef<'_, E> {
+    type Output = ErAsError<Self>;
+
+    fn opaque_err(self) -> Self::Output {
+        ErAsError(self)
+    }
+}
+
 impl<E> ErReport<E> {
     pub fn layout(self, layout: Layout) -> Self {
         Self { layout, ..self }
@@ -121,7 +129,7 @@ impl<E: Error + 'static> ErReport<E> {
     pub fn try_for_each_line<X>(
         &self,
         emit: impl FnMut(&str) -> Result<(), X>,
-    ) -> Result<(), LineError<X>> {
+    ) -> Result<(), ErLineError<X>> {
         lines::try_for_each_line(self, emit)
     }
 
@@ -167,16 +175,7 @@ impl<E: Error + Send + Sync + 'static> IntoErNode for ErReport<E> {
         self.tree.into_er_node()
     }
 }
-
 impl<E: Error + 'static> ErOpaqueError for ErReport<E> {
-    type Output = ErAsError<Self>;
-
-    fn opaque_err(self) -> Self::Output {
-        ErAsError(self)
-    }
-}
-
-impl<E: Error + 'static> ErOpaqueError for ErReportRef<'_, E> {
     type Output = ErAsError<Self>;
 
     fn opaque_err(self) -> Self::Output {

@@ -3,16 +3,16 @@
 You log a nice report as one journal entry, then normal `journalctl` puts the thing halfway across the screen.
 
 ```text
-ConfigEr { machine: "ComputerKatten" }
-`- ReadEr { path: "/etc/haandbold.toml" }
+ConfigErr { machine: "ComputerKatten" }
+`- ReadErr { path: "/etc/haandbold.toml" }
    `- No such file or directory
 ```
 
 Turns into this, timestamp shortened:
 
 ```text
-Sep ... Haandbold[85]: ConfigEr { machine: "ComputerKatten" }
-                       `- ReadEr { path: "/etc/haandbold.toml" }
+Sep ... Haandbold[85]: ConfigErr { machine: "ComputerKatten" }
+                       `- ReadErr { path: "/etc/haandbold.toml" }
                           `- No such file or directory
 ```
 
@@ -30,8 +30,8 @@ With a logger sending one native journal message, that looks like this:
 
 ```text
 Sep ... Haandbold[85]:
-                       ConfigEr { machine: "ComputerKatten" }
-                       `- ReadEr { path: "/etc/haandbold.toml" }
+                       ConfigErr { machine: "ComputerKatten" }
+                       `- ReadErr { path: "/etc/haandbold.toml" }
                           `- No such file or directory
 ```
 
@@ -42,7 +42,7 @@ These examples show the full message. Views that shorten multiline messages may 
 ## Why systemd-cat looks fine
 
 ```sh
-printf 'ConfigEr\n`- ReadEr\n' | systemd-cat --identifier Haandbold
+printf 'ConfigErr\n`- ReadErr\n' | systemd-cat --identifier Haandbold
 ```
 
 That's a stream. Journald [splits streams at newlines](https://github.com/systemd/systemd/blob/main/man/systemd-journald.service.xml), so those become separate entries.
@@ -80,9 +80,9 @@ That gives continuation lines two spaces instead of the whole prefix width. But 
 `.single_line()` avoids the indentation, but a big tree becomes one giant sausage:
 
 ```text
-ConfigEr { machine: "ComputerKatten" } [ReadEr { path: "/etc/haandbold.toml" } [No such file or directory]]
+ConfigErr { machine: "ComputerKatten" } [ReadErr { path: "/etc/haandbold.toml" } [No such file or directory]]
 ```
 
-`for_each_line(...)` can send every rendered line separately. That looks better in normal `journalctl`, but now one error is several events and they can interleave(you might get random bs between). 
+`for_each_line()` can send every rendered line separately. That looks better in normal `journalctl`, but now one error is several events and they can interleave(you might get random bs between).
 
 Log the normal report and try to not give up with the spaces for now. Use `-o cat`, `.single_line()`, or separate lines when one of those tradeoffs are ok (i don't like it).

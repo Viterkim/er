@@ -33,6 +33,6 @@ pub fn main() {
     assert_eq!(foreign.status_code(), 400);
     assert_eq!(foreign.to_string(), "ResponseErr");
     assert!(foreign.source().is_none());
-    let result = Err::<(), _>(wrapped).er_from_wrap(BoundaryErr::new);
+    let result = Err::<(), _>(wrapped).er_wrap(BoundaryErr::new);
     assert!(result.is_err_and(|tree| tree.er_contains::<core::fmt::Error>()));
 }

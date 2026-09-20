@@ -2,15 +2,15 @@ use er::*;
 use std::{error::Error, fmt};
 
 #[derive(Debug)]
-pub struct ReadEr;
-impl fmt::Display for ReadEr {
+pub struct ReadErr;
+impl fmt::Display for ReadErr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("read port")
     }
 }
-impl Error for ReadEr {}
-pub fn read_port(input: &str) -> Er<u16, ReadEr> {
-    input.parse().er(|| ReadEr)
+impl Error for ReadErr {}
+pub fn read_port(input: &str) -> Er<u16, ReadErr> {
+    input.parse().er(|| ReadErr)
 }
 
 #[cfg(feature = "derive")]
@@ -35,7 +35,7 @@ pub mod derived {
 
     #[derive(Er)]
     #[er(format = "{value} / {value:?} / {value:x}; {secret:>width$}", wrap(output = report))]
-    pub struct SecretEr<T> {
+    pub struct SecretErr<T> {
         pub value: T,
         pub width: usize,
         #[er(censor)]

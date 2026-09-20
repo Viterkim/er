@@ -13,10 +13,10 @@ help: consider annotating `NotDebug` with `#[derive(Debug)]`
   |
 
 error[E0277]: the trait bound `&Owned: Into<Owned>` is not satisfied
-  --> tests/fail/field_requirements.rs:20:31
+  --> tests/fail/field_requirements.rs:20:32
    |
-20 |     let _ = ConversionEr::new(&value);
-   |             ----------------- ^^^^^^ unsatisfied trait bound
+20 |     let _ = ConversionErr::new(&value);
+   |             ------------------ ^^^^^^ unsatisfied trait bound
    |             |
    |             required by a bound introduced by this call
    |
@@ -26,9 +26,9 @@ help: the trait `From<&Owned>` is not implemented for `Owned`
 11 | pub struct Owned;
    | ^^^^^^^^^^^^^^^^
    = note: required for `&Owned` to implement `Into<Owned>`
-note: required by a bound in `ConversionEr::new`
+note: required by a bound in `ConversionErr::new`
   --> tests/fail/field_requirements.rs:13:10
    |
 13 | #[derive(Er)]
-   |          ^^ required by this bound in `ConversionEr::new`
+   |          ^^ required by this bound in `ConversionErr::new`
    = note: this error originates in the derive macro `Er` (in Nightly builds, run with -Z macro-backtrace for more info)

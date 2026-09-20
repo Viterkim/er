@@ -52,6 +52,26 @@ pub fn callbacks() {
         calls += 1;
         Err(&failure)
     });
-    assert_eq!(result, Err(LineError::Callback(&failure)));
+    assert_eq!(result, Err(ErLineError::Callback(&failure)));
     assert_eq!(calls, 1);
+}
+
+#[test]
+pub fn invalid_depth() {
+    let mut snapshot = ErTree::new(Message::new("top"), [Message::new("child")]).er_snapshot();
+
+    for depth in [0, usize::MAX] {
+        snapshot.entries[1].depth = depth;
+        for layout in [Layout::Multiline, Layout::SingleLine] {
+            assert_eq!(
+                snapshot.er_report().layout(layout).to_string(),
+                "ER_INVALID_SNAPSHOT"
+            );
+            let mut output = String::new();
+            assert_eq!(
+                er::render::report::write_entries(&mut output, snapshot.er_entries(), layout),
+                Err(std::fmt::Error)
+            );
+        }
+    }
 }

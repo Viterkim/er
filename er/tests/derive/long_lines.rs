@@ -48,7 +48,7 @@ pub struct Wide {
 }
 
 #[derive(Er)]
-pub struct WideEr {
+pub struct WideErr {
     pub value: Wide,
 }
 #[test]
@@ -64,8 +64,8 @@ pub fn long_lines() -> fmt::Result {
     }
     expected.push_str(&format!("text: {:?} }}", value.text));
 
-    let tree = WideEr::new(value).er();
-    let expected = format!("WideEr {{ value: {expected} }}");
+    let tree = WideErr::new(value).er();
+    let expected = format!("WideErr {{ value: {expected} }}");
 
     assert_eq!(tree.er_top().to_string(), expected);
 

@@ -1,8 +1,9 @@
 #[cfg(feature = "src_locations")]
 use crate::ErSnapshotLocation;
 use crate::{
-    ErEntries, ErEntry, ErNode, ErNodes, ErReport, ErReportRef, ErSnapshot, ErSnapshotEntry,
-    ErSources, ErTop, ErTopRef, ErTree, IntoErNode, IntoErTree, Layout,
+    ErEntries, ErEntry, ErFindAll, ErMake, ErNode, ErNodes, ErReport, ErReportRef, ErSnapshot,
+    ErSnapshotEntry, ErSources, ErTop, ErTopRef, ErTree, ErTreeContext, IntoErNode, IntoErTree,
+    Layout,
 };
 #[cfg(feature = "src_locations")]
 use alloc::string::ToString;
@@ -15,7 +16,8 @@ impl<E: Error + 'static> ErTree<E> {
     /// Put existing errors below this one, even if the list is empty.
     #[cfg_attr(feature = "src_locations", track_caller)]
     pub fn new(error: E, nodes: impl IntoIterator<Item = impl IntoErNode>) -> Self {
-        let mut collected = Vec::new();
+        let nodes = nodes.into_iter();
+        let mut collected = Vec::with_capacity(nodes.size_hint().0);
         for node in nodes {
             collected.push(IntoErNode::into_er_node(node));
         }
@@ -29,34 +31,19 @@ impl<E: Error + 'static> ErTree<E> {
     }
 
     /// Add your error on the top, move everything else below it.
-    ///
-    /// `let error = error.er(ConfigEr::new);`
-    ///
-    /// Same [constructor calls](crate::ErResult::er) as on a Result.
-    #[cfg_attr(feature = "src_locations", track_caller)]
-    pub fn er<A>(self, parent: impl FnOnce() -> A) -> ErTree<A>
-    where
-        E: Send + Sync,
-        A: Error + 'static,
-    {
-        let parent = parent();
-        ErTree::new(parent, [self])
-    }
-
-    /// Add your error on the top, move everything else below it.
     /// |t| is the tree. The error is `t.top`.
-    /// Use instead of `.map_err(|err|)` when you need the value on the error
-    /// in the new error you are making, otherwise use `.er(||)`
+    /// Use this when the new error needs something from the old one.
+    /// Otherwise use `.er()`.
     ///
-    /// `let error = error.er_with(|t| AnalyzeEr { code: t.top.code });`
+    /// `let error = error.er_with(|t| AnalyzeErr::new(t.top.code));`
     #[cfg_attr(feature = "src_locations", track_caller)]
-    pub fn er_with<A>(self, parent: impl FnOnce(&Self) -> A) -> ErTree<A>
+    pub fn er_with<A>(self, top: impl FnOnce(&Self) -> A) -> ErTree<A>
     where
         E: Send + Sync,
         A: Error + 'static,
     {
-        let parent = parent(&self);
-        ErTree::new(parent, [self])
+        let top = top(&self);
+        ErTree::new(top, [self])
     }
 
     pub fn into_er_node(self) -> ErNode
@@ -91,6 +78,7 @@ impl<E: Error + 'static> ErTree<E> {
     }
 
     /// Follows the root's `source()` chain.
+    #[inline]
     pub fn er_sources(&self) -> ErSources<'_> {
         ErSources::new(self.top.source())
     }
@@ -113,10 +101,9 @@ impl<E: Error + 'static> ErTree<E> {
 
     /// Finds all the instances of an error type, for when you have duplicates.
     ///
-    /// `error.er_find_all::<PortEr>().find(|e| e.input == "aint_even_a_number_cmon_man")`
-    pub fn er_find_all<T: Error + 'static>(&self) -> impl Iterator<Item = &T> {
-        self.er_entries()
-            .filter_map(|entry| entry.error.downcast_ref::<T>())
+    /// `error.er_find_all::<PortErr>().find(|e| e.input == "aint_even_a_number_cmon_man")`
+    pub fn er_find_all<T: Error + 'static>(&self) -> ErFindAll<'_, T> {
+        ErFindAll::new(&self.top, &self.nodes)
     }
 
     /// Save the messages, tree structure and locations, without keeping the errors.
@@ -157,8 +144,17 @@ impl<E: Error + 'static> ErTree<E> {
         ErSnapshot { entries }
     }
 }
+impl<E: Error + Send + Sync + 'static, Mode> ErTreeContext<Mode> for ErTree<E> {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er<A>(self, top: impl ErMake<A, Mode>) -> ErTree<A>
+    where
+        A: Error + 'static,
+    {
+        ErTree::new(top.er_make(), [self])
+    }
+}
 impl<E> ErTree<E> {
-    /// The stored children, no root or native sources.
+    /// The stored sub errors, no root or native sources.
     pub fn er_descendants(&self) -> ErNodes<'_> {
         ErNodes::new(&self.nodes)
     }

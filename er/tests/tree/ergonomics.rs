@@ -1,5 +1,8 @@
 use er::*;
-use std::cell::Cell;
+use std::{
+    any::{Any, TypeId},
+    cell::Cell,
+};
 
 #[derive(Er)]
 pub struct AppErr;
@@ -93,6 +96,74 @@ pub fn local_error() -> LocalErr {
     LocalErr::new(Cell::new(7), "local")
 }
 
+#[derive(Er)]
+pub struct EmptyErr;
+
+#[derive(Er)]
+pub struct FieldErr(pub String);
+
+#[derive(Default, Er)]
+pub struct FactoryErr;
+impl From<FactoryErr> for String {
+    fn from(error: FactoryErr) -> Self {
+        error.to_string()
+    }
+}
+
+#[derive(Er)]
+pub enum PresetErr {
+    Invalid(u8),
+}
+
+#[derive(Er)]
+pub struct BoundaryErr;
+
+fn empty() -> Er<(), EmptyErr> {
+    Err::<(), _>(std::fmt::Error).er(())
+}
+
+fn fields() -> Er<(), FieldErr> {
+    Err::<(), _>(std::fmt::Error).er(|_| "field")
+}
+
+fn boundary<T, E>(result: Result<T, E>) -> Er<T, BoundaryErr>
+where
+    E: IntoErNode,
+{
+    result.er(())
+}
+
+#[test]
+pub fn context_spellings() {
+    assert!(empty().is_err());
+    assert_eq!(fields().unwrap_err().top.0, "field");
+
+    let made = Err::<(), _>(std::fmt::Error).er(FactoryErr::new);
+    assert_eq!(
+        Any::type_id(&made.as_ref().unwrap_err().top),
+        TypeId::of::<FactoryErr>()
+    );
+
+    let defaulted = Err::<(), _>(std::fmt::Error).er(FactoryErr::default);
+    assert_eq!(
+        Any::type_id(&defaulted.as_ref().unwrap_err().top),
+        TypeId::of::<FactoryErr>()
+    );
+
+    let input = 7;
+    let preset = Err::<(), _>(std::fmt::Error).er(|| PresetErr::invalid(input));
+    assert_eq!(
+        Any::type_id(&preset.as_ref().unwrap_err().top),
+        TypeId::of::<PresetErr>()
+    );
+
+    let factory = FactoryErr::new;
+    assert!(Err::<(), _>(std::fmt::Error).er(factory).is_err());
+    assert!(Err::<(), _>(std::fmt::Error).er(factory).is_err());
+
+    assert!(boundary(Err::<(), _>(std::fmt::Error).er(FactoryErr::new)).is_err());
+}
+
 #[test]
 pub fn local_roots() {
     let root = local_error().er();
@@ -104,7 +175,13 @@ pub fn local_roots() {
     assert!(converted.nodes.is_empty());
 
     let missing: Option<()> = None;
-    assert!(missing.er(local_error).unwrap_err().nodes.is_empty());
+    assert!(
+        missing
+            .er::<LocalErr>(local_error)
+            .unwrap_err()
+            .nodes
+            .is_empty()
+    );
 
     let status: Result<(), u8> = Err(7);
     let mapped = status.er_val(|attempts| LocalErr::new(Cell::new(attempts), "mapped"));
@@ -112,18 +189,18 @@ pub fn local_roots() {
     assert_eq!(mapped.unwrap_err().top.attempts.get(), 7);
 
     let result: Result<(), ChildErr> = Err(ChildErr(1));
-    let context = result.er(local_error).unwrap_err();
+    let context = result.er::<LocalErr>(local_error).unwrap_err();
 
     assert_eq!(context.er_find::<ChildErr>().unwrap().0, 1);
 
-    let context = ChildErr(2).er().er(local_error);
+    let context = ChildErr(2).er().er::<LocalErr>(local_error);
     assert_eq!(context.er_find::<ChildErr>().unwrap().0, 2);
 
     let grouped = ErTree::new(local_error(), [ChildErr(3)]);
     assert_eq!(grouped.er_find::<ChildErr>().unwrap().0, 3);
 
     let result: Result<(), ChildErr> = Err(ChildErr(5));
-    let collected = er_all!(local_error, [result]).unwrap_err();
+    let collected: ErTree<LocalErr> = er_all!(local_error, [result]).unwrap_err();
 
     assert_eq!(collected.er_find::<ChildErr>().unwrap().0, 5);
 }
@@ -135,7 +212,7 @@ pub struct ParentErr(pub u8);
 pub fn er_with() {
     let calls = Cell::new(0);
     let ok: Result<u8, ChildErr> = Ok(7);
-    let result = ok.er_with(|e| {
+    let result: Er<u8, ParentErr> = ok.er_with(|e| {
         calls.set(calls.get() + 1);
         ParentErr(e.0)
     });

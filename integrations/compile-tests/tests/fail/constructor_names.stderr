@@ -25,8 +25,8 @@ error: constructor `er_wrap` clashes with the generated Wrap method
 error: the wrapper needs a different name from the error type
   --> tests/fail/constructor_names.rs:30:18
    |
-30 | #[er(wrap(name = r#SameEr))]
-   |                  ^^^^^^^^
+30 | #[er(wrap(name = r#SameErr))]
+   |                  ^^^^^^^^^
 
 error: wrapper name `Boundary` clashes with a type parameter; use `wrap(name = ...)` to choose another name
   --> tests/fail/constructor_names.rs:34:18
@@ -34,8 +34,8 @@ error: wrapper name `Boundary` clashes with a type parameter; use `wrap(name = .
 34 | #[er(wrap(name = r#Boundary))]
    |                  ^^^^^^^^^^
 
-error: wrapper name `TaskErWrap` clashes with a type parameter; use `wrap(name = ...)` to choose another name
-  --> tests/fail/constructor_names.rs:41:19
+error: wrapper name `TaskErrWrap` clashes with a type parameter; use `wrap(name = ...)` to choose another name
+  --> tests/fail/constructor_names.rs:41:20
    |
-41 | pub struct TaskEr<TaskErWrap> {
-   |                   ^^^^^^^^^^
+41 | pub struct TaskErr<TaskErrWrap> {
+   |                    ^^^^^^^^^^^

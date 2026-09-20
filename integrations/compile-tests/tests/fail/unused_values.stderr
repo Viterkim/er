@@ -39,56 +39,56 @@ help: use `let _ = ...` to ignore the resulting value
 error: unused `ErTree` that must be used
   --> tests/fail/unused_values.rs:19:5
    |
-19 |     AppEr.er();
-   |     ^^^^^^^^^^
+19 |     AppErr.er();
+   |     ^^^^^^^^^^^
    |
 help: use `let _ = ...` to ignore the resulting value
    |
-19 |     let _ = AppEr.er();
+19 |     let _ = AppErr.er();
    |     +++++++
 
 error: unused `ErNode` that must be used
   --> tests/fail/unused_values.rs:20:5
    |
-20 |     AppEr.er().into_er_node();
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+20 |     AppErr.er().into_er_node();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
 help: use `let _ = ...` to ignore the resulting value
    |
-20 |     let _ = AppEr.er().into_er_node();
+20 |     let _ = AppErr.er().into_er_node();
    |     +++++++
 
 error: unused `ErReport` that must be used
   --> tests/fail/unused_values.rs:21:5
    |
-21 |     AppEr.er().into_er_report();
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+21 |     AppErr.er().into_er_report();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
 help: use `let _ = ...` to ignore the resulting value
    |
-21 |     let _ = AppEr.er().into_er_report();
+21 |     let _ = AppErr.er().into_er_report();
    |     +++++++
 
-error: unused `AppErWrap` that must be used
+error: unused `AppErrWrap` that must be used
   --> tests/fail/unused_values.rs:22:5
    |
-22 |     AppErWrap { tree: AppEr.er() };
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+22 |     AppErrWrap { tree: AppErr.er() };
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
 help: use `let _ = ...` to ignore the resulting value
    |
-22 |     let _ = AppErWrap { tree: AppEr.er() };
+22 |     let _ = AppErrWrap { tree: AppErr.er() };
    |     +++++++
 
-error: unused return value of `AppEr::new` that must be used
+error: unused return value of `AppErr::new` that must be used
   --> tests/fail/unused_values.rs:23:5
    |
-23 |     AppEr::new();
-   |     ^^^^^^^^^^^^
+23 |     AppErr::new();
+   |     ^^^^^^^^^^^^^
    |
 help: use `let _ = ...` to ignore the resulting value
    |
-23 |     let _ = AppEr::new();
+23 |     let _ = AppErr::new();
    |     +++++++
 
 error: unused return value of `Kind::missing` that must be used
@@ -102,13 +102,13 @@ help: use `let _ = ...` to ignore the resulting value
 24 |     let _ = Kind::missing();
    |     +++++++
 
-error: unused `AppErWrap` that must be used
+error: unused `AppErrWrap` that must be used
   --> tests/fail/unused_values.rs:25:5
    |
-25 |     AppEr.er_wrap();
-   |     ^^^^^^^^^^^^^^^
+25 |     AppErr.er_wrap();
+   |     ^^^^^^^^^^^^^^^^
    |
 help: use `let _ = ...` to ignore the resulting value
    |
-25 |     let _ = AppEr.er_wrap();
+25 |     let _ = AppErr.er_wrap();
    |     +++++++

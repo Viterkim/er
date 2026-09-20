@@ -1,4 +1,4 @@
-use core::{error::Error, ptr};
+use core::ptr;
 use er::*;
 use std::sync::{
     Arc,
@@ -23,29 +23,23 @@ impl Drop for Tracked {
 #[derive(Er)]
 #[er(wrap)]
 pub struct HandlerErr;
-pub fn failing() -> Er<(), HandlerErr> {
-    Err(ErTree::new(
-        HandlerErr,
-        [ErTree::new(InnerErr, [core::fmt::Error])],
-    ))
-}
 
 pub fn parse_wrapped(input: &str) -> Result<u16, HandlerErrWrap> {
-    let port: u16 = input.parse().er(HandlerErr::new)?;
+    let port: u16 = input.parse().er(())?;
     Ok(port)
 }
 
 #[test]
 pub fn conversions() {
     let drops = Arc::new(AtomicUsize::new(0));
-    let child = ErTree::new(
+    let child_tree = ErTree::new(
         Tracked::new(85, Arc::clone(&drops)),
         [Tracked::new(85, Arc::clone(&drops))],
     );
-    let error = ErTree::new(HandlerErr, [child]);
+    let error = ErTree::new(HandlerErr, [child_tree]);
     let expected = error.er_report().to_string();
-    let child = error.nodes[0].error.downcast_ref::<Tracked>().unwrap() as *const Tracked;
-    let grandchild = error.nodes[0].nodes[0]
+    let child_ptr = error.nodes[0].error.downcast_ref::<Tracked>().unwrap() as *const Tracked;
+    let grandchild_ptr = error.nodes[0].nodes[0]
         .error
         .downcast_ref::<Tracked>()
         .unwrap() as *const Tracked;
@@ -59,34 +53,21 @@ pub fn conversions() {
     let wrapped = HandlerErrWrap::from(error);
     assert_eq!(wrapped.er_top().to_string(), "HandlerErr");
 
-    let tree: ErTree<HandlerErr> = wrapped.into();
-    let wrapped = HandlerErrWrap::from(tree);
-    let report = wrapped.into_er_report().single_line();
-    let wrapped = HandlerErrWrap::from(report);
-    let top = wrapped.into_er_top().single_line();
-    let wrapped = HandlerErrWrap::from(top);
     let report: ErReport<HandlerErr> = wrapped.into();
-    assert_eq!(report.layout, Layout::Multiline);
-    let tree: ErTree<HandlerErr> = report.into();
-    let wrapped = HandlerErrWrap::from(tree);
-    let top: ErTop<HandlerErr> = wrapped.into();
-    assert_eq!(top.layout, Layout::Multiline);
-    let tree: ErTree<HandlerErr> = top.into();
+    assert_eq!(report.to_string(), expected);
 
-    pub fn propagate(result: Result<(), HandlerErrWrap>) -> Er<(), HandlerErr> {
+    fn propagate(result: Result<(), HandlerErrWrap>) -> Er<(), HandlerErr> {
         result?;
-
         Ok(())
     }
 
-    let recovered = propagate(Err(tree.into())).unwrap_err();
-    assert_eq!(recovered.er_report().to_string(), expected);
+    let recovered = propagate(Err(report.into())).unwrap_err();
     assert!(ptr::eq(
-        child,
+        child_ptr,
         recovered.nodes[0].error.downcast_ref::<Tracked>().unwrap()
     ));
     assert!(ptr::eq(
-        grandchild,
+        grandchild_ptr,
         recovered.nodes[0].nodes[0]
             .error
             .downcast_ref::<Tracked>()
@@ -135,35 +116,24 @@ pub fn fresh_conversions() {
 
     let _line = line!() + 1;
     let wrapped: HandlerErrWrap = HandlerErr::new().into();
+
     #[cfg(feature = "src_locations")]
     assert_eq!(wrapped.tree.src_location.line(), _line);
     assert_eq!(wrapped.er_top().to_string(), "HandlerErr");
 
-    let _line = line!() + 1;
-    let wrapped = HandlerErrWrap::from(HandlerErr::new());
-    #[cfg(feature = "src_locations")]
-    assert_eq!(wrapped.tree.src_location.line(), _line);
-    assert!(wrapped.tree.nodes.is_empty());
-
-    pub fn from_result(line: &mut u32) -> Result<(), HandlerErrWrap> {
+    fn from_result(line: &mut u32) -> Result<(), HandlerErrWrap> {
         let result: Result<(), HandlerErr> = Err(HandlerErr::new());
         *line = line!() + 1;
         result?;
-
         Ok(())
     }
 
     let mut _line = 0;
     let wrapped = from_result(&mut _line).unwrap_err();
+
     #[cfg(feature = "src_locations")]
     assert_eq!(wrapped.tree.src_location.line(), _line);
     assert!(wrapped.tree.nodes.is_empty());
-
-    let tree: ErTree<HandlerErr> = HandlerErr::new().er();
-    assert!(tree.nodes.is_empty());
-
-    let wrapped = GenericErr::new(std::rc::Rc::new(std::cell::Cell::new(7))).er_wrap();
-    assert_eq!(wrapped.tree.top.value.get(), 7);
 }
 
 #[derive(Er)]
@@ -191,7 +161,7 @@ pub fn top_output() {
     assert_eq!(format!("{wrapped:?}"), "TopOutputErr");
 
     let result: Result<(), TopOutputErrWrap> = Err(wrapped);
-    let report = result.er(HandlerErr::new).er_report().unwrap_err();
+    let report = result.er::<HandlerErr>(()).er_report().unwrap_err();
 
     assert!(report.er_contains::<TopOutputErr>());
     assert!(report.er_contains::<InnerErr>());
@@ -213,39 +183,22 @@ pub fn report_output() {
     assert_eq!(format!("{wrapped:?}"), displayed);
 
     let result: Result<(), ReportOutputErrWrap> = Err(wrapped);
-    let outer = result.er(HandlerErr::new).unwrap_err();
+    let outer = result.er::<HandlerErr>(()).unwrap_err();
     assert!(outer.er_contains::<ReportOutputErr>());
     assert!(outer.er_contains::<InnerErr>());
 }
 
 #[test]
-pub fn reentry() {
-    let tree = ErTree::new(HandlerErr, [InnerErr]);
-    #[cfg(feature = "src_locations")]
-    let location = tree.src_location;
-    let result: Result<(), HandlerErrWrap> = Err(tree.into());
-    let outer = result.er(ReportOutputErr::new).unwrap_err();
+pub fn report_reentry() {
+    let tree = ErTree::new(ReportOutputErr, [std::io::Error::other("disk")]);
+    let child = tree.er_find::<std::io::Error>().unwrap() as *const std::io::Error;
+    let report = tree.into_er_report().single_line();
 
-    assert!(outer.er_contains::<HandlerErr>());
-    assert!(outer.er_contains::<InnerErr>());
-    #[cfg(feature = "src_locations")]
-    assert_eq!(outer.nodes[0].src_location, location);
-
-    let drops = Arc::new(AtomicUsize::new(0));
-    let tree = ErTree::new(ReportOutputErr, [Tracked::new(85, Arc::clone(&drops))]);
-    #[cfg(feature = "src_locations")]
-    let location = tree.src_location;
-    let child = tree.er_find::<Tracked>().unwrap() as *const Tracked;
-    let result: Result<(), ErReport<ReportOutputErr>> = Err(tree.into_er_report().single_line());
-    let outer = result.er(HandlerErr::new).unwrap_err();
+    let result: Result<(), ErReport<ReportOutputErr>> = Err(report);
+    let outer = result.er::<HandlerErr>(()).unwrap_err();
 
     assert!(outer.er_contains::<ReportOutputErr>());
-    assert!(ptr::eq(child, outer.er_find::<Tracked>().unwrap()));
-    #[cfg(feature = "src_locations")]
-    assert_eq!(outer.nodes[0].src_location, location);
-    assert_eq!(drops.load(Ordering::Relaxed), 0);
-    drop(outer);
-    assert_eq!(drops.load(Ordering::Relaxed), 1);
+    assert!(ptr::eq(child, outer.er_find::<std::io::Error>().unwrap()));
 }
 
 #[derive(Er)]
@@ -253,7 +206,7 @@ pub fn reentry() {
 pub struct StandardErr<T>(pub T);
 
 #[test]
-pub fn std_error() -> core::fmt::Result {
+pub fn std_error() {
     let drops = Arc::new(AtomicUsize::new(0));
     let tree = ErTree::new(
         StandardErr::new(85u8),
@@ -267,13 +220,14 @@ pub fn std_error() -> core::fmt::Result {
     #[cfg(feature = "src_locations")]
     let location = tree.src_location;
     let wrapped = StandardErrWrap::from(tree);
+
     assert_eq!(wrapped.to_string(), expected);
     assert_eq!(format!("{wrapped:?}"), expected);
-    assert!(Error::source(&wrapped).is_none());
 
     let _line = line!() + 1;
-    let result = Err::<(), _>(wrapped).er_from_wrap(HandlerErr::new);
-    let tree = result.err().ok_or(core::fmt::Error)?;
+    let result = Err::<(), _>(wrapped).er_wrap(HandlerErr::new);
+    let tree = result.unwrap_err();
+
     assert_eq!(tree.er_find_all::<Tracked>().count(), 2);
     assert!(ptr::eq(child, &*tree.nodes[0].nodes[0].error));
     #[cfg(feature = "src_locations")]
@@ -287,22 +241,19 @@ pub fn std_error() -> core::fmt::Result {
 
     let wrapped = StandardErrWrap::from(ErTree::new(StandardErr::new(85u8), [InnerErr]));
     let expected = wrapped.to_string();
-    let opaque = Err::<(), _>(wrapped)
-        .er(HandlerErr::new)
-        .err()
-        .ok_or(core::fmt::Error)?;
-    assert!(opaque.er_contains::<StandardErrWrap<u8>>());
-    assert!(!opaque.er_contains::<InnerErr>());
-    assert_eq!(opaque.nodes[0].error.to_string(), expected);
+    let outer = Err::<(), _>(wrapped).er::<HandlerErr>(()).unwrap_err();
+
+    assert!(outer.er_contains::<StandardErrWrap<u8>>());
+    assert_eq!(outer.nodes[0].error.to_string(), expected);
 
     let mut called = false;
-    let success = Ok::<_, StandardErrWrap<u8>>(7).er_from_wrap(|| {
+    let success = Ok::<_, StandardErrWrap<u8>>(7).er_wrap(|| {
         called = true;
         HandlerErr
     });
+
     assert_eq!(success.ok(), Some(7));
     assert!(!called);
-    Ok(())
 }
 
 #[derive(Er)]

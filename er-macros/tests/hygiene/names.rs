@@ -54,6 +54,37 @@ pub fn struct_collisions() {
     );
 }
 
+type __ErInput0 = String;
+
+#[derive(Er)]
+pub struct AliasErr {
+    pub value: __ErInput0,
+}
+#[test]
+pub fn field_type_name_collision() {
+    let error: AliasErr = ("hello",).into();
+    assert_eq!(error.value, "hello");
+}
+
+mod bound_name {
+    use er_macros::Er;
+
+    pub trait __ErInput0 {}
+    impl __ErInput0 for () {}
+
+    #[derive(Er)]
+    pub struct BoundErr<T: __ErInput0> {
+        pub message: String,
+        #[er(skip)]
+        pub marker: core::marker::PhantomData<T>,
+    }
+    #[test]
+    pub fn collision() {
+        let error = BoundErr::<()>::new("hello", core::marker::PhantomData);
+        assert_eq!(error.message, "hello");
+    }
+}
+
 #[derive(Er)]
 pub enum RawEnum {
     r#Struct {
