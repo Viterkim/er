@@ -1,6 +1,6 @@
 # Examples
 
-`use er::*;` at the top, then give each function that deals with errors its own `FuncNameErr` type with `#[derive(Er)]` and use `.er()` on results, errors and options.
+Assumes `use er::*;` is used.
 
 ## Empty struct
 
@@ -9,6 +9,7 @@ If the name and location are enough:
 ```rust
 #[derive(Er)]
 pub struct ReadPortErr;
+
 pub fn read_port(input: &str) -> Er<u16, ReadPortErr> {
     input.parse().er(())
 }
@@ -23,6 +24,7 @@ Keep the stuff the caller cares about:
 pub struct ReadFileErr { // or `ReadFileErr(pub PathBuf)`
     pub path: PathBuf,
 }
+
 pub fn read_file(path: &Path) -> Er<String, ReadFileErr> {
     fs::read_to_string(path).er(|_| path)
 }
@@ -38,6 +40,7 @@ pub enum ModeErr {
     Missing,
     Unknown { input: String },
 }
+
 pub fn read_mode(input: Option<&str>) -> Er<&str, ModeErr> {
     // Even on options (like .ok_or_else())
     let mode = input.er(ModeErr::missing)?;
@@ -50,58 +53,6 @@ pub fn read_mode(input: Option<&str>) -> Er<&str, ModeErr> {
 }
 ```
 
-## Use stuff from the previous error
-
-If you need something from the old error, `.er_with()` lets you look at it and still keep it in the tree. 
-
-If it's already an Er tree, `t.top` is the error you made.
-
-```rust
-// The old pal
-#[derive(Er)]
-pub struct DeviceErr {
-    pub code: u8,
-}
-
-// Our new one
-#[derive(Er)]
-pub struct AnalyzeErr {
-    pub code: u8,
-}
-pub fn analyze() -> Er<(), AnalyzeErr> {
-    // read_device returns Er<_, DeviceErr>
-    read_device().er_with(|t| AnalyzeErr::new(t.top.code))?;
-    Ok(())
-}
-```
-
-If its a plain error (not a tree yet), then the `|e|` is the error:
-
-```rust
-return Err(device.er_with(|e| AnalyzeErr::new(e.code)));
-```
-
-The convenience with |_| for struct errs does not work with `er_with(|old|)`... I can't get it to work sorry.
-
-Also... if you need to own something from the old stuff, you can always use `.clone()`, `.to_string()` etc.
-
-## Don't destroy the tree (lose sub errors)
-
-The `.er_with()` above adds to the old tree. Both of these copy the code into a fresh one and throw the old tree away:
-
-ALWAYS use .er_with() for those cases. NEVER EVER do stuff like this:
-
-```rust
-// ! BAD DONT DO THIS !
-read_device().map_err(|t| AnalyzeErr::new(t.top.code).er())
-
-// ! BAD DONT DO THIS, EASY TO DO BUT HURTS SO BAD !
-if let Err(t) = read_device() {
-    // the t tree is gone, (womp womp, sad sounds)
-    return Err(AnalyzeErr::new(t.top.code).er());
-}
-```
-
 ## Print report
 
 ```rust
@@ -110,17 +61,9 @@ if let Err(error) = read_port("fakenumber") {
 }
 ```
 
-Works with `.expect()` too:
-
-```rust
-let port = read_port("85").er_report().expect("usable port");
-```
-
 `main` can also just return `Result<(), ErReport<AppErr>>`.
 
 ## Print top error
-
-Just the top error:
 
 ```rust
 if let Err(error) = read_file(Path::new("missing85")) {
@@ -136,7 +79,56 @@ Missing: missing85
 
 `error.top` is still your type, just read its fields. `.er_top()` only chooses what gets printed.
 
-## Type inside
+## Use stuff from the previous error
+
+If you need something from the old error, `.er_with()` lets you look at it and still keep it in the tree.
+
+If it's already an Er tree, `t.top` is the error you made.
+
+```rust
+// The old pal
+#[derive(Er)]
+pub struct DeviceErr {
+    pub code: u8,
+}
+
+// Our new one
+#[derive(Er)]
+pub struct AnalyzeErr {
+    pub code: u8,
+}
+
+pub fn analyze() -> Er<(), AnalyzeErr> {
+    // read_device returns Er<_, DeviceErr>
+    read_device().er_with(|t| AnalyzeErr::new(t.top.code))?;
+    Ok(())
+}
+```
+
+If it's a plain error (not a tree yet), then the `|e|` is the error:
+
+```rust
+return Err(device.er_with(|e| AnalyzeErr::new(e.code)));
+```
+
+The convenience with `|_|` for struct errs does not work with `er_with(|old|)`.
+
+## Don't destroy the tree (lose sub errors)
+
+The `.er_with()` above adds to the old tree. Both of these copy the code into a fresh one and throw the old tree away. ALWAYS use `.er_with()` for those cases. NEVER EVER do stuff like this:
+
+```rust
+// ! BAD DO NOT DO THIS !
+read_device().map_err(|t| AnalyzeErr::new(t.top.code).er())
+
+// ! BAD DO NOT DO THIS !
+if let Err(t) = read_device() {
+    // the t tree is gone, (womp womp, sad sounds)
+    return Err(AnalyzeErr::new(t.top.code).er());
+}
+```
+
+## Non errors (ErFormat)
 
 For a struct inside your error, `ErFormat` gives the same Display/Debug and constructors, but no `Error`.
 
@@ -161,55 +153,64 @@ println!("{}", error.er_top());
 ConnectErr { connection: Connection { host: "ComputerKatten", port: 85 } }
 ```
 
-## Collect/aggregate
+## Collect / aggregate / er_all!
 
-Collects multi failures (different types are fine).
+Can be different types of sub error types.
+
+### Only parent context
 
 ```rust
 #[derive(Er)]
-pub struct ConfigErr {
+pub struct ChecksErr {
     pub port: String,
     pub enabled: String,
 }
-pub fn check_config(port: &str, enabled: &str) -> Er<(), ConfigErr> {
-    er_all!(
-        |_| (port, enabled),
-        [port.parse::<u16>(), enabled.parse::<bool>()],
-    )
+
+pub fn check_inputs(port: &str, enabled: &str) -> Er<(), ChecksErr> {
+    er_all!(|_| (port, enabled), [port.parse::<u16>(), enabled.parse::<bool>()])
 }
 ```
 
-Or pass a collection you already have.
+### Context on each sub error
+
+Making a type for the suberrors, and giving them context:
 
 ```rust
 #[derive(Er)]
-pub struct FilesErr;
-pub fn read_files(paths: &[PathBuf]) -> Er<(), FilesErr> {
-    let mut results = Vec::new();
+pub struct SubErr(pub String);
 
-    for path in paths {
-        results.push(read_file(path));
-    }
+#[derive(Er)]
+pub struct ConfigErr {
+    pub path: PathBuf,
+    pub port: String,
+    pub enabled: String,
+}
 
-    er_all!((), results)
+pub fn check_config(path: &Path, port: &str, enabled: &str) -> Er<(), ConfigErr> {
+    let top_err = |_| (path, port, enabled);
+    let host = read_file(path).er(top_err)?;
+
+    er_all!(top_err, [
+        port.parse::<u16>().er::<SubErr>(|_| port),
+        enabled.parse::<bool>().er::<SubErr>(|_| enabled),
+        host.trim().parse::<IpAddr>().er::<SubErr>(|_| host),
+    ])
 }
 ```
 
 ## Find original error
+
+`.er_find()` also checks `source()`. `.er_find_all()` gets every match.
 
 ```rust
 if let Err(error) = read_file(Path::new("missing85")) {
     if let Some(source) = error.er_find::<io::Error>() {
         println!("{:?}", source.kind());
     }
-}
-```
 
-Also checks `source()`. For all matches:
-
-```rust
-for failed in error.er_find_all::<ReadFileErr>() {
-    println!("{}", failed.path.display());
+    for failed in error.er_find_all::<ReadFileErr>() {
+        println!("{}", failed.path.display());
+    }
 }
 ```
 
@@ -234,6 +235,7 @@ match error {
 ```
 
 Or you want to keep the report as text too.
+
 ```rust
 #[derive(Er)]
 pub struct ApiError {
@@ -255,6 +257,58 @@ if let Err(error) = public_read_port("fakenumber") {
     println!("{}", error.report);
     println!("{}", error.err_msg);
 }
+```
+
+## Non errors (values)
+
+Never do this on a tree, you nuke it! This makes a new `ErTree`.
+
+For values that don't implement `Error` like `Err(85)`.
+
+```rust
+#[derive(Er)]
+pub struct DeviceErr {
+    pub status: u8,
+}
+
+pub fn check_device(result: Result<(), u8>) -> Er<(), DeviceErr> {
+    // Remember, in rust if the first value of a closure just gets passed to a function,
+    // you can pass the function directly. So you could also do `result.er_val(DeviceErr::new)`
+    result.er_val(|status| DeviceErr::new(status))
+}
+```
+
+## Snapshots
+
+Saves msgs and the tree structure for special occasions (as strings, not the error types).
+
+```rust
+if let Err(error) = read_port("fakenumber") {
+    let snapshot = error.er_snapshot();
+    drop(error);
+
+    println!("{}", snapshot.er_report());
+
+    for entry in snapshot.er_entries() {
+        println!("{}", entry.message);
+    }
+}
+```
+
+Can still print `.er_top()` or `.er_report()`. Each entry has its depth and the index of the error above it.
+
+Enable `serde` on Er, then add `serde_json` (or toml, or whatever).
+
+```toml
+[dependencies]
+er = { version = "0.2", features = ["serde"] }
+serde_json = "1"
+```
+
+```rust
+let snapshot = read_port("fakenumber").unwrap_err().er_snapshot();
+let json = serde_json::to_string_pretty(&snapshot).unwrap();
+std::fs::write("/tmp/error.json", &json).unwrap();
 ```
 
 ## Tricky example (combination)
@@ -292,6 +346,7 @@ pub fn listen(input: &str) -> Er<TcpListener, ListenErr> {
 // Someone using our public API doesn't need Er.
 // I use 'Err' for internal errors, and 'Error' for public facing ones.
 pub type ListenError = ListenErr;
+
 pub fn public_error_example(input: &str) -> Result<TcpListener, ListenError> {
     listen(input).map_err(|error| error.top)
 }
@@ -322,24 +377,6 @@ fn main() {
 
 [The full tricky comparison](tricky-error-comparison.md) does this with the other libraries as a comparison.
 
-## Non errors (values)
-
-NEVER do this on a tree, you nuke it! !This makes a new tree!
-
-For values that don't implement `Error` like `Err(85)`.
-
-```rust
-#[derive(Er)]
-pub struct DeviceErr {
-    pub status: u8,
-}
-pub fn check_device(result: Result<(), u8>) -> Er<(), DeviceErr> {
-    // Remember, the error is a value and gets passed into the first argument
-    // Same as `|v| DeviceErr::new(v)`
-    result.er_val(DeviceErr::new)
-}
-```
-
 ## Tests
 
 Enable `test` on your dev deps:
@@ -356,6 +393,7 @@ use er::*;
 
 #[derive(Er)]
 pub struct ReadPortErr;
+
 pub fn read_port(input: &str) -> Er<u16, ReadPortErr> {
     input.parse().er(())
 }
@@ -381,6 +419,7 @@ If you need to implement another crate's trait on the whole tree, use Wrap.
 #[derive(Er)]
 #[er(wrap(name = HandlerError))] // Defaults to HandlerErrWrap without name
 pub struct HandlerErr;
+
 pub fn handler(input: &str) -> Result<u16, HandlerError> {
     let port = input.parse().er(())?;
     Ok(port)
@@ -392,47 +431,13 @@ pub fn handler(input: &str) -> Result<u16, HandlerError> {
 ```rust
 #[derive(Er)]
 pub struct RequestErr;
+
 pub fn request(input: &str) -> Er<u16, RequestErr> {
     handler(input).er(())
 }
 ```
 
 [Wrap options and the trait impl](macros.md#wrap).
-
-## Snapshots
-
-Saves msgs and the tree structure for christmas or other special occasions.
-
-Remember they aren't real errors but strings.
-
-```rust
-if let Err(error) = read_port("fakenumber") {
-    let snapshot = error.er_snapshot();
-    drop(error);
-
-    println!("{}", snapshot.er_report());
-
-    for entry in snapshot.er_entries() {
-        println!("{}", entry.message);
-    }
-}
-```
-
-Can still print `.er_top()` or `.er_report()`. Each entry has its depth and the index of the error above it.
-
-Enable `serde` on Er, then add `serde_json` (or toml, or whatever) in your own crate if you want to save it. Er doesn't have `to_json()`.
-
-```toml
-[dependencies]
-er = { version = "0.2", features = ["serde"] }
-serde_json = "1"
-```
-
-```rust
-let snapshot = read_port("fakenumber").unwrap_err().er_snapshot();
-let json = serde_json::to_string_pretty(&snapshot).unwrap();
-std::fs::write("/tmp/error.json", &json).unwrap();
-```
 
 ## Opaque (edge case)
 
@@ -450,7 +455,7 @@ pub fn run() -> anyhow::Result<()> {
 
 BONUS: Nothing is deleted `ErAsError` keeps the presentation in its public `.0` field.
 
-BUT `.opaque_err()` stops searches (source() is empty), and going the other way, Anyhow's boxed conversion can also be a sneaky bitch and hide types from er_find. [The anyhow example](../../integrations/anyhow/src/lib.rs) shows both.
+BUT `.opaque_err()` stops searches (source() is empty), and going the other way, Anyhow's boxed conversion can also be sneaky and hide types from er_find. [The anyhow example](../../integrations/anyhow/src/lib.rs) shows both.
 
 ## Macros
 
