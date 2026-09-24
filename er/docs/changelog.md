@@ -1,3 +1,7 @@
+# 0.2.1
+
+Cleanup / simplify the docs (especially readme.md)
+
 # 0.2.0
 
 Struct errors can now also use `.er(())`, `.er(|_| path)` or `.er(|_| (machine, token))` without repeating the error name.
