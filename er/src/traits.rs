@@ -104,8 +104,7 @@ pub trait ErResult {
 
     /// For values that don't implement `Error`, like `Err(85)`.
     ///
-    /// !WARNING! Don't use this to add context to an existing tree, you'll nuke it.
-    /// Use `.er()` for that.
+    /// ! WARNING ! Don't use this to add context to an existing tree, you'll nuke it. Use `.er()` for that.
     ///
     /// ```rust,ignore
     /// // Err(85) calls DeviceErr::new(85)

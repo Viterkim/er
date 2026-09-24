@@ -1,163 +1,258 @@
 # Er, errors with less r
 
-Convenient error handling with very easy(i hope) ways to add typed context at every step.
+Easy and convenient typed error handling at every step (for applications and libraries).
 
-Made for when stuff goes wrong in production at 03:00(no AM for you americans), for what is nice to see in your errors/logs, for saving you hours of debugging, and what is not annoying to type...
+Design your error types around what your caller cares about, not what combination of errors you got.
 
-[Examples and patterns to use](./er/docs/examples.md).
-
-[Simple error comparison (basic usage, context, output)](er/docs/simple-error-comparison.md).
-
-[Tricky error comparison (foreign errors, own errors, the original error, string context, typed context, using / consuming, public boundary)](er/docs/tricky-error-comparison.md).
-
-Add it with:
 ```toml
 [dependencies]
 er = "0.2"
 ```
 
-## Initial Example
+## Simple example
 
-Use `.er` on basically any result/error/option/tree, even different types.
+Use `.er()` on any result/error/option/tree, even on different types.
 
-You add relevant context(or none), Er keeps the original error and adds line number and file name.
+`er` builds a tree/report and keeps the original typed error below. It also adds compile time file names/line numbers.
 
 ```rust
 use er::*;
-use std::{fs::read_to_string, path::PathBuf};
+use std::{fs::read_to_string, path::{Path, PathBuf}};
 
 #[derive(Er)]
-pub struct FileErr(pub PathBuf);
-pub fn read_file(path: &str) -> Er<String, FileErr> {
-    let text = read_to_string(path).er(|_| path)?;
-    Ok(text)
+pub struct FileErr {
+    pub path: PathBuf,
+}
+
+pub fn read_file(path: &Path) -> Er<String, FileErr> {
+    // Extra context with 'path' + automatic source location
+    read_to_string(path).er(|_| path)
 }
 ```
-Er turns the `&str` into a `PathBuf` only on failure (And we keep the `io::Error`).
 
-`.er_report()` gives us:
+Printed with `.er_report()`
+
 ```text
-FileErr("/tmp/file.txt") @ er/runnable_examples/context.rs:7:37
+FileErr { path: "/file/path/missing.txt" } @ src/main.rs:11:26
 `- No such file or directory (os error 2)
 ```
 
-We can also just 'yeet' it up with an empty struct, still adding the implicit context (where it happened).
+## Comparison to anyhow/thiserror/error-stack
+
+### With context
+
 ```rust
-#[derive(Er)]
-pub struct AnalyzeErr;
-pub fn analyze() -> Er<String, AnalyzeErr> {
-    // Serious analysis happening right now
-    read_file("/tmp/file.txt").er(())
-}
-```
-```text
-AnalyzeErr @ er/runnable_examples/context.rs:14:32
-`- FileErr("/tmp/file.txt") @ er/runnable_examples/context.rs:7:37
-   `- No such file or directory (os error 2)
+// er
+let port = input.parse::<u16>().er(|_| input)?;
+
+// thiserror (typed but no tree/report)
+let port = input.parse::<u16>().map_err(|source| PortErr { input: input.into(), source })?;
+
+// anyhow
+let port = input.parse::<u16>().with_context(|| format!("invalid port {input:?}"))?;
+
+// error-stack (tree/report)
+let port = input.parse::<u16>().change_context_lazy(|| PortErr { input: input.into() })?;
 ```
 
-And when things get spicy
 ```rust
+// er
+#[derive(Er)]
+pub struct PortErr {
+    pub input: String,
+}
+
+// thiserror
+#[derive(Debug, thiserror::Error)]
+#[error("invalid port {input:?}: {source}")]
+pub struct PortErr {
+    pub input: String,
+    pub source: std::num::ParseIntError,
+}
+
+// error-stack (using thiserror for the type)
+#[derive(Debug, thiserror::Error)]
+#[error("invalid port {input:?}")]
+pub struct PortErr {
+    pub input: String,
+}
+```
+
+```text
+// er
+PortErr { input: "aint_even_a_number_cmon_man" } @ examples/er_context.rs:8:35
+`- invalid digit found in string
+
+// thiserror
+invalid port "aint_even_a_number_cmon_man": invalid digit found in string
+
+// anyhow
+invalid port "aint_even_a_number_cmon_man"
+Caused by:
+    invalid digit found in string
+
+// error-stack
+invalid port "aint_even_a_number_cmon_man"
+├╴at examples/error_stack_context.rs:10:37
+│
+╰─▶ invalid digit found in string
+    ╰╴at examples/error_stack_context.rs:10:37
+```
+
+### Without context
+
+```rust
+// er
+#[derive(Er)]
+pub struct PortErr;
+
+// thiserror
+#[derive(Debug, thiserror::Error)]
+pub enum PortErr {
+    #[error("parse failed: {0}")]
+    Parse(#[from] std::num::ParseIntError),
+}
+
+// error-stack (using thiserror for the type)
+#[derive(Debug, thiserror::Error)]
+#[error("PortErr")]
+pub struct PortErr;
+```
+
+```text
+// er
+PortErr @ examples/er_no_context.rs:7:35
+`- invalid digit found in string
+
+// thiserror
+parse failed: invalid digit found in string
+
+// anyhow
+invalid digit found in string
+
+// error-stack
+PortErr
+├╴at examples/error_stack_lazy.rs:9:37
+│
+╰─▶ invalid digit found in string
+    ╰╴at examples/error_stack_lazy.rs:9:37
+```
+
+```rust
+// er
+let port = input.parse::<u16>().er(())?;
+
+// thiserror / anyhow
+let port = input.parse::<u16>()?;
+
+// error-stack
+let port = input.parse::<u16>().change_context(PortErr)?;
+```
+
+## Detailed comparisons
+
+If you want bigger / more detailed comparisons for `thiserror, anyhow, snafu, error-stack, rootcause, exn, eros, problemo` or you are thinking "why not one of those?"
+
+Overview of a [minimal error example compared (basic usage, context, output)](er/docs/simple-error-comparison.md)
+
+There's also a [huge tricky error comparison (foreign errors, own errors, the original error, string context, typed context, using / consuming, public boundary)](er/docs/tricky-error-comparison.md)
+
+## Putting it all together
+
+Also check out the [full list of examples/patterns for 'er'](er/docs/examples.md)
+
+```rust
+// -- First part --
+#[derive(Er)]
+pub struct NoContextErr;
+
+pub fn no_context_example(path: &Path) -> Er<String, NoContextErr> {
+    // Still gets source location
+    read_file(path).er(())
+}
+
+// -- Second part somewhere else --
 #[derive(Er)]
 pub struct ConfigErr {
-    pub machine: String,
-    #[er(censor)]
-    pub token: String,
+    pub port: String,
+    pub enabled: String,
 }
-pub fn read_config(machine: &str, token: &str, port: &str, mode: Option<&str>) -> Er<(), ConfigErr> {
-    // add local context
-    let e = |_| (machine, token);
 
-    // 3 different types
-    authenticate(machine, token).er(e)?;
-    read_port(port).er(e)?;
-    read_mode(mode).er(e)?;
+// variant 1: Exit on the first error
+pub fn check_config_exit_early(path: &Path, port: &str, enabled: &str) -> Er<(), ConfigErr> {
+    // Closures only run on failure
+    let e = |_| (port, enabled);
+
+    no_context_example(path).er(e)?;
+    port.parse::<u16>().er(e)?;
+    enabled.parse::<bool>().er(e)?;
 
     Ok(())
 }
-```
 
-And aggregation/collection
-```rust
-#[derive(Er)]
-pub struct StartupErr(pub String);
-pub fn startup() -> Er<(), StartupErr> {
-    er_all!(|_| "some config checks failed", [
-        read_config("HaandboldFuglen", "HaandboldFuglen_token", "aint_even_a_number_cmon_man", Some("microsoftjavaakacsharp")),
-        read_config("ComputerKatten", "ComputerKatten_token", "85", None),
-    ])?;
-    Ok(())
+// variant 2: Aggregate/collect errors, runs all and errors if any failed
+pub fn check_config_collect(path: &Path, port: &str, enabled: &str) -> Er<(), ConfigErr> {
+    let e = |_| (port, enabled);
+
+    // Different error types are fine, adds the sub errors to the parent if anything fails
+    er_all!(e, [
+        no_context_example(path),
+        port.parse::<u16>(),
+        enabled.parse::<bool>(),
+    ])
 }
 ```
 
-Report printed `.er_report()`:
 ```text
-StartupErr("some config checks failed") @ er/runnable_examples/context.rs:69:5
-|- ConfigErr { machine: "HaandboldFuglen", token: *CENSORED* } @ er/runnable_examples/context.rs:60:21
-|  `- PortErr { invalid_port: "aint_even_a_number_cmon_man" } @ er/runnable_examples/context.rs:22:35
-|     `- invalid digit found in string
-`- ConfigErr { machine: "ComputerKatten", token: *CENSORED* } @ er/runnable_examples/context.rs:61:21
-   `- ModeErr::MissingMode @ er/runnable_examples/context.rs:31:21
+ConfigErr { port: "nope", enabled: "nah" } @ src/main.rs:46:5
+|- NoContextErr @ src/main.rs:19:21
+|  `- FileErr { path: "/file/path/missing.txt" } @ src/main.rs:11:26
+|     `- No such file or directory (os error 2)
+|- invalid digit found in string
+`- provided string was not `true` or `false`
 ```
 
-Top error printed with `.er_top()`:
-```text
-StartupErr("some config checks failed")
-```
+## Motivations
 
-Printing those:
-```rust
-if let Err(error) = startup() {
-    println!("{}", error.er_report());
-    println!("{}", error.er_top());
-}
-```
+### Convenience
 
-## How to use
+`#[derive(Er)]` generates helpers to avoid stuff like: `.change_context_lazy(|| ConfigErr { port: port.to_owned(), enabled: enabled.to_owned() })?`.
 
-The TLDR: make a `NameErr` with `#[derive(Er)]`, return `Er<T, NameErr>`, and add context with `.er()`.
+`er_all!()` can collect different types (doesn't quit out early).
 
-Each function that handles errors should have THEIR OWN little `NameErr` type, this is to force readding context. If you just used an 'EverythingErr' you could '?' everywhere(No new line info added).
+`.er_with(|e|)` for interacting with the typed error below without accidentally destroying the tree (easy to accidentally do with `.map_err()`).
 
-In many cases unit structs are enough, ONLY add context where it makes sense (usually small local things that's dynamic).
+`.er_find::<SomeErr>()` for the first match, and `.er_find_all::<SomeErr>()` for finding the original errors and suberrors below (also checks `.source()`).
 
-For empty structs use `.er(())`.
+`wrap` for implementing foreign traits.
 
-For structs use `.er(|_| arg1)` or `.er(|_| (arg1, arg2))`.
+`use er::*;` should be usable without shadowing normal types.
 
-For enums use `.er(EnumErr::variant_name)` and `.er(|| EnumErr::variant_name2(arg1))`.
+Easy creation of public errors for consumers who don't have/want `er`.
 
-If you NEED a value from the old error, use `.er_with(|t| NewErr::new(t.top.code))`. It keeps that old error in the tree too. A quick `map_err` can accidentally nuke it.
+### Philosophy
 
-`.er_with()` is the annoying explicit case, the convenient `|_|` pattern i can't get to work for that. 
+The distinction should not be app/lib error handling, it should be public consumer/internal consumer based, and `er` does both.
 
-## Why?
+Worse errors/types lead to worse logic/flow because error states get grouped into impossible cases. If a function cannot return a 'serde error', why does it return a type that says it can? Ergonomics are important to make this easier.
 
-Convenience for actually typing out stuff yourself, and to avoid having good error handling take up 70% of the line, which often means you avoid doing it.
-
-I believe that people do worse error handling because the ergonomics are bad. I'll even argue it reads better as well once you know it. People take what they know for granted, manual `.map_err(||)` everywhere is nuts.
-
-Exaggerated but i want to avoid: `thing.add_lazy_context_and_its_tuesday(|something_here| #[now_theres_a_macro_here_for_some_reason] YouGetThePoint { a: "85".to_string() } )`.
-
-Forcing you to pick between report/top error. (Display/Debug meaning report is confusing and tribal knowledge).
-
-Having an easy to use macro with the defaults you want, is the thing that makes each function have their own little `Er` type not be painful. And it means we don't have to rely on thiserror, and we can add convenience via the macro.
+The original inner error should not dictate your error type design or be given to your final consumer directly.
 
 ## Docs
 
-[Changelog](er/docs/changelog.md).
+### Repo links
 
-[Features](er/docs/features.md).
+[Examples / Patterns](er/docs/examples.md)
 
-[Macros](er/docs/macros.md).
+[Changelog](er/docs/changelog.md)
 
-[Weird cases](er/docs/extra/weird-cases.md).
+[Features](er/docs/features.md)
 
-[Performance](er/docs/extra/performance.md).
-
-## Links
+[Macros](er/docs/macros.md)
 
 [Github Repo](https://github.com/Viterkim/er)
+
+### External links
 
 [Docs.rs](https://docs.rs/er/latest/er/)
 

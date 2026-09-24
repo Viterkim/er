@@ -6,7 +6,7 @@ use std::io;
 #[derive(Er)]
 pub struct ParsePortErr(pub String);
 pub fn parse_port(input: &str) -> Er<u16, ParsePortErr> {
-    input.parse::<u16>().er(|| ParsePortErr::new(input))
+    input.parse::<u16>().er(|_| input)
 }
 
 #[derive(Er)]

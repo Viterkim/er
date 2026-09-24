@@ -39,11 +39,11 @@ impl fmt::Display for PortErr {
 impl Error for PortErr {}
 ```
 
-The derive writes those impls. `.er()` comes from the lib. (.er() is implemented on Errors, and you import it as an extension trait).
+The derive writes those impls. `.er()` comes from the `er` lib as an extension trait on errors.
 
 Enums get a constructor per variant.
 
-Fields are debug printed by default, foreign types too. In `#[er(format = "{input}")]`, `input` uses Display, or the classic `{input:?}` for Debug. `skip` leaves a field out, `censor` prints japanese styled.
+Fields are debug printed by default, foreign types too. In `#[er(format = "{input}")]`, `input` uses Display, or the classic `{input:?}` for Debug. `skip` leaves a field out, `censor` prints `*CENSORED*`.
 
 `ErFormat` gives the same constructors and Debug/Display, but no Error. Useful for structs inside your error.
 
@@ -51,31 +51,36 @@ Fields are debug printed by default, foreign types too. In `#[er(format = "{inpu
 
 ## Constructors
 
-Both `Er` and `ErFormat` make these. Put `#[er(no_constructors)]` on the struct/enum to write your own instead. It skips `new` and all variant constructors, not `.er_wrap()`.
+Both `Er` and `ErFormat` make constructors. Put `#[er(no_constructors)]` on the struct/enum to write your own instead. It skips `new` and all variant constructors. For `Er` structs it also skips the field conversions for `|_|`, but not `.er_wrap()`.
 
 For an empty struct, use `.er(())`. `no_constructors` turns that off too.
 
-For a struct with fields, `.er(|_| path)` lets you skip typing out the name.
+For a struct with fields, `.er(|_| path)` lets you skip typing out the name. The fields are converted only if something fails.
 
 ```rust
+use er::*;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+
 #[derive(Er)]
 pub struct FileErr(pub PathBuf);
 
-// Less typing yesyes
-fs::read_to_string(path).er(|_| path)?;
+pub fn read_file(path: &Path) -> Er<String, FileErr> {
+    fs::read_to_string(path).er(|_| path)
+}
 ```
 
-For more fields, use a tuple `.er(|_| (machine, token))`. 
+For more fields, use a tuple `.er(|_| (machine, token))`.
 
 Enums still need the variant name, like `.er(|| ModeErr::unknown(input))`.
 
-If Rust can't tell which error you mean(chaining): `.er::<FileErr>(|_| path)`.
+If Rust can't tell which error you mean (usually when chaining), use `.er::<FileErr>(|_| path)`.
 
-This works with `er-macros` on its own too. It makes the field conversions when you derive `Er`, and `no_constructors` skips those as well.
+Variants get snake_case constructor names. Args follow field order. Strings accept `&str`, numbers keep their exact type. `#[er(exact)]` asks for the field's exact type too.
 
-Variants get snakecase names. Args follow field order. Strings accept `&str`, numbers keep their exact type. `#[er(exact)]` asks for the field's exact type too.
-
-Here's some examples of writing some stuff and getting some bullshit out.
+Examples below of what it spits out.
 
 ```rust,ignore
 // You write this
@@ -139,11 +144,9 @@ impl ModeErr {
 
 ## Wrap
 
-When you need to implement a trait for your error type it would usually be fine, but in Er (and other crates) you don't own `ErTree`. [Rust's orphan rule](https://doc.rust-lang.org/reference/items/implementations.html#trait-implementation-coherence).
+If you need to implement another crate's trait on the whole error tree, Rust says no: you don't own `ErTree` or that trait. [Orphan rule](https://doc.rust-lang.org/reference/items/implementations.html#trait-implementation-coherence)
 
-That means it's GG because in Rust you can't implement a foreign trait for a foreign type.
-
-So Wrap is just a wrapper around ErTree:
+Wrap gives you a type you *do* own, around the tree:
 
 ```rust
 // You write this
@@ -164,6 +167,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+
 #[derive(Er)]
 #[er(wrap(name = BaseErrWrap))] // Is the default name, but written out here for the example
 pub struct BaseErr {
@@ -192,7 +196,7 @@ If the `er` crate has another name, give Wrap its path with `#[er(crate = other_
 
 ## Wrap with std_error
 
-!WARNING! ONLY add std_error with `output` if the foreign trait needs Error on the Wrap itself (Axum doesn't). You HAVE to use `.er_wrap()` after that because `.er()` hides sub errors from find!
+! WARNING ! Only add `std_error` with `output` if the foreign trait needs `Error` on the Wrap itself (Axum doesn't). When that Wrap comes back, use `.er_wrap()` instead of `.er()` or `.er_find()` won't see the errors inside it!
 
 ```rust
 #[derive(Er)]
@@ -205,11 +209,12 @@ pub fn handler(input: &str) -> Result<u16, HandlerError> {
 }
 ```
 
-When you get its Result back, use this instead of `.er()`
+When you get its Result back, use this instead of `.er()`:
 
 ```rust
 #[derive(Er)]
 pub struct RequestErr;
+
 pub fn request(input: &str) -> Er<u16, RequestErr> {
     handler(input).er_wrap(RequestErr::new)
 }

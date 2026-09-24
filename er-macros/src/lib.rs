@@ -20,8 +20,8 @@ use syn::{DeriveInput, parse_macro_input};
 ///
 /// Options: `format`, `skip`, `censor`, `exact`, `no_constructors`, `wrap`, and `crate`.
 ///
-/// TLDR: Just use `.er` on anything you see.
-/// If you NEED to implement a trait on your error type, you can use `wrap` [but you usually DONT need it](https://github.com/Viterkim/er/blob/main/er/docs/macros.md#wrap).
+/// Just use `.er` on anything you see.
+/// If you need to implement a trait on your error type, you can use `wrap` [but you usually don't](https://github.com/Viterkim/er/blob/main/er/docs/macros.md#wrap).
 pub fn derive_er(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
