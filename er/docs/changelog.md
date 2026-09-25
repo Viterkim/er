@@ -1,5 +1,7 @@
 # 0.3.0
 
+`er_all!` lists now take bare errors and trees too, mixed with results.
+
 `Er<T, E>` renamed to `ErResult<T, E>`.
 
 Rename extension traits, now ends in `Ext`, like `ErResultExt` and `ErErrorExt`.

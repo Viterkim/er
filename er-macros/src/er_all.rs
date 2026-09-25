@@ -3,12 +3,12 @@ use quote::{quote, quote_spanned};
 use syn::{Path, Token, parse::Parse, parse::ParseStream};
 
 pub struct Input {
-    pub into_er_part: Path,
+    pub er_all_item: Path,
     pub results: Vec<TokenTree>,
 }
 impl Parse for Input {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
-        let into_er_part = input.parse()?;
+        let er_all_item = input.parse()?;
         input.parse::<Token![,]>()?;
         let content;
         syn::bracketed!(content in input);
@@ -20,7 +20,7 @@ impl Parse for Input {
             }
         }
         Ok(Self {
-            into_er_part,
+            er_all_item,
             results,
         })
     }
@@ -28,29 +28,21 @@ impl Parse for Input {
 
 pub fn expand(
     Input {
-        into_er_part,
+        er_all_item,
         results,
     }: Input,
 ) -> TokenStream {
-    let trait_alias = syn::Ident::new("__ErAllIntoErPart", Span::call_site());
+    let trait_alias = syn::Ident::new("__ErAllItem", Span::call_site());
 
     let items = results.iter().map(|result| {
         let span = expression_span(result);
         let mut call_alias = trait_alias.clone();
         call_alias.set_span(span);
         quote_spanned! {span=>
-            match #result {
-                ::core::result::Result::Ok(__er_success) => {
-                    let _ = [__er_success];
-                    ::core::result::Result::Ok(())
-                }
-                ::core::result::Result::Err(__er_failure) => {
-                    use #into_er_part as #trait_alias;
-                    ::core::result::Result::Err(
-                        #call_alias::into_er_part(__er_failure)
-                    )
-                }
-            }
+            ({
+                use #er_all_item as #trait_alias;
+                #call_alias::er_all_item
+            })(#result)
         }
     });
     quote!([#(#items),*])

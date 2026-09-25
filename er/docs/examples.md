@@ -155,7 +155,7 @@ ConnectErr { connection: Connection { host: "ComputerKatten", port: 85 } }
 
 ## Collect / aggregate / er_all!
 
-Can be different types of sub error types.
+Can be different types of sub error types. Already have an error or tree? Put it in the list directly, no need to wrap it in `Err(...)`.
 
 ### Only parent context
 

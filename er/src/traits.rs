@@ -193,3 +193,10 @@ pub trait ErTraceExt: Sized {
     #[track_caller]
     fn er_trace(self) -> Self;
 }
+
+#[cfg(feature = "macros")]
+#[doc(hidden)]
+pub trait ErAllItem<Mode> {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_all_item(self) -> Result<(), ErPart>;
+}

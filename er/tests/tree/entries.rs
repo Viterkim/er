@@ -357,8 +357,8 @@ pub fn src_locations() {
 
     assert_eq!((src.file(), src.line()), (file!(), line));
 
-    let plain: Result<(), Leaf> = Err(Leaf(1));
-    let existing: ErResult<(), Leaf> = Err(direct);
+    let plain = Leaf(1);
+    let existing = direct;
     let line = line!() + 3;
     let first_line = line!() + 6;
     let second_line = line!() + 6;
@@ -366,7 +366,7 @@ pub fn src_locations() {
         || Leaf(2),
         [
             plain,
-            "not a valid unsigned port number".parse::<u16>(),
+            "bad".parse::<u16>().unwrap_err(),
             "not a valid boolean option value".parse::<bool>(),
             existing,
         ]

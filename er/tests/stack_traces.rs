@@ -106,7 +106,7 @@ pub mod composed {
         let batch: ErTree<Batch> = er_all!(
             (),
             [
-                Err::<(), _>(left.into_er_report()),
+                left.into_er_report(),
                 right.er_wrap::<Layer, _>(()),
                 "bad".parse::<bool>(),
             ]

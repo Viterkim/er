@@ -1,3 +1,5 @@
+#[cfg(feature = "macros")]
+use crate::{ErAllError, ErAllItem, ErAllResult, ErPart};
 use crate::{
     ErContextExt, ErErrorExt, ErMake, ErOpaqueErrorExt, ErPresentationExt, ErReport, ErResult,
     ErResultExt, ErTop, ErTree, IntoErPart, IntoErTree,
@@ -102,5 +104,26 @@ impl<T, Mode> ErContextExt<Mode> for Option<T> {
             Some(value) => Ok(value),
             None => Err(ErTree::from(error.er_make())),
         }
+    }
+}
+
+#[cfg(feature = "macros")]
+impl<T, E: IntoErPart> ErAllItem<ErAllResult> for Result<T, E> {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_all_item(self) -> Result<(), ErPart> {
+        match self {
+            Ok(value) => {
+                drop(value);
+                Ok(())
+            }
+            Err(error) => Err(error.into_er_part()),
+        }
+    }
+}
+#[cfg(feature = "macros")]
+impl<E: IntoErPart> ErAllItem<ErAllError> for E {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_all_item(self) -> Result<(), ErPart> {
+        Err(self.into_er_part())
     }
 }

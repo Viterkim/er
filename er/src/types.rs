@@ -93,3 +93,11 @@ pub enum Layout {
     Multiline,
     SingleLine,
 }
+
+#[cfg(feature = "macros")]
+#[doc(hidden)]
+pub struct ErAllResult;
+
+#[cfg(feature = "macros")]
+#[doc(hidden)]
+pub struct ErAllError;

@@ -40,7 +40,7 @@ pub mod tests {
 
         let errors: ErTree<FirmwareErr> = er_all!(
             || FirmwareErr::new(Device::new(85, Secret)),
-            ["bad".parse::<u8>(), "bad".parse::<bool>()]
+            ["bad".parse::<u8>().unwrap_err(), "bad".parse::<bool>()]
         )
         .unwrap_err();
         assert_eq!(errors.nodes.len(), 2);

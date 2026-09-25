@@ -16,7 +16,9 @@ pub fn success_drop() {
     let drops = Cell::new(0);
     let success: Result<Guard<'_>, Parent> = Ok(Guard(&drops));
     let failure: Result<Guard<'_>, Parent> = Err(Parent);
+    let calls = Cell::new(0);
     let next = || {
+        calls.set(calls.get() + 1);
         assert_eq!(drops.get(), 1);
         failure
     };
@@ -29,6 +31,7 @@ pub fn success_drop() {
     );
 
     assert_eq!(drops.get(), 1);
+    assert_eq!(calls.get(), 1);
     assert_eq!(result.unwrap_err().nodes.len(), 1);
 }
 
@@ -47,15 +50,15 @@ pub fn method_collision() {
 
     assert!(tree.er_contains::<Collision>());
 
-    struct __ErAllIntoErPart;
-    impl __ErAllIntoErPart {
+    struct __ErAllItem;
+    impl __ErAllItem {
         fn result() -> Result<(), Collision> {
             Err(Collision)
         }
     }
     macro_rules! make_result {
         () => {
-            __ErAllIntoErPart::result()
+            __ErAllItem::result()
         };
     }
 

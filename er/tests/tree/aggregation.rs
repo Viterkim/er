@@ -97,12 +97,12 @@ pub fn batch() {
 #[test]
 pub fn mixed() {
     let success: Result<u16, Item> = Ok(10);
-    let plain: Result<bool, Item> = Err(Item(1));
+    let plain = Item(1);
     let boxed: Result<(), BoxError> = Err(Box::new(io::Error::other("disk gone")));
     let subtree = ErTree::new(Item(2), [Item(3).er()]);
-    let existing: ErResult<u8, Item> = Err(subtree);
-    let wrapped = Err::<(), _>(ItemWrap::from(ErTree::new(Item(4), [Item(5)])));
-    let report = Err::<(), _>(ErTree::new(Item(6), [Item(7)]).into_er_report());
+    let existing = subtree;
+    let wrapped = ItemWrap::from(ErTree::new(Item(4), [Item(5)]));
+    let report = ErTree::new(Item(6), [Item(7)]).into_er_report();
     let std_error = Err::<(), _>(StandardWrap::from(ErTree::new(Standard, [Item(8)])));
     let recovered = Err::<(), _>(StandardWrap::from(ErTree::new(Standard, [Item(9)]))).er_tree();
 
@@ -119,4 +119,16 @@ pub fn mixed() {
     assert!(tree.er_contains::<StandardWrap>());
     assert!(tree.er_contains::<Standard>());
     assert!(tree.er_contains::<io::Error>());
+
+    fn recover(error: Item, reopen: Result<(), io::Error>) -> ErResult<u8, Batch> {
+        er_all!((), [error, reopen])?;
+        Ok(85)
+    }
+
+    for reopen in [Ok(()), Err(io::Error::other("reopen failed"))] {
+        let count = if reopen.is_err() { 2 } else { 1 };
+        let tree = recover(Item(10), reopen).unwrap_err();
+        assert_eq!(tree.nodes.len(), count);
+        assert_eq!(tree.er_find::<Item>().unwrap().0, 10);
+    }
 }
