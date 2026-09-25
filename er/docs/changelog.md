@@ -1,18 +1,20 @@
 # 0.3.0
 
+Add the macros `er_bail!()`, `er_bail_if!()` and `er_bail_unless!()` (needs the `macros` default feature).
+
 Add the `stack_traces` feature with optional stack traces with `.er_trace()`, they follow the tree and you have to print them yourself.
 
 Add `.er_at_id()` / `.er_at_path()` for finding the error via an index/path in the tree.
 
-IntoErNode is now IntoErPart, so moving a subtree keeps its traces too
+IntoErNode is now IntoErPart, so moving a subtree keeps its traces too.
 
-Feature gate er_all!() behind the 'macros' feature
+Feature gate er_all!() behind the 'macros' feature.
 
-Fix line numbers on non Er errors in er_all!()
+Fix line numbers on non Er errors in er_all!().
 
 # 0.2.1
 
-Cleanup / simplify the docs (especially readme.md)
+Cleanup / simplify the docs (especially readme.md).
 
 # 0.2.0
 

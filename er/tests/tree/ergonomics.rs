@@ -59,6 +59,65 @@ pub fn early_return() {
     assert_eq!(error.src_location.line(), expected_line);
 }
 
+#[test]
+pub fn bail() {
+    let mut expected_line = 0;
+    let result = (|| -> Er<(), AppErr> {
+        expected_line = line!() + 1;
+        er_bail!(AppErr,);
+    })();
+    let tree = result.unwrap_err();
+    assert!(tree.nodes.is_empty());
+    #[cfg(feature = "src_locations")]
+    assert_eq!(tree.src_location.line(), expected_line);
+
+    for unless in [false, true] {
+        for reject in [false, true] {
+            let conditions = Cell::new(0);
+            let errors = Cell::new(0);
+            let condition = || {
+                conditions.set(conditions.get() + 1);
+                if unless { !reject } else { reject }
+            };
+            let error = || {
+                assert_eq!(conditions.get(), 1);
+                errors.set(errors.get() + 1);
+                AppErr
+            };
+            let result = (|| -> Er<(), AppErr> {
+                if unless {
+                    expected_line = line!() + 1;
+                    er_bail_unless!(error(), condition(),);
+                } else {
+                    expected_line = line!() + 1;
+                    er_bail_if!(error(), condition(),);
+                }
+                Ok(())
+            })();
+            assert_eq!(conditions.get(), 1);
+            assert_eq!(errors.get(), usize::from(reject));
+            assert_eq!(result.is_err(), reject);
+            #[cfg(feature = "src_locations")]
+            if let Err(tree) = result {
+                assert_eq!(tree.src_location.line(), expected_line);
+            }
+        }
+    }
+
+    let tree = ErTree::new(AppErr, [ChildErr(7)]);
+    #[cfg(feature = "stack_traces")]
+    let tree = tree.er_trace();
+    let nodes = tree.nodes.as_ptr();
+    #[cfg(feature = "stack_traces")]
+    let traces = tree.stack_traces.as_ptr();
+    let result = (|| -> Er<(), AppErr> { er_bail!(tree.into_er_report()) })();
+    let tree = result.unwrap_err();
+    assert_eq!(tree.nodes.as_ptr(), nodes);
+    assert_eq!(tree.er_find::<ChildErr>().unwrap().0, 7);
+    #[cfg(feature = "stack_traces")]
+    assert_eq!(tree.stack_traces.as_ptr(), traces);
+}
+
 #[derive(Er)]
 pub struct ChildErr(pub u8);
 #[test]

@@ -419,7 +419,7 @@ pub fn listen(input: &str) -> Er<TcpListener, ListenErr> {
 
     // Third error, our own rule that port 85 is sacred
     if port == 85 {
-        return Err(ListenErr::sacred_port().er());
+        er_bail!(ListenErr::sacred_port());
     }
 
     // Fourth error, we might want to match on what happened

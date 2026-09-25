@@ -10,7 +10,7 @@ pub fn lookup(name: &str) -> Er<&str, NotFoundErr> {
     if name == "HaandboldFuglen" {
         Ok(name)
     } else {
-        Err(NotFoundErr::new(name).er())
+        er_bail!(NotFoundErr::new(name));
     }
 }
 

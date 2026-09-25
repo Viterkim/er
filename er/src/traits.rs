@@ -33,7 +33,7 @@ impl<A: From<()>> ErMake<A, ErFields> for () {
 pub trait ErError: Error + Sized + 'static {
     /// Make a new Er error tree.
     ///
-    /// `return Err(PortErr::new(85).er());`
+    /// `let tree = PortErr::new(85).er();`
     ///
     /// For adding context to a Result, see [`ErContext::er`].
     #[cfg_attr(feature = "src_locations", track_caller)]
@@ -45,7 +45,7 @@ pub trait ErError: Error + Sized + 'static {
     /// |e| is the old error.
     /// Use this when the new error needs something from the old one.
     ///
-    /// `return Err(device.er_with(|e| AnalyzeErr::new(e.code)));`
+    /// `er_bail!(device.er_with(|e| AnalyzeErr::new(e.code)));`
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er_with<A>(self, error: impl FnOnce(&Self) -> A) -> ErTree<A>
     where

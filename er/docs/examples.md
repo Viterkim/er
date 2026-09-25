@@ -46,7 +46,7 @@ pub fn read_mode(input: Option<&str>) -> Er<&str, ModeErr> {
     let mode = input.er(ModeErr::missing)?;
 
     if mode != "haandbold" {
-        return Err(ModeErr::unknown(mode).er());
+        er_bail!(ModeErr::unknown(mode));
     }
 
     Ok(mode)
@@ -108,7 +108,7 @@ pub fn analyze() -> Er<(), AnalyzeErr> {
 If it's a plain error (not a tree yet), then the `|e|` is the error:
 
 ```rust
-return Err(device.er_with(|e| AnalyzeErr::new(e.code)));
+er_bail!(device.er_with(|e| AnalyzeErr::new(e.code)));
 ```
 
 The convenience with `|_|` for struct errs does not work with `er_with(|old|)`.
@@ -124,7 +124,7 @@ read_device().map_err(|t| AnalyzeErr::new(t.top.code).er())
 // ! BAD DO NOT DO THIS !
 if let Err(t) = read_device() {
     // the t tree is gone, (womp womp, sad sounds)
-    return Err(AnalyzeErr::new(t.top.code).er());
+    er_bail!(AnalyzeErr::new(t.top.code));
 }
 ```
 
@@ -332,7 +332,7 @@ pub fn listen(input: &str) -> Er<TcpListener, ListenErr> {
 
     // Third error, our own rule that port 85 is sacred
     if port == 85 {
-        return Err(ListenErr::sacred_port().er());
+        er_bail!(ListenErr::sacred_port());
     }
 
     // Fourth error, we might want to match on what happened
@@ -473,6 +473,19 @@ if let Err(error) = read_port("fakenumber").er_trace() {
 They follow the tree as you add context or aggregate it. You print them separately, you can always call `.er_trace()` again and there's no env variables to turn on.
 
 If you need the error, you can use the id with `error.er_at_id(trace.error_id)`.
+
+## Bail
+
+You can use `er_bail!(err)` if you don't want to type `return Err(err.er())` (You can give it an existing tree too).
+
+Also the conditional variations:
+
+```rust
+er_bail_if!(ModeErr::unknown(mode), mode != "haandbold");
+er_bail_unless!(ModeErr::unknown(mode), mode == "haandbold");
+```
+
+The error only gets made on the error happening.
 
 ## Macros
 
