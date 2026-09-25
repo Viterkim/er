@@ -38,3 +38,8 @@ workspace = true
 name = "context"
 path = "runnable_examples/context.rs"
 required-features = ["macros"]
+
+[[example]]
+name = "stack_traces"
+path = "runnable_examples/stack_traces.rs"
+required-features = ["macros", "stack_traces"]

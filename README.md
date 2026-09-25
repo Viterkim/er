@@ -218,19 +218,11 @@ ConfigErr { port: "nope", enabled: "nah" } @ src/main.rs:46:5
 
 ### Convenience
 
-`#[derive(Er)]` generates helpers to avoid stuff like: `.change_context_lazy(|| ConfigErr { port: port.to_owned(), enabled: enabled.to_owned() })?`.
-
-`er_all!()` can collect different types (doesn't quit out early).
-
 `.er_with(|e|)` for interacting with the typed error below without accidentally destroying the tree (easy to accidentally do with `.map_err()`).
 
 `.er_find::<SomeErr>()` for the first match, and `.er_find_all::<SomeErr>()` for finding the original errors and suberrors below (also checks `.source()`).
 
 `wrap` for implementing foreign traits.
-
-`use er::*;` should be usable without shadowing normal types.
-
-Easy creation of public errors for consumers who don't have/want `er`.
 
 ### Philosophy
 
@@ -239,6 +231,8 @@ The distinction should not be app/lib error handling, it should be public consum
 Worse errors/types lead to worse logic/flow because error states get grouped into impossible cases. If a function cannot return a 'serde error', why does it return a type that says it can? Ergonomics are important to make this easier.
 
 The original inner error should not dictate your error type design or be given to your final consumer directly.
+
+Easy creation of public errors for consumers who don't have/want `er`.
 
 ## Docs
 

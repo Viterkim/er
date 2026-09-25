@@ -108,6 +108,12 @@ impl<E> ErReport<E> {
         self.tree.er_descendants()
     }
 }
+impl<E: Error + 'static> From<E> for ErReport<E> {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn from(error: E) -> Self {
+        ErTree::from(error).into_er_report()
+    }
+}
 impl<E> From<ErTree<E>> for ErReport<E> {
     fn from(tree: ErTree<E>) -> Self {
         tree.into_er_report()

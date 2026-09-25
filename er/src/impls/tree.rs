@@ -3,7 +3,7 @@ use crate::ErSnapshotLocation;
 #[cfg(feature = "stack_traces")]
 use crate::impls::stack_trace::append_traces;
 use crate::{
-    ErEntries, ErEntry, ErErrorId, ErFindAll, ErMake, ErNode, ErNodes, ErPart, ErReport,
+    ErEntries, ErEntry, ErErrorIndex, ErFindAll, ErMake, ErNode, ErNodes, ErPart, ErReport,
     ErReportRef, ErSnapshot, ErSnapshotEntry, ErSources, ErTop, ErTopRef, ErTree, ErTreeContextExt,
     IntoErPart, IntoErTree, Layout,
 };
@@ -22,7 +22,7 @@ impl<E: Error + 'static> ErTree<E> {
         let mut tree = Self::from(error);
         tree.nodes.reserve_exact(nodes.size_hint().0);
         #[cfg(feature = "stack_traces")]
-        let (mut counted, mut next_id) = (0, 1);
+        let (mut counted, mut next_index) = (0, 1);
 
         for node in nodes {
             let part = IntoErPart::into_er_part(node);
@@ -31,11 +31,11 @@ impl<E: Error + 'static> ErTree<E> {
                 let mut traces = part.stack_traces;
                 if !traces.is_empty() {
                     for node in &tree.nodes[counted..] {
-                        next_id += 1 + node.er_descendants().count();
+                        next_index += 1 + node.er_descendants().count();
                     }
                     counted = tree.nodes.len();
                     for trace in &mut traces {
-                        trace.error_id.0 += next_id;
+                        trace.error_index.0 += next_index;
                     }
                 }
                 append_traces(&mut tree.stack_traces, traces);
@@ -126,13 +126,13 @@ impl<E: Error + 'static> ErTree<E> {
         self.er_find::<T>().is_some()
     }
 
-    /// Look up a stored error by ID. Native sources aren't counted.
-    pub fn er_at_id(&self, id: ErErrorId) -> Option<&(dyn Error + 'static)> {
-        if id.0 == 0 {
+    /// Look up a stored error by index. Native sources aren't counted.
+    pub fn er_at_index(&self, index: ErErrorIndex) -> Option<&(dyn Error + 'static)> {
+        if index.0 == 0 {
             return Some(&self.top);
         }
 
-        let node = self.er_descendants().nth(id.0 - 1)?;
+        let node = self.er_descendants().nth(index.0 - 1)?;
         Some(&*node.error)
     }
 
@@ -217,7 +217,7 @@ impl<E> ErTree<E> {
             if !traces.is_empty() {
                 let offset = 1 + self.er_descendants().count();
                 for trace in &mut traces {
-                    trace.error_id.0 += offset;
+                    trace.error_index.0 += offset;
                 }
             }
             append_traces(&mut self.stack_traces, traces);

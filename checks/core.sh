@@ -11,6 +11,8 @@ cargo +1.89.0 check -p er --no-default-features --all-targets
 test_core() {
     cargo "$@" test --workspace --all-features
     cargo "$@" test -p er --no-default-features --test api --test snapshot
+    cargo "$@" test -p er --no-default-features --features stack_traces --test stack_traces
+    cargo "$@" test -p er --no-default-features --features macros,stack_traces --test stack_traces --test tree
     cargo "$@" test -p er --no-default-features --features lazy --test api
     cargo "$@" test -p er --no-default-features --features src_locations,test --test api
     cargo "$@" test -p er --no-default-features --features macros,test
@@ -31,3 +33,4 @@ cargo clippy -p er --all-targets --no-default-features --features serde -- -D wa
 # Docs
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 RUSTDOCFLAGS="-D warnings" cargo doc -p er --no-default-features --no-deps
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps

@@ -71,38 +71,23 @@ pub fn bail() {
     #[cfg(feature = "src_locations")]
     assert_eq!(tree.src_location.line(), expected_line);
 
-    for unless in [false, true] {
-        for reject in [false, true] {
-            let conditions = Cell::new(0);
-            let errors = Cell::new(0);
-            let condition = || {
-                conditions.set(conditions.get() + 1);
-                if unless { !reject } else { reject }
-            };
-            let error = || {
-                assert_eq!(conditions.get(), 1);
-                errors.set(errors.get() + 1);
-                AppErr
-            };
-            let result = (|| -> ErResult<(), AppErr> {
-                if unless {
-                    expected_line = line!() + 1;
-                    er_bail_unless!(error(), condition(),);
-                } else {
-                    expected_line = line!() + 1;
-                    er_bail_if!(error(), condition(),);
-                }
-                Ok(())
-            })();
-            assert_eq!(conditions.get(), 1);
-            assert_eq!(errors.get(), usize::from(reject));
-            assert_eq!(result.is_err(), reject);
-            #[cfg(feature = "src_locations")]
-            if let Err(tree) = result {
-                assert_eq!(tree.src_location.line(), expected_line);
-            }
-        }
-    }
+    let result = (|| -> Result<(), ErReport<AppErr>> {
+        expected_line = line!() + 1;
+        er_bail!(AppErr);
+    })();
+    let report = result.unwrap_err();
+    assert_eq!(report.tree.top.to_string(), "AppErr");
+    #[cfg(feature = "src_locations")]
+    assert_eq!(report.tree.src_location.line(), expected_line);
+
+    let result = (|| -> Result<(), ErTop<AppErr>> {
+        expected_line = line!() + 1;
+        er_bail!(AppErr);
+    })();
+    let top = result.unwrap_err();
+    assert_eq!(top.to_string(), "AppErr");
+    #[cfg(feature = "src_locations")]
+    assert_eq!(top.tree.src_location.line(), expected_line);
 
     let tree = ErTree::new(AppErr, [ChildErr(7)]);
     #[cfg(feature = "stack_traces")]

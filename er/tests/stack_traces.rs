@@ -18,11 +18,9 @@ pub fn capture() {
     assert_eq!(tree.stack_traces.len(), 2);
     assert_eq!(tree.stack_traces[0].trace_location.line(), first);
     assert_eq!(tree.stack_traces[1].trace_location.line(), second);
-    assert!(
-        tree.stack_traces.iter().all(|trace| {
-            trace.error_id == ErErrorId(0) && trace.trace_location.file() == file!()
-        })
-    );
+    assert!(tree.stack_traces.iter().all(|trace| {
+        trace.error_index == ErErrorIndex(0) && trace.trace_location.file() == file!()
+    }));
     assert_eq!(tree.er_report().to_string(), report);
 
     let trace = &tree.stack_traces[0];
@@ -47,9 +45,9 @@ pub fn capture() {
 
     let tree = tree.er_with::<fmt::Error>(|_| fmt::Error).er_trace();
     assert_eq!(tree.stack_traces.len(), 3);
-    assert_eq!(tree.stack_traces[0].error_id, ErErrorId(1));
-    assert_eq!(tree.stack_traces[1].error_id, ErErrorId(1));
-    assert_eq!(tree.stack_traces[2].error_id, ErErrorId(0));
+    assert_eq!(tree.stack_traces[0].error_index, ErErrorIndex(1));
+    assert_eq!(tree.stack_traces[1].error_index, ErErrorIndex(1));
+    assert_eq!(tree.stack_traces[2].error_index, ErErrorIndex(0));
     assert!(tree.into_er_node().er_find::<fmt::Error>().is_some());
 }
 
@@ -124,15 +122,15 @@ pub mod composed {
 
         let traces = &tree.stack_traces;
         assert_eq!(traces.len(), 3);
-        assert_eq!(traces[0].error_id, ErErrorId(4));
-        assert_eq!(traces[1].error_id, ErErrorId(3));
-        assert_eq!(traces[2].error_id, ErErrorId(7));
+        assert_eq!(traces[0].error_index, ErErrorIndex(4));
+        assert_eq!(traces[1].error_index, ErErrorIndex(3));
+        assert_eq!(traces[2].error_index, ErErrorIndex(7));
         assert_eq!(&*traces[0].capture as *const Backtrace, left_captures[0]);
         assert_eq!(&*traces[1].capture as *const Backtrace, left_captures[1]);
         assert_eq!(&*traces[2].capture as *const Backtrace, right_capture);
         assert_eq!(tree.er_find_all::<ReadErr>().count(), 2);
         assert_eq!(
-            tree.er_at_id(traces[0].error_id)
+            tree.er_at_index(traces[0].error_index)
                 .unwrap()
                 .downcast_ref::<ReadErr>()
                 .unwrap()
@@ -140,7 +138,7 @@ pub mod composed {
             PathBuf::from("bad left")
         );
         assert_eq!(
-            tree.er_at_id(traces[2].error_id)
+            tree.er_at_index(traces[2].error_index)
                 .unwrap()
                 .downcast_ref::<ReadErr>()
                 .unwrap()
@@ -155,7 +153,41 @@ pub mod composed {
         let records = tree.stack_traces.as_ptr();
         let tree = ErTree::new(Batch, [tree.into_er_top()]);
         assert_eq!(tree.stack_traces.as_ptr(), records);
-        assert_eq!(tree.stack_traces[0].error_id, ErErrorId(5));
+        assert_eq!(tree.stack_traces[0].error_index, ErErrorIndex(5));
+
+        let mut tree = ErTree::new(Batch, [read("first").unwrap_err()]).er_trace();
+        tree.push_part(job("second").unwrap_err().into_er_part());
+        assert_eq!(
+            tree.stack_traces
+                .iter()
+                .map(|trace| trace.error_index)
+                .collect::<Vec<_>>(),
+            [
+                ErErrorIndex(1),
+                ErErrorIndex(0),
+                ErErrorIndex(4),
+                ErErrorIndex(3)
+            ]
+        );
+        for (trace, path) in [(0, "first"), (2, "second")] {
+            let error = tree
+                .er_at_index(tree.stack_traces[trace].error_index)
+                .unwrap();
+            assert_eq!(
+                error.downcast_ref::<ReadErr>().unwrap().path,
+                PathBuf::from(path)
+            );
+        }
+        assert!(
+            tree.er_at_index(tree.stack_traces[1].error_index)
+                .unwrap()
+                .is::<Batch>()
+        );
+        assert!(
+            tree.er_at_index(tree.stack_traces[3].error_index)
+                .unwrap()
+                .is::<JobErr>()
+        );
     }
 
     #[test]
@@ -169,8 +201,8 @@ pub mod composed {
             .er_trace()
             .unwrap_err();
         assert_eq!(tree.stack_traces.len(), 2);
-        assert_eq!(tree.stack_traces[0].error_id, ErErrorId(1));
-        assert_eq!(tree.stack_traces[1].error_id, ErErrorId(0));
+        assert_eq!(tree.stack_traces[0].error_index, ErErrorIndex(1));
+        assert_eq!(tree.stack_traces[1].error_index, ErErrorIndex(0));
 
         let tree = Err::<(), _>("raw value")
             .er_val(ReadErr::new)
@@ -184,8 +216,8 @@ pub mod composed {
         let requested = line!() + 1;
         let batch = batch.er_trace().unwrap_err();
         assert_eq!(batch.stack_traces.len(), 2);
-        assert_eq!(batch.stack_traces[0].error_id, ErErrorId(1));
-        assert_eq!(batch.stack_traces[1].error_id, ErErrorId(0));
+        assert_eq!(batch.stack_traces[0].error_index, ErErrorIndex(1));
+        assert_eq!(batch.stack_traces[1].error_index, ErErrorIndex(0));
         assert_eq!(batch.stack_traces[1].trace_location.line(), requested);
         #[cfg(feature = "src_locations")]
         assert_eq!(batch.src_location.line(), _source);
@@ -209,7 +241,7 @@ pub mod composed {
             };
             assert_eq!(tree.stack_traces.len(), 4);
             for (trace, index) in tree.stack_traces.iter().zip([2, 5, 8, 11]) {
-                let error = tree.er_at_id(trace.error_id).unwrap();
+                let error = tree.er_at_index(trace.error_index).unwrap();
                 assert_eq!(
                     error.downcast_ref::<ReadErr>().unwrap().path,
                     PathBuf::from(index.to_string())

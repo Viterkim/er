@@ -18,7 +18,7 @@ where
     #[cfg(feature = "stack_traces")]
     let mut traces = Vec::new();
     #[cfg(feature = "stack_traces")]
-    let (mut counted, mut next_id) = (0, 1);
+    let (mut counted, mut next_index) = (0, 1);
 
     for result in results {
         match result {
@@ -30,11 +30,11 @@ where
                     let mut incoming = part.stack_traces;
                     if !incoming.is_empty() {
                         for node in &nodes[counted..] {
-                            next_id += 1 + node.er_descendants().count();
+                            next_index += 1 + node.er_descendants().count();
                         }
                         counted = nodes.len();
                         for trace in &mut incoming {
-                            trace.error_id.0 += next_id;
+                            trace.error_index.0 += next_index;
                         }
                     }
                     append_traces(&mut traces, incoming);

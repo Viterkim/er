@@ -17,7 +17,7 @@ pub enum ErEntryKind {
     Source,
 }
 
-/// One error, possibly with a multiline message. IDs belong to this traversal.
+/// One error, possibly with a multiline message. Indices belong to this traversal, including native sources.
 #[derive(Clone, Copy, Debug)]
 pub struct ErEntry<'a> {
     pub error: &'a (dyn Error + 'static),

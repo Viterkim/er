@@ -1,6 +1,6 @@
-# Examples
+# Examples / Patterns
 
-Assumes `use er::*;` is used.
+All examples use `use er::*;`
 
 ## Empty struct
 
@@ -453,16 +453,20 @@ pub fn run() -> anyhow::Result<()> {
 }
 ```
 
-BONUS: Nothing is deleted `ErAsError` keeps the presentation in its public `.0` field.
+Nothing is deleted `ErAsError` keeps the presentation in its public `.0` field.
 
-BUT `.opaque_err()` stops searches (source() is empty), and going the other way, Anyhow's boxed conversion can also be sneaky and hide types from er_find. [The anyhow example](../../integrations/anyhow/src/lib.rs) shows both.
+But `.opaque_err()` stops searches (source() is empty), and going the other way, Anyhow's boxed conversion can also be sneaky and hide types from er_find. [The anyhow example](../../integrations/anyhow/src/lib.rs) shows both.
 
 ## Stack traces
 
 Enable `stack_traces` (needs `std`), then add `.er_trace()` where you want to capture the stack (only runs on errors).
 
 ```rust
-if let Err(error) = read_port("fakenumber").er_trace() {
+pub fn read_port(input: &str) -> ErResult<u16, ReadPortErr> {
+    input.parse().er(()).er_trace()
+}
+
+if let Err(error) = read_port("fakenumber") {
     eprintln!("{}", error.er_report());
     for trace in &error.stack_traces {
         eprintln!("{trace}");
@@ -472,20 +476,17 @@ if let Err(error) = read_port("fakenumber").er_trace() {
 
 They follow the tree as you add context or aggregate it. You print them separately, you can always call `.er_trace()` again and there's no env variables to turn on.
 
-If you need the error, you can use the id with `error.er_at_id(trace.error_id)`.
+If you need the error, you can use the index with `error.er_at_index(trace.error_index)`.
 
 ## Bail
 
 You can use `er_bail!(err)` if you don't want to type `return Err(err.er())` (You can give it an existing tree too).
 
-Also the conditional variations:
-
 ```rust
-er_bail_if!(ModeErr::unknown(mode), mode != "haandbold");
-er_bail_unless!(ModeErr::unknown(mode), mode == "haandbold");
+if mode != "haandbold" {
+    er_bail!(ModeErr::unknown(mode));
+}
 ```
-
-The error only gets made on the error happening.
 
 ## Macros
 

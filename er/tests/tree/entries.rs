@@ -28,24 +28,24 @@ pub fn lookup() {
     let tree: ErTree<Leaf> =
         er_all!(|| Leaf(0), [Err::<(), _>(group), Ok::<u8, Leaf>(7), read]).unwrap_err();
 
-    assert!(tree.er_at_id(ErErrorId(1)).unwrap().is::<Native>());
-    for (id, path, value) in [
+    assert!(tree.er_at_index(ErErrorIndex(1)).unwrap().is::<Native>());
+    for (index, path, value) in [
         (0, &[][..], 0),
         (2, &[0, 0][..], 1),
         (3, &[0, 1][..], 2),
         (4, &[1][..], 3),
     ] {
-        let by_id = tree.er_at_id(ErErrorId(id)).unwrap();
+        let by_index = tree.er_at_index(ErErrorIndex(index)).unwrap();
         let by_path = tree.er_at_path(path).unwrap();
-        assert!(std::ptr::eq(by_id, by_path));
-        assert_eq!(by_id.downcast_ref::<Leaf>().unwrap().0, value);
+        assert!(std::ptr::eq(by_index, by_path));
+        assert_eq!(by_index.downcast_ref::<Leaf>().unwrap().0, value);
     }
     assert!(
-        tree.er_at_id(ErErrorId(5))
+        tree.er_at_index(ErErrorIndex(5))
             .unwrap()
             .is::<std::num::ParseIntError>()
     );
-    assert!(tree.er_at_id(ErErrorId(6)).is_none());
+    assert!(tree.er_at_index(ErErrorIndex(6)).is_none());
     assert!(tree.er_at_path(&[0, 2]).is_none());
     assert!(tree.er_at_path(&[1, 1]).is_none());
     assert!(tree.er_find_all::<Leaf>().any(|leaf| leaf.0 == 99));
@@ -53,9 +53,9 @@ pub fn lookup() {
     #[cfg(feature = "stack_traces")]
     {
         assert_eq!(tree.stack_traces.len(), 1);
-        assert_eq!(tree.stack_traces[0].error_id, ErErrorId(4));
+        assert_eq!(tree.stack_traces[0].error_index, ErErrorIndex(4));
         assert_eq!(
-            tree.er_at_id(tree.stack_traces[0].error_id)
+            tree.er_at_index(tree.stack_traces[0].error_index)
                 .unwrap()
                 .downcast_ref::<Leaf>()
                 .unwrap()
@@ -65,7 +65,7 @@ pub fn lookup() {
     }
     let tree = tree.er(|| Leaf(8));
     assert_eq!(
-        tree.er_at_id(ErErrorId(5))
+        tree.er_at_index(ErErrorIndex(5))
             .unwrap()
             .downcast_ref::<Leaf>()
             .unwrap()
@@ -74,9 +74,9 @@ pub fn lookup() {
     );
     #[cfg(feature = "stack_traces")]
     {
-        assert_eq!(tree.stack_traces[0].error_id, ErErrorId(5));
+        assert_eq!(tree.stack_traces[0].error_index, ErErrorIndex(5));
         assert_eq!(
-            tree.er_at_id(tree.stack_traces[0].error_id)
+            tree.er_at_index(tree.stack_traces[0].error_index)
                 .unwrap()
                 .downcast_ref::<Leaf>()
                 .unwrap()

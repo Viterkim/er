@@ -54,6 +54,23 @@ pub fn ingestion() {
 
     assert!(!report.contains("Box<"));
 
+    let boxed = Box::new(io::Error::from(io::ErrorKind::PermissionDenied));
+    let original = &*boxed as *const io::Error;
+    let result: Result<(), Box<io::Error>> = Err(boxed);
+    let tree = result.er::<StageErr>(()).unwrap_err();
+    let found = tree.er_find::<Box<io::Error>>().unwrap();
+    assert!(core::ptr::eq(&**found, original));
+    assert!(tree.er_find::<io::Error>().is_none());
+
+    let boxed: BoxError = Box::new(io::Error::from(io::ErrorKind::PermissionDenied));
+    let result: Result<(), BoxError> = Err(boxed);
+    let tree = result.er::<StageErr>(()).unwrap_err();
+    assert_eq!(
+        tree.er_find::<io::Error>().unwrap().kind(),
+        io::ErrorKind::PermissionDenied
+    );
+    assert!(tree.er_find::<Box<io::Error>>().is_none());
+
     let result: Result<(), String> = Err(String::from("plain message"));
     let tree = result.er::<StageErr>(()).unwrap_err();
 

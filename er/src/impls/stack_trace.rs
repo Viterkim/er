@@ -1,4 +1,4 @@
-use crate::{ErErrorId, ErStackTrace, ErTraceExt, ErTree};
+use crate::{ErErrorIndex, ErStackTrace, ErTraceExt, ErTree};
 use alloc::{boxed::Box, vec::Vec};
 use core::{any::type_name, fmt, panic::Location};
 use std::backtrace::Backtrace;
@@ -24,7 +24,7 @@ impl<E> ErTraceExt for ErTree<E> {
         self.stack_traces.push(ErStackTrace {
             error_name: type_name::<E>(),
             trace_location: Location::caller(),
-            error_id: ErErrorId(0),
+            error_index: ErErrorIndex(0),
             capture: Box::new(Backtrace::force_capture()),
         });
         self

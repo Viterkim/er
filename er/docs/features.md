@@ -16,7 +16,7 @@ The crate is `no_std` but requires `alloc`. `stack_traces` needs `std`.
 
 ## macros
 
-Convenience macros like `#[derive(Er)]`, `#[derive(ErFormat)]`, `er_all!` and the `er_bail!` family.
+Convenience macros like `#[derive(Er)]`, `#[derive(ErFormat)]`, `er_all!` and `er_bail!`.
 
 ## src_locations
 

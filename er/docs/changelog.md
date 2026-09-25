@@ -4,17 +4,19 @@
 
 Rename extension traits, now ends in `Ext`, like `ErResultExt` and `ErErrorExt`.
 
-Add the macros `er_bail!()`, `er_bail_if!()` and `er_bail_unless!()` (needs the `macros` default feature).
+Add the macro `er_bail!()` (needs the `macros` default feature).
 
 Add the `stack_traces` feature with optional stack traces with `.er_trace()`, they follow the tree and you have to print them yourself.
 
-Add `.er_at_id()` / `.er_at_path()` for finding the error via an index/path in the tree.
+Add `.er_at_index()` / `.er_at_path()` for finding the error via an index/path in the tree.
 
 IntoErNode is now IntoErPart, so moving a subtree keeps its traces too.
 
 Feature gate er_all!() behind the 'macros' feature.
 
 Fix line numbers on non Er errors in er_all!().
+
+`.er_wrap()` now supports the construction helpers.
 
 # 0.2.1
 

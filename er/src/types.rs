@@ -8,14 +8,15 @@ pub type ErResult<T, E> = Result<T, ErTree<E>>;
 pub type SrcLocation = &'static Location<'static>;
 
 /// Root 0, then each child and its descendants. Native sources don't count.
-/// IDs belong to the current tree, wrapping updates the ones stored in its traces.
+/// Indices belong to the current tree, wrapping updates the ones stored in its traces.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ErErrorId(pub usize);
+pub struct ErErrorIndex(pub usize);
 
 /// Your top error and the errors below, the typed one is in `tree.top`.
 #[must_use]
 pub struct ErTree<E> {
     pub top: E,
+    /// If you reorder or remove nodes yourself, update the trace indices too.
     pub nodes: Vec<ErNode>,
     #[cfg(feature = "stack_traces")]
     pub stack_traces: Vec<ErStackTrace>,
@@ -47,7 +48,7 @@ pub struct ErPart {
 pub struct ErStackTrace {
     pub error_name: &'static str,
     pub trace_location: SrcLocation,
-    pub error_id: ErErrorId,
+    pub error_index: ErErrorIndex,
     pub capture: Box<std::backtrace::Backtrace>,
 }
 

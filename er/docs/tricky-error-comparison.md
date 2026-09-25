@@ -16,7 +16,7 @@ This is a made up `listen()` case to hit the pain points of different error libr
 
 [error-stack](#error-stack-080--thiserror-1)
 
-[Er](#er-020-1)
+[Er](#er-030-1)
 
 [thiserror, lazy style](#thiserror-lazy-style-2020-1)
 
@@ -46,7 +46,7 @@ Done on Rust 1.98.1
 
 ### thiserror, verbose style (2.0.20)
 
-Now we make the cases around what our caller cares about and keep the original errors too. `InvalidInput` needs another error enum underneath because IP and port parsing are different types. We also write every `map_err`, source field and bit of context ourselves.
+Now we make the cases around what our caller cares about and keep the original errors too. Here we use another error enum under `InvalidInput` to keep the IP and port parser errors typed. We could box the source instead, like the SNAFU example below. We also write every `map_err`, source field and bit of context ourselves.
 
 ### error-stack (0.8.0) (+ thiserror)
 

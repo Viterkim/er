@@ -2,7 +2,7 @@
 
 Same bad port for every library. First the easy version, then one with the input added so we can actually see what went wrong.
 
-Links on this page: [thiserror](#thiserror-2020), [error-stack](#error-stack-080), [Er](#er-020), [Anyhow](#anyhow-10104), [SNAFU](#snafu-092), [rootcause](#rootcause-0130),
+Links on this page: [thiserror](#thiserror-2020), [error-stack](#error-stack-080), [Er](#er-03), [Anyhow](#anyhow-10104), [SNAFU](#snafu-092), [rootcause](#rootcause-0130),
 [exn](#exn-031), [Eros](#eros-080-rc1), [Problemo](#problemo-0013), [Nightly std::error::Report](#nightly-stderrorreport), [Others](#others)
 
 For the messy version with several errors and a public boundary, see the [tricky comparison](tricky-error-comparison.md).
