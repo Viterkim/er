@@ -1,7 +1,5 @@
 # 0.3.0
 
-`er_all!` lists now take bare errors and trees too, mixed with results.
-
 `Er<T, E>` renamed to `ErResult<T, E>`.
 
 Rename extension traits, now ends in `Ext`, like `ErResultExt` and `ErErrorExt`.
@@ -14,7 +12,9 @@ Add `.er_at_index()` / `.er_at_path()` for finding the error via an index/path i
 
 IntoErNode is now IntoErPart, so moving a subtree keeps its traces too.
 
-Feature gate er_all!() behind the 'macros' feature.
+For iter added `.er_collect()` for collecting and stopping on the first error, or `.er_collect_all()` which keeps going and adds all as sub errors.
+
+`er_all!` now supports errors, results and trees (also mixed), and its now behind the 'macros' feature.
 
 Fix line numbers on non Er errors in er_all!().
 

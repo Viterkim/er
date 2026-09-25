@@ -1,3 +1,4 @@
+pub mod iterator;
 pub mod lines;
 pub mod node;
 pub mod presentation;

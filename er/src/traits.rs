@@ -118,6 +118,26 @@ pub trait ErResultExt {
         F: FnOnce(Self::Err) -> A;
 }
 
+/// Collect successful values and add context to failures.
+pub trait ErIteratorExt<Mode>: Sized {
+    type Ok;
+
+    /// Stop at the first error.
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_collect<C, A>(self, error: impl ErMake<A, Mode>) -> ErResult<C, A>
+    where
+        C: FromIterator<Self::Ok>,
+        A: Error + 'static;
+
+    /// Keep the successful values until the iterator finishes. If anything failed,
+    /// keep every error and drop the collected values.
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_collect_all<C, A>(self, error: impl ErMake<A, Mode>) -> ErResult<C, A>
+    where
+        C: FromIterator<Self::Ok>,
+        A: Error + 'static;
+}
+
 /// Get the tree or pick the output for a Result with a tree, Wrap or owned presentation.
 pub trait ErPresentationExt {
     type Ok;

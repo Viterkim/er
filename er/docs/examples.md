@@ -153,6 +153,18 @@ println!("{}", error.er_top());
 ConnectErr { connection: Connection { host: "ComputerKatten", port: 85 } }
 ```
 
+## Collect values
+
+`.er_collect()` keeps the oks and stops at the first error, adding context:
+
+```rust
+pub fn read_ports(inputs: &[&str]) -> ErResult<Vec<u16>, ReadPortErr> {
+    inputs.iter().map(|input| input.parse()).er_collect(())
+}
+```
+
+Use `.er_collect_all(())` to keep going and collect every error instead. If anything failed, the collected values get dropped.
+
 ## Collect / aggregate / er_all!
 
 Can be different types of sub error types. Already have an error or tree? Put it in the list directly, no need to wrap it in `Err(...)`.
