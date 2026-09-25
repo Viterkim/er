@@ -27,7 +27,7 @@ fn paths() {
         ("/work/kragmos/src", "/work/kragmos/src"),
         ("", ""),
     ] {
-        let mut snapshot = Message("error").er().er_snapshot();
+        let mut snapshot = ErTree::from(Message("error")).er_snapshot();
         let location = ErSnapshotLocation {
             file: file.to_owned(),
             line: 7,
@@ -52,7 +52,7 @@ fn paths() {
 #[test]
 fn live_and_saved() -> core::fmt::Result {
     let message = "/keep/message/src/as-written";
-    let tree = Message(message).er();
+    let tree = ErTree::from(Message(message));
     let location = tree.src_location;
     assert_eq!(location.file(), file!());
     let printed = if cfg!(feature = "small_path_src") {

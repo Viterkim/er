@@ -1,4 +1,4 @@
-use crate::{Er, ErNode, ErReport, ErTop, ErTree};
+use crate::{BoxError, ErPart, ErReport, ErResult, ErTop, ErTree};
 use core::error::Error;
 
 /// Use the error returned by the closure as the new top error.
@@ -29,27 +29,27 @@ impl<A: From<()>> ErMake<A, ErFields> for () {
     }
 }
 
-/// Start a tree from an error.
-pub trait ErError: Error + Sized + 'static {
-    /// Make a new Er error tree.
-    ///
-    /// `return Err(PortErr::new(85).er());`
-    ///
-    /// For adding context to a Result, see [`ErContext::er`].
+/// Add a new top error above a raw error.
+pub trait ErErrorContextExt<Mode>: Into<BoxError> + Sized {
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er(self) -> ErTree<Self> {
-        ErTree::from(self)
+    fn er<A>(self, error: impl ErMake<A, Mode>) -> ErTree<A>
+    where
+        A: Error + 'static,
+    {
+        ErTree::new(error.er_make(), [self])
     }
+}
 
+/// Build context using the old error.
+pub trait ErErrorExt: Into<BoxError> + Sized {
     /// Add your error on the top, move everything else below it.
     /// |e| is the old error.
     /// Use this when the new error needs something from the old one.
     ///
-    /// `return Err(device.er_with(|e| AnalyzeErr::new(e.code)));`
+    /// `er_bail!(device.er_with(|e| AnalyzeErr::new(e.code)));`
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er_with<A>(self, error: impl FnOnce(&Self) -> A) -> ErTree<A>
     where
-        Self: Send + Sync,
         A: Error + 'static,
     {
         let top = error(&self);
@@ -58,7 +58,7 @@ pub trait ErError: Error + Sized + 'static {
 }
 
 /// Add context to a Result or turn None into an error.
-pub trait ErContext<Mode> {
+pub trait ErContextExt<Mode> {
     type Ok;
 
     /// Add your error on the top, move everything else below it.
@@ -71,13 +71,13 @@ pub trait ErContext<Mode> {
     /// result.er(|| EnumErr::variant_name(arg1))?; // Enum variant
     /// ```
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er<A>(self, error: impl ErMake<A, Mode>) -> Er<Self::Ok, A>
+    fn er<A>(self, error: impl ErMake<A, Mode>) -> ErResult<Self::Ok, A>
     where
         A: Error + 'static;
 }
 
 /// Add a new top error above an existing tree.
-pub trait ErTreeContext<Mode> {
+pub trait ErTreeContextExt<Mode> {
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er<A>(self, error: impl ErMake<A, Mode>) -> ErTree<A>
     where
@@ -85,7 +85,7 @@ pub trait ErTreeContext<Mode> {
 }
 
 /// Other ways to work with a Result's error.
-pub trait ErResult {
+pub trait ErResultExt {
     type Ok;
     type Err;
 
@@ -97,10 +97,10 @@ pub trait ErResult {
     ///
     /// `result.er_with(|t| AnalyzeErr::new(t.top.code))?;`
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_with<A>(self, error: impl FnOnce(&Self::Err) -> A) -> Er<Self::Ok, A>
+    fn er_with<A>(self, error: impl FnOnce(&Self::Err) -> A) -> ErResult<Self::Ok, A>
     where
         A: Error + 'static,
-        Self::Err: IntoErNode;
+        Self::Err: IntoErPart;
 
     /// For values that don't implement `Error`, like `Err(85)`.
     ///
@@ -112,19 +112,39 @@ pub trait ErResult {
     /// device_status().er_val(DeviceErr::new)?;
     /// ```
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_val<A, F>(self, error: F) -> Er<Self::Ok, A>
+    fn er_val<A, F>(self, error: F) -> ErResult<Self::Ok, A>
     where
         A: Error + 'static,
         F: FnOnce(Self::Err) -> A;
 }
 
+/// Collect successful values and add context to failures.
+pub trait ErIteratorExt<Mode>: Sized {
+    type Ok;
+
+    /// Stop at the first error.
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_collect<C, A>(self, error: impl ErMake<A, Mode>) -> ErResult<C, A>
+    where
+        C: FromIterator<Self::Ok>,
+        A: Error + 'static;
+
+    /// Keep the successful values until the iterator finishes. If anything failed,
+    /// keep every error and drop the collected values.
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_collect_all<C, A>(self, error: impl ErMake<A, Mode>) -> ErResult<C, A>
+    where
+        C: FromIterator<Self::Ok>,
+        A: Error + 'static;
+}
+
 /// Get the tree or pick the output for a Result with a tree, Wrap or owned presentation.
-pub trait ErPresentation {
+pub trait ErPresentationExt {
     type Ok;
     type Err;
 
     /// Get the normal Er result back.
-    fn er_tree(self) -> Er<Self::Ok, Self::Err>;
+    fn er_tree(self) -> ErResult<Self::Ok, Self::Err>;
 
     /// Just the outer error, leaves Ok alone.
     ///
@@ -140,29 +160,28 @@ pub trait ErPresentation {
     ///
     /// !WARNING! Normal `.er()` boxes a Wrap with `std_error`, so you can't find the errors inside it.
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_wrap<A, F>(self, error: F) -> Er<Self::Ok, A>
+    fn er_wrap<A, Mode>(self, error: impl ErMake<A, Mode>) -> ErResult<Self::Ok, A>
     where
         Self: Sized,
         Self::Err: Error + Send + Sync + 'static,
         A: Error + 'static,
-        F: FnOnce() -> A,
     {
         self.er_tree().er(error)
     }
 }
 
 /// Give a presentation standard Error support. On a Result, leaves Ok alone.
-pub trait ErOpaqueError {
+pub trait ErOpaqueErrorExt {
     type Output;
 
     /// The presentation stays in `.0`, but error searches can't see inside it.
     fn opaque_err(self) -> Self::Output;
 }
 
-/// Turns an error or tree into a node.
-pub trait IntoErNode {
+/// Turns an error or tree into a node and its metadata.
+pub trait IntoErPart {
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn into_er_node(self) -> ErNode;
+    fn into_er_part(self) -> ErPart;
 }
 
 /// Get the tree out of a tree, Wrap or owned presentation. Leaves the old layout behind.
@@ -186,4 +205,18 @@ pub trait IntoErTree {
     {
         self.into_er_tree().into_er_report()
     }
+}
+
+#[cfg(feature = "stack_traces")]
+pub trait ErTraceExt: Sized {
+    /// Capture the current stack for this layer. Leaves Ok alone.
+    #[track_caller]
+    fn er_trace(self) -> Self;
+}
+
+#[cfg(feature = "macros")]
+#[doc(hidden)]
+pub trait ErAllItem<Mode> {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_all_item(self) -> Result<(), ErPart>;
 }

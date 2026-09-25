@@ -17,7 +17,7 @@ pub struct ItemErr(pub usize);
 #[derive(Er)]
 pub struct CheckAllErr;
 
-fn check_all(results: impl Iterator<Item = Result<(), ItemErr>>) -> Er<(), CheckAllErr> {
+fn check_all(results: impl Iterator<Item = Result<(), ItemErr>>) -> ErResult<(), CheckAllErr> {
     er_all!((), results)
 }
 ```

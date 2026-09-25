@@ -62,7 +62,7 @@ impl Error for IgnoresWriter {}
 pub fn callback_failure() {
     pub struct Stop;
     let stop = Stop;
-    let tree = IgnoresWriter.er();
+    let tree = ErTree::from(IgnoresWriter);
     let mut calls = 0;
     let result = tree.er_top().try_for_each_line(|_| {
         calls += 1;
@@ -102,11 +102,10 @@ pub fn callback_failure() {
 
 #[test]
 pub fn chunks() -> fmt::Result {
-    let report = WriteChunks {
+    let report = ErTree::from(WriteChunks {
         parts: &["first\nsec", "ond\n", "third"],
         calls: Cell::new(0),
-    }
-    .er()
+    })
     .into_er_report();
     let expected = report.to_string();
 
@@ -133,16 +132,14 @@ impl Error for Broken {}
 #[test]
 pub fn format_failure() {
     let mut lines = Vec::new();
-    let outcome = Broken
-        .er()
+    let outcome = ErTree::from(Broken)
         .into_er_top()
         .for_each_line(|line| lines.push(line.to_owned()));
 
     assert_eq!(outcome, Err(fmt::Error));
     assert_eq!(lines, ["done"]);
 
-    let outcome = Broken
-        .er()
+    let outcome = ErTree::from(Broken)
         .into_er_top()
         .try_for_each_line(|_| Ok::<(), ()>(()));
 

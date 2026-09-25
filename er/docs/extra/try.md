@@ -1,6 +1,6 @@
 # Rust 'Try'
 
-Er is normal Result: `Er<T, E> = Result<T, ErTree<E>>`.
+Er is normal Result: `ErResult<T, E> = Result<T, ErTree<E>>`.
 
 You might think that it would be cool if `?` would add context automatically
 
@@ -12,11 +12,9 @@ read_port("85").er(())?;
 read_port("67")?;
 ```
 
-Needs our own result type, can't do it on the alias. Try is still nightly. HOWEVER...
+Needs our own result type, can't do it on the alias. (so we would have to make Er be its own type so not an alias to a Result).
 
-Thinking about this more im not sure it would be beneficial because changing a function from returning A to B, then fixing the places that used A, is annoying. I'd rather give each function its own small `NameErr` from the start instead of exposing the inner type. And if you say "Try can do that as well" then yes ofcourse it can, but it becomes very very easy to then not add a new error to that spot, instead using the inner one which then gets error variants/cases it has no way of actually doing, and then you end up with the thiserror 'mega error enums' that have nothing to do with the scope they are in.
-
-And `?` doesn't give `ReadFileErr` its path for free. You still have to tell it where the path comes from. With `.er(|_| path)` that's tiny, and changing the error later is easy (which i think is underrated).
+It would probably only help for .er(()) and make a raw '?' work, but im not sure it would actually work, and i don't know if its coming out.
 
 [Try tracking](https://github.com/rust-lang/rust/issues/84277)
 

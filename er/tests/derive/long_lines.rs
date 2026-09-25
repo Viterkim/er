@@ -64,7 +64,7 @@ pub fn long_lines() -> fmt::Result {
     }
     expected.push_str(&format!("text: {:?} }}", value.text));
 
-    let tree = WideErr::new(value).er();
+    let tree = ErTree::from(WideErr::new(value));
     let expected = format!("WideErr {{ value: {expected} }}");
 
     assert_eq!(tree.er_top().to_string(), expected);

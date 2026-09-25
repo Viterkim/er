@@ -31,7 +31,7 @@ pub struct PairTupleErr(pub (u8, u16));
 
 #[test]
 pub fn empty_errors_with_unit() {
-    fn unit() -> Er<(), EmptyUnitErr> {
+    fn unit() -> ErResult<(), EmptyUnitErr> {
         Err::<(), std::fmt::Error>(std::fmt::Error).er(())?;
         Ok(())
     }
@@ -41,12 +41,12 @@ pub fn empty_errors_with_unit() {
 
 #[test]
 pub fn construct_from_fields() {
-    fn file(path: &std::path::Path) -> Er<(), FileConstructErr> {
+    fn file(path: &std::path::Path) -> ErResult<(), FileConstructErr> {
         Err::<(), std::fmt::Error>(std::fmt::Error).er(|_| path)?;
         Ok(())
     }
 
-    fn config(machine: &str, token: &str) -> Er<(), ConfigConstructErr> {
+    fn config(machine: &str, token: &str) -> ErResult<(), ConfigConstructErr> {
         Err::<(), std::fmt::Error>(std::fmt::Error).er(|_| (machine, token))?;
         Ok(())
     }
@@ -59,7 +59,7 @@ pub fn construct_from_fields() {
     assert_eq!(config.top.machine, "ComputerKatten");
     assert_eq!(config.top.token, "secret");
 
-    fn chained(path: &std::path::Path) -> Er<(), ConfigConstructErr> {
+    fn chained(path: &std::path::Path) -> ErResult<(), ConfigConstructErr> {
         Err::<(), std::fmt::Error>(std::fmt::Error)
             .er::<FileConstructErr>(|_| path)
             .er(|_| ("machine", "token"))?;
@@ -69,12 +69,12 @@ pub fn construct_from_fields() {
     let chained = chained(std::path::Path::new("config.toml")).unwrap_err();
     assert!(chained.er_contains::<FileConstructErr>());
 
-    fn tuple_field() -> Er<(), PairTupleErr> {
+    fn tuple_field() -> ErResult<(), PairTupleErr> {
         None::<()>.er(|_| (85, 86))
     }
     assert_eq!(tuple_field().unwrap_err().top.0, (85, 86));
 
-    fn three(path: &std::path::Path, token: &Token) -> Er<(), FileErr> {
+    fn three(path: &std::path::Path, token: &Token) -> ErResult<(), FileErr> {
         None::<()>.er(|_| (path, "bad", token))
     }
     let token = Token("secret".into());
@@ -85,12 +85,13 @@ pub fn construct_from_fields() {
 #[test]
 pub fn boxed_error_can_be_used_or_wrapped() {
     let original = BoxConstructErr::new(std::io::Error::other("original"));
-    let used: Er<(), BoxConstructErr> = Err::<(), std::fmt::Error>(std::fmt::Error).er(|| original);
+    let used: ErResult<(), BoxConstructErr> =
+        Err::<(), std::fmt::Error>(std::fmt::Error).er(|| original);
     let used = used.unwrap_err();
     assert!(used.top.source.is::<std::io::Error>());
 
     let original = BoxConstructErr::new(std::io::Error::other("original"));
-    let wrapped: Er<(), BoxConstructErr> =
+    let wrapped: ErResult<(), BoxConstructErr> =
         Err::<(), std::fmt::Error>(std::fmt::Error).er(|_| original);
     let wrapped = wrapped.unwrap_err();
     assert!(wrapped.top.source.is::<BoxConstructErr>());
@@ -210,7 +211,7 @@ pub struct DeviceContextErr {
 
 #[test]
 pub fn previous_error_fields_and_aggregation() {
-    fn from_previous(path: &str) -> Er<(), DeviceContextErr> {
+    fn from_previous(path: &str) -> ErResult<(), DeviceContextErr> {
         let result: Result<(), ExactConstructErr> = Err(ExactConstructErr::new(85, "device"));
         result.er_with(|old| DeviceContextErr::new(old.count, path))?;
         Ok(())
@@ -223,7 +224,7 @@ pub fn previous_error_fields_and_aggregation() {
     );
     assert!(error.er_contains::<ExactConstructErr>());
 
-    fn gather(path: &str) -> Er<(), FileConstructErr> {
+    fn gather(path: &str) -> ErResult<(), FileConstructErr> {
         er_all!(|_| path, [Err::<(), _>(std::fmt::Error)])?;
         Ok(())
     }
@@ -231,7 +232,7 @@ pub fn previous_error_fields_and_aggregation() {
     let gathered = gather("batch.txt").unwrap_err();
     assert_eq!(gathered.top.path, PathBuf::from("batch.txt"));
 
-    fn gather_unit() -> Er<(), EmptyUnitErr> {
+    fn gather_unit() -> ErResult<(), EmptyUnitErr> {
         er_all!((), [Err::<(), _>(std::fmt::Error)])?;
         Ok(())
     }
@@ -251,7 +252,7 @@ pub fn failed_construction_is_lazy() {
     let closure_calls = Cell::new(0);
     let conversions = Cell::new(0);
     let ok: Result<(), std::fmt::Error> = Ok(());
-    let result: Er<(), ConfigConstructErr> = ok.er(|_| {
+    let result: ErResult<(), ConfigConstructErr> = ok.er(|_| {
         closure_calls.set(closure_calls.get() + 1);
         (Counted(&conversions), "token")
     });

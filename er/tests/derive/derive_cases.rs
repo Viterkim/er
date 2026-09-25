@@ -77,6 +77,8 @@ pub fn lifetime_projection() {
     let tree = ErTree {
         top: error,
         nodes: Vec::new(),
+        #[cfg(feature = "stack_traces")]
+        stack_traces: Vec::new(),
         #[cfg(feature = "src_locations")]
         src_location: std::panic::Location::caller(),
     };

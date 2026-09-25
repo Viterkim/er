@@ -1,6 +1,6 @@
-# Examples
+# Examples / Patterns
 
-Assumes `use er::*;` is used.
+All examples use `use er::*;`
 
 ## Empty struct
 
@@ -10,7 +10,7 @@ If the name and location are enough:
 #[derive(Er)]
 pub struct ReadPortErr;
 
-pub fn read_port(input: &str) -> Er<u16, ReadPortErr> {
+pub fn read_port(input: &str) -> ErResult<u16, ReadPortErr> {
     input.parse().er(())
 }
 ```
@@ -25,7 +25,7 @@ pub struct ReadFileErr { // or `ReadFileErr(pub PathBuf)`
     pub path: PathBuf,
 }
 
-pub fn read_file(path: &Path) -> Er<String, ReadFileErr> {
+pub fn read_file(path: &Path) -> ErResult<String, ReadFileErr> {
     fs::read_to_string(path).er(|_| path)
 }
 ```
@@ -41,12 +41,12 @@ pub enum ModeErr {
     Unknown { input: String },
 }
 
-pub fn read_mode(input: Option<&str>) -> Er<&str, ModeErr> {
+pub fn read_mode(input: Option<&str>) -> ErResult<&str, ModeErr> {
     // Even on options (like .ok_or_else())
     let mode = input.er(ModeErr::missing)?;
 
     if mode != "haandbold" {
-        return Err(ModeErr::unknown(mode).er());
+        er_bail!(ModeErr::unknown(mode));
     }
 
     Ok(mode)
@@ -98,17 +98,17 @@ pub struct AnalyzeErr {
     pub code: u8,
 }
 
-pub fn analyze() -> Er<(), AnalyzeErr> {
-    // read_device returns Er<_, DeviceErr>
+pub fn analyze() -> ErResult<(), AnalyzeErr> {
+    // read_device returns ErResult<_, DeviceErr>
     read_device().er_with(|t| AnalyzeErr::new(t.top.code))?;
     Ok(())
 }
 ```
 
-If it's a plain error (not a tree yet), then the `|e|` is the error:
+Raw errors take the same `.er(())`, `.er(|_| fields)` and `.er(|| MyErr::new(...))` forms too. If you need something from that error, use `.er_with()`:
 
 ```rust
-return Err(device.er_with(|e| AnalyzeErr::new(e.code)));
+er_bail!(device.er_with(|e| AnalyzeErr::new(e.code)));
 ```
 
 The convenience with `|_|` for struct errs does not work with `er_with(|old|)`.
@@ -119,12 +119,12 @@ The `.er_with()` above adds to the old tree. Both of these copy the code into a 
 
 ```rust
 // ! BAD DO NOT DO THIS !
-read_device().map_err(|t| AnalyzeErr::new(t.top.code).er())
+read_device().map_err(|t| ErTree::from(AnalyzeErr::new(t.top.code)))
 
 // ! BAD DO NOT DO THIS !
 if let Err(t) = read_device() {
     // the t tree is gone, (womp womp, sad sounds)
-    return Err(AnalyzeErr::new(t.top.code).er());
+    er_bail!(AnalyzeErr::new(t.top.code));
 }
 ```
 
@@ -145,7 +145,7 @@ pub struct ConnectErr {
 }
 
 let connection = Connection::new("ComputerKatten", 85);
-let error = ConnectErr::new(connection).er();
+let error = ErTree::from(ConnectErr::new(connection));
 
 println!("{}", error.er_top());
 ```
@@ -153,9 +153,21 @@ println!("{}", error.er_top());
 ConnectErr { connection: Connection { host: "ComputerKatten", port: 85 } }
 ```
 
+## Collect values
+
+`.er_collect()` keeps the oks and stops at the first error, adding context:
+
+```rust
+pub fn read_ports(inputs: &[&str]) -> ErResult<Vec<u16>, ReadPortErr> {
+    inputs.iter().map(|input| input.parse()).er_collect(())
+}
+```
+
+Use `.er_collect_all(())` to keep going and collect every error instead. If anything failed, the collected values get dropped.
+
 ## Collect / aggregate / er_all!
 
-Can be different types of sub error types.
+Can be different types of sub error types. Already have an error or tree? Put it in the list directly, no need to wrap it in `Err(...)`.
 
 ### Only parent context
 
@@ -166,7 +178,7 @@ pub struct ChecksErr {
     pub enabled: String,
 }
 
-pub fn check_inputs(port: &str, enabled: &str) -> Er<(), ChecksErr> {
+pub fn check_inputs(port: &str, enabled: &str) -> ErResult<(), ChecksErr> {
     er_all!(|_| (port, enabled), [port.parse::<u16>(), enabled.parse::<bool>()])
 }
 ```
@@ -186,7 +198,7 @@ pub struct ConfigErr {
     pub enabled: String,
 }
 
-pub fn check_config(path: &Path, port: &str, enabled: &str) -> Er<(), ConfigErr> {
+pub fn check_config(path: &Path, port: &str, enabled: &str) -> ErResult<(), ConfigErr> {
     let top_err = |_| (path, port, enabled);
     let host = read_file(path).er(top_err)?;
 
@@ -271,7 +283,7 @@ pub struct DeviceErr {
     pub status: u8,
 }
 
-pub fn check_device(result: Result<(), u8>) -> Er<(), DeviceErr> {
+pub fn check_device(result: Result<(), u8>) -> ErResult<(), DeviceErr> {
     // Remember, in rust if the first value of a closure just gets passed to a function,
     // you can pass the function directly. So you could also do `result.er_val(DeviceErr::new)`
     result.er_val(|status| DeviceErr::new(status))
@@ -301,7 +313,7 @@ Enable `serde` on Er, then add `serde_json` (or toml, or whatever).
 
 ```toml
 [dependencies]
-er = { version = "0.2", features = ["serde"] }
+er = { version = "0.3", features = ["serde"] }
 serde_json = "1"
 ```
 
@@ -323,7 +335,7 @@ pub enum ListenErr {
     BindFailed { address: SocketAddrV4, kind: io::ErrorKind, available_ports: Vec<u16> },
 }
 
-pub fn listen(input: &str) -> Er<TcpListener, ListenErr> {
+pub fn listen(input: &str) -> ErResult<TcpListener, ListenErr> {
     let (ip, port) = input.split_once(':').unwrap_or((input, ""));
 
     // First 2 errors, to us they're both just bad input
@@ -332,7 +344,7 @@ pub fn listen(input: &str) -> Er<TcpListener, ListenErr> {
 
     // Third error, our own rule that port 85 is sacred
     if port == 85 {
-        return Err(ListenErr::sacred_port().er());
+        er_bail!(ListenErr::sacred_port());
     }
 
     // Fourth error, we might want to match on what happened
@@ -383,7 +395,7 @@ Enable `test` on your dev deps:
 
 ```toml
 [dev-dependencies]
-er = { version = "0.2", features = ["test"] }
+er = { version = "0.3", features = ["test"] }
 ```
 
 Make the test return `ErTest` and use `.er(())?`.
@@ -394,7 +406,7 @@ use er::*;
 #[derive(Er)]
 pub struct ReadPortErr;
 
-pub fn read_port(input: &str) -> Er<u16, ReadPortErr> {
+pub fn read_port(input: &str) -> ErResult<u16, ReadPortErr> {
     input.parse().er(())
 }
 
@@ -432,7 +444,7 @@ pub fn handler(input: &str) -> Result<u16, HandlerError> {
 #[derive(Er)]
 pub struct RequestErr;
 
-pub fn request(input: &str) -> Er<u16, RequestErr> {
+pub fn request(input: &str) -> ErResult<u16, RequestErr> {
     handler(input).er(())
 }
 ```
@@ -453,9 +465,40 @@ pub fn run() -> anyhow::Result<()> {
 }
 ```
 
-BONUS: Nothing is deleted `ErAsError` keeps the presentation in its public `.0` field.
+Nothing is deleted `ErAsError` keeps the presentation in its public `.0` field.
 
-BUT `.opaque_err()` stops searches (source() is empty), and going the other way, Anyhow's boxed conversion can also be sneaky and hide types from er_find. [The anyhow example](../../integrations/anyhow/src/lib.rs) shows both.
+But `.opaque_err()` stops searches (source() is empty), and going the other way, Anyhow's boxed conversion can also be sneaky and hide types from er_find. [The anyhow example](../../integrations/anyhow/src/lib.rs) shows both.
+
+## Stack traces
+
+Enable `stack_traces` (needs `std`), then add `.er_trace()` where you want to capture the stack (only runs on errors).
+
+```rust
+pub fn read_port(input: &str) -> ErResult<u16, ReadPortErr> {
+    input.parse().er(()).er_trace()
+}
+
+if let Err(error) = read_port("fakenumber") {
+    eprintln!("{}", error.er_report());
+    for trace in &error.stack_traces {
+        eprintln!("{trace}");
+    }
+}
+```
+
+They follow the tree as you add context or aggregate it. You print them separately, you can always call `.er_trace()` again and there's no env variables to turn on.
+
+If you need the error, you can use the index with `error.er_at_index(trace.error_index)`.
+
+## Bail
+
+You can use `er_bail!(err)` if you don't want to type `return Err(ErTree::from(err))` (You can give it an existing tree too).
+
+```rust
+if mode != "haandbold" {
+    er_bail!(ModeErr::unknown(mode));
+}
+```
 
 ## Macros
 

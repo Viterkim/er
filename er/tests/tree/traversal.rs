@@ -25,10 +25,9 @@ impl Error for Counted {
 }
 
 pub fn linear_chain(depth: usize, probes: &Arc<AtomicUsize>) -> ErTree<Counted> {
-    let mut error = Counted {
+    let mut error = ErTree::from(Counted {
         probes: Arc::clone(probes),
-    }
-    .er();
+    });
 
     for _ in 0..depth {
         error = ErTree::new(
@@ -78,8 +77,8 @@ impl Error for NeverFormat {}
 
 #[test]
 pub fn query_does_not_format() {
-    let error = ErTree::new(NeverFormat, [NeverFormat.er()]);
-    let error = ErTree::new(NeverFormat, [error, NeverFormat.er()]);
+    let error = ErTree::new(NeverFormat, [ErTree::from(NeverFormat)]);
+    let error = ErTree::new(NeverFormat, [error, ErTree::from(NeverFormat)]);
 
     assert!(error.er_find::<AbsentErr>().is_none());
     assert!(error.er_contains::<NeverFormat>());
@@ -146,7 +145,7 @@ pub fn long_chain() -> Link {
 
 #[test]
 pub fn long_sources() {
-    let tree = long_chain().er();
+    let tree = ErTree::from(long_chain());
     assert_eq!(tree.er_sources().count(), CHAIN + 1);
     assert!(tree.er_contains::<Deep>());
 
@@ -215,10 +214,9 @@ pub fn wide_tree() {
     let probes = Arc::new(AtomicUsize::new(0));
     let branches: Vec<ErTree<Counted>> = (0..2_000)
         .map(|_| {
-            Counted {
+            ErTree::from(Counted {
                 probes: Arc::clone(&probes),
-            }
-            .er()
+            })
         })
         .collect();
 

@@ -10,17 +10,17 @@ pub fn plain_result() -> Result<(), AppErr> {
     Err(AppErr)
 }
 
-pub fn converted_with_question_mark(expected_line: &mut u32) -> Er<(), AppErr> {
+pub fn converted_with_question_mark(expected_line: &mut u32) -> ErResult<(), AppErr> {
     *expected_line = line!() + 1;
     plain_result()?;
 
     Ok(())
 }
 
-pub fn reject_if_missing(missing: bool, expected_line: &mut u32) -> Er<(), AppErr> {
+pub fn reject_if_missing(missing: bool, expected_line: &mut u32) -> ErResult<(), AppErr> {
     if missing {
         *expected_line = line!() + 1;
-        return Err(AppErr.er());
+        er_bail!(AppErr);
     }
 
     Ok(())
@@ -59,13 +59,57 @@ pub fn early_return() {
     assert_eq!(error.src_location.line(), expected_line);
 }
 
+#[test]
+pub fn bail() {
+    let mut expected_line = 0;
+    let result = (|| -> ErResult<(), AppErr> {
+        expected_line = line!() + 1;
+        er_bail!(AppErr,);
+    })();
+    let tree = result.unwrap_err();
+    assert!(tree.nodes.is_empty());
+    #[cfg(feature = "src_locations")]
+    assert_eq!(tree.src_location.line(), expected_line);
+
+    let result = (|| -> Result<(), ErReport<AppErr>> {
+        expected_line = line!() + 1;
+        er_bail!(AppErr);
+    })();
+    let report = result.unwrap_err();
+    assert_eq!(report.tree.top.to_string(), "AppErr");
+    #[cfg(feature = "src_locations")]
+    assert_eq!(report.tree.src_location.line(), expected_line);
+
+    let result = (|| -> Result<(), ErTop<AppErr>> {
+        expected_line = line!() + 1;
+        er_bail!(AppErr);
+    })();
+    let top = result.unwrap_err();
+    assert_eq!(top.to_string(), "AppErr");
+    #[cfg(feature = "src_locations")]
+    assert_eq!(top.tree.src_location.line(), expected_line);
+
+    let tree = ErTree::new(AppErr, [ChildErr(7)]);
+    #[cfg(feature = "stack_traces")]
+    let tree = tree.er_trace();
+    let nodes = tree.nodes.as_ptr();
+    #[cfg(feature = "stack_traces")]
+    let traces = tree.stack_traces.as_ptr();
+    let result = (|| -> ErResult<(), AppErr> { er_bail!(tree.into_er_report()) })();
+    let tree = result.unwrap_err();
+    assert_eq!(tree.nodes.as_ptr(), nodes);
+    assert_eq!(tree.er_find::<ChildErr>().unwrap().0, 7);
+    #[cfg(feature = "stack_traces")]
+    assert_eq!(tree.stack_traces.as_ptr(), traces);
+}
+
 #[derive(Er)]
 pub struct ChildErr(pub u8);
 #[test]
 pub fn er_val() -> Result<(), ErReport<ChildErr>> {
     let calls = Cell::new(0);
     let input: Result<u8, u8> = Ok(7);
-    let result: Er<u8, ChildErr> = input.er_val(|value| {
+    let result: ErResult<u8, ChildErr> = input.er_val(|value| {
         calls.set(calls.get() + 1);
         ChildErr(value)
     });
@@ -118,17 +162,17 @@ pub enum PresetErr {
 #[derive(Er)]
 pub struct BoundaryErr;
 
-fn empty() -> Er<(), EmptyErr> {
+fn empty() -> ErResult<(), EmptyErr> {
     Err::<(), _>(std::fmt::Error).er(())
 }
 
-fn fields() -> Er<(), FieldErr> {
+fn fields() -> ErResult<(), FieldErr> {
     Err::<(), _>(std::fmt::Error).er(|_| "field")
 }
 
-fn boundary<T, E>(result: Result<T, E>) -> Er<T, BoundaryErr>
+fn boundary<T, E>(result: Result<T, E>) -> ErResult<T, BoundaryErr>
 where
-    E: IntoErNode,
+    E: IntoErPart,
 {
     result.er(())
 }
@@ -166,7 +210,7 @@ pub fn context_spellings() {
 
 #[test]
 pub fn local_roots() {
-    let root = local_error().er();
+    let root = ErTree::from(local_error());
     assert_eq!(root.top.attempts.get(), 7);
     assert!(root.er_report().to_string().contains("local"));
     assert!(root.er_find::<LocalErr>().is_some());
@@ -193,7 +237,7 @@ pub fn local_roots() {
 
     assert_eq!(context.er_find::<ChildErr>().unwrap().0, 1);
 
-    let context = ChildErr(2).er().er::<LocalErr>(local_error);
+    let context = ChildErr(2).er::<LocalErr>(local_error);
     assert_eq!(context.er_find::<ChildErr>().unwrap().0, 2);
 
     let grouped = ErTree::new(local_error(), [ChildErr(3)]);
@@ -207,12 +251,45 @@ pub fn local_roots() {
 
 #[derive(Er)]
 pub struct ParentErr(pub u8);
+impl From<u8> for ParentErr {
+    fn from(value: u8) -> Self {
+        Self(value)
+    }
+}
+
+#[test]
+pub fn raw_context() {
+    let _line = line!() + 1;
+    let error = ChildErr(1).er::<AppErr>(());
+    assert_eq!(error.er_find::<ChildErr>().unwrap().0, 1);
+    #[cfg(feature = "src_locations")]
+    {
+        assert_eq!(error.src_location.line(), _line);
+        assert_eq!(error.nodes[0].src_location.line(), _line);
+    }
+
+    let error: ErTree<ParentErr> = ChildErr(2).er(|_| 7u8);
+    assert_eq!(error.top.0, 7);
+    assert_eq!(error.er_find::<ChildErr>().unwrap().0, 2);
+
+    let error = ChildErr(3).er::<ParentErr>(|_| 8u8);
+    assert_eq!(error.top.0, 8);
+
+    let error = ChildErr(5).er::<LocalErr>(|_| (Cell::new(6), "raw"));
+    assert_eq!(error.top.attempts.get(), 6);
+    assert_eq!(&*error.top.label, "raw");
+    assert_eq!(error.er_find::<ChildErr>().unwrap().0, 5);
+
+    let error = ChildErr(4).er(|| ParentErr::new(9));
+    assert_eq!(error.top.0, 9);
+    assert_eq!(error.er_find::<ChildErr>().unwrap().0, 4);
+}
 
 #[test]
 pub fn er_with() {
     let calls = Cell::new(0);
     let ok: Result<u8, ChildErr> = Ok(7);
-    let result: Er<u8, ParentErr> = ok.er_with(|e| {
+    let result: ErResult<u8, ParentErr> = ok.er_with(|e| {
         calls.set(calls.get() + 1);
         ParentErr(e.0)
     });
@@ -220,15 +297,15 @@ pub fn er_with() {
     assert_eq!(calls.get(), 0);
 
     let result: Result<(), ChildErr> = Err(ChildErr(1));
-    let error = result.er_with(|e| ParentErr(e.0)).unwrap_err();
+    let error = result.er_with::<ParentErr>(|e| e.0.into()).unwrap_err();
     assert_eq!(error.top.0, 1);
     assert_eq!(error.er_find::<ChildErr>().unwrap().0, 1);
 
-    let error = ChildErr(2).er_with(|e| ParentErr(e.0));
+    let error = ChildErr(2).er_with::<ParentErr>(|e| e.0.into());
     assert_eq!(error.top.0, 2);
     assert_eq!(error.er_find::<ChildErr>().unwrap().0, 2);
 
-    let error = ChildErr(3).er().er_with(|t| ParentErr(t.top.0));
+    let error = ErTree::from(ChildErr(3)).er_with::<ParentErr>(|t| t.top.0.into());
     assert_eq!(error.top.0, 3);
     assert_eq!(error.er_find::<ChildErr>().unwrap().0, 3);
 }

@@ -1,6 +1,7 @@
 #![warn(elided_lifetimes_in_paths)]
 #![doc = include_str!("../README.md")]
 
+mod er_all;
 mod fields;
 mod format;
 mod generate;
@@ -13,6 +14,13 @@ mod tests;
 
 use proc_macro::TokenStream;
 use syn::{DeriveInput, parse_macro_input};
+
+#[proc_macro]
+#[doc(hidden)]
+pub fn __er_all_results(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as er_all::Input);
+    er_all::expand(input).into()
+}
 
 #[proc_macro_derive(Er, attributes(er))]
 /// Impls error, generates Display/Debug(as the same), makes constructor funcs.

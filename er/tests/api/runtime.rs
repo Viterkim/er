@@ -1,7 +1,9 @@
 use er::*;
-use std::io::{Error, ErrorKind};
+use std::io::Error;
+#[cfg(feature = "macros")]
+use std::io::ErrorKind;
 
-pub fn read_port(input: &str) -> Er<u16, Error> {
+pub fn read_port(input: &str) -> ErResult<u16, Error> {
     input.parse().er(|| Error::other("port"))
 }
 
@@ -9,23 +11,56 @@ pub fn read_port(input: &str) -> Er<u16, Error> {
 pub fn without_derives() {
     assert_eq!(read_port("85").er_report().unwrap(), 85);
 
-    let error: ErTree<Error> = er_all!(
-        || Error::other("config"),
-        [
-            read_port("fakenumber"),
-            None::<()>.er::<Error>(|| Error::new(ErrorKind::NotFound, "mode")),
-        ]
-    )
-    .err()
-    .unwrap();
+    let results = [Err::<(), _>(Error::other("mode"))];
+    let error: ErTree<Error> = aggregate::collect(|| Error::other("config"), results).unwrap_err();
+    assert_eq!(error.nodes.len(), 1);
 
-    assert_eq!(error.nodes.len(), 2);
-    assert!(error.er_find::<std::num::ParseIntError>().is_some());
-    assert_eq!(error.er_top().to_string(), "config");
-    assert!(error.er_report().to_string().contains("invalid digit"));
+    #[cfg(feature = "macros")]
+    {
+        let error: ErTree<Error> = er_all!(
+            || Error::other("config"),
+            [
+                read_port("fakenumber"),
+                None::<()>.er::<Error>(|| Error::new(ErrorKind::NotFound, "mode")),
+            ]
+        )
+        .err()
+        .unwrap();
 
-    let root = Error::other("fresh").er();
+        assert_eq!(error.nodes.len(), 2);
+        assert!(error.er_find::<std::num::ParseIntError>().is_some());
+        assert_eq!(error.er_top().to_string(), "config");
+        assert!(error.er_report().to_string().contains("invalid digit"));
+    }
+
+    let root = ErTree::from(Error::other("fresh"));
     assert!(root.nodes.is_empty());
+
+    let error = Error::other("source").er::<Error>(|| Error::other("context"));
+    assert_eq!(error.top.to_string(), "context");
+    assert_eq!(error.nodes[0].error.to_string(), "source");
+}
+
+#[test]
+pub fn collections() {
+    let input = || {
+        ["1", "bad", "2", "also bad"]
+            .into_iter()
+            .map(str::parse::<u8>)
+    };
+    let mut values = input();
+    let result = values
+        .by_ref()
+        .er_collect::<Vec<_>, Error>(|| Error::other("parse"));
+    assert_eq!(result.unwrap_err().nodes.len(), 1);
+    assert_eq!(values.next().unwrap().unwrap(), 2);
+
+    let result = input().er_collect_all::<Vec<_>, Error>(|| Error::other("parse"));
+    assert_eq!(result.unwrap_err().nodes.len(), 2);
+    let result = [Ok::<_, Error>(1), Ok(2)]
+        .into_iter()
+        .er_collect_all::<Vec<_>, Error>(|| Error::other("parse"));
+    assert_eq!(result.er_report().unwrap(), [1, 2]);
 }
 
 pub struct ManualWrap<E>(pub ErTree<E>);
@@ -43,6 +78,8 @@ pub fn manual_wrap() {
     let tree = ErTree {
         top: text.as_str(),
         nodes: Vec::new(),
+        #[cfg(feature = "stack_traces")]
+        stack_traces: Vec::new(),
         #[cfg(feature = "src_locations")]
         src_location: std::panic::Location::caller(),
     };

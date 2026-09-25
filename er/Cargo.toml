@@ -17,6 +17,7 @@ doctest = false
 [features]
 default = ["src_locations", "macros"]
 src_locations = []
+stack_traces = []
 small_path_src = []
 macros = ["dep:er-macros"]
 lazy = []
@@ -24,7 +25,7 @@ test = []
 serde = ["dep:serde"]
 
 [dependencies]
-er-macros = { version = "=0.2.1", path = "../er-macros", optional = true }
+er-macros = { version = "=0.3.0", path = "../er-macros", optional = true }
 serde = { workspace = true, optional = true }
 
 [dev-dependencies]
@@ -37,3 +38,8 @@ workspace = true
 name = "context"
 path = "runnable_examples/context.rs"
 required-features = ["macros"]
+
+[[example]]
+name = "stack_traces"
+path = "runnable_examples/stack_traces.rs"
+required-features = ["macros", "stack_traces"]

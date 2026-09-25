@@ -1,66 +1,49 @@
 use crate::{
-    Er, ErContext, ErError, ErMake, ErOpaqueError, ErPresentation, ErReport, ErResult, ErTop,
-    ErTree, IntoErNode, IntoErTree,
+    BoxError, ErContextExt, ErErrorContextExt, ErErrorExt, ErMake, ErOpaqueErrorExt,
+    ErPresentationExt, ErReport, ErResult, ErResultExt, ErTop, ErTree, IntoErPart, IntoErTree,
 };
-use alloc::vec;
+#[cfg(feature = "macros")]
+use crate::{ErAllError, ErAllItem, ErAllResult, ErPart};
 use core::error::Error;
-#[cfg(feature = "src_locations")]
-use core::panic::Location;
 
-impl<T: Error + Sized + 'static> ErError for T {}
+impl<T: Into<BoxError>, Mode> ErErrorContextExt<Mode> for T {}
+impl<T: Into<BoxError>> ErErrorExt for T {}
 
-impl<T, E: IntoErNode, Mode> ErContext<Mode> for Result<T, E> {
+impl<T, E: IntoErPart, Mode> ErContextExt<Mode> for Result<T, E> {
     type Ok = T;
 
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er<A>(self, error: impl ErMake<A, Mode>) -> Er<T, A>
+    fn er<A>(self, error: impl ErMake<A, Mode>) -> ErResult<T, A>
     where
         A: Error + 'static,
     {
         match self {
             Ok(value) => Ok(value),
-            Err(source) => {
-                let error = error.er_make();
-                let nodes = vec![source.into_er_node()];
-
-                Err(ErTree {
-                    top: error,
-                    nodes,
-                    #[cfg(feature = "src_locations")]
-                    src_location: Location::caller(),
-                })
-            }
+            Err(source) => Err(ErTree::from(error.er_make()).with_part(source.into_er_part())),
         }
     }
 }
-impl<T, E> ErResult for Result<T, E> {
+impl<T, E> ErResultExt for Result<T, E> {
     type Ok = T;
     type Err = E;
 
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_with<A>(self, error: impl FnOnce(&E) -> A) -> Er<T, A>
+    fn er_with<A>(self, error: impl FnOnce(&E) -> A) -> ErResult<T, A>
     where
         A: Error + 'static,
-        E: IntoErNode,
+        E: IntoErPart,
     {
         match self {
             Ok(value) => Ok(value),
             Err(source) => {
-                let error = error(&source);
-                let nodes = vec![source.into_er_node()];
-
-                Err(ErTree {
-                    top: error,
-                    nodes,
-                    #[cfg(feature = "src_locations")]
-                    src_location: Location::caller(),
-                })
+                let tree = ErTree::from(error(&source));
+                Err(tree.with_part(source.into_er_part()))
             }
         }
     }
 
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_val<A, F>(self, error: F) -> Er<T, A>
+    fn er_val<A, F>(self, error: F) -> ErResult<T, A>
     where
         A: Error + 'static,
         F: FnOnce(E) -> A,
@@ -74,11 +57,11 @@ impl<T, E> ErResult for Result<T, E> {
         }
     }
 }
-impl<T, E: IntoErTree> ErPresentation for Result<T, E> {
+impl<T, E: IntoErTree> ErPresentationExt for Result<T, E> {
     type Ok = T;
     type Err = E::Error;
 
-    fn er_tree(self) -> Er<T, E::Error> {
+    fn er_tree(self) -> ErResult<T, E::Error> {
         match self {
             Ok(value) => Ok(value),
             Err(error) => Err(error.into_er_tree()),
@@ -99,7 +82,7 @@ impl<T, E: IntoErTree> ErPresentation for Result<T, E> {
         }
     }
 }
-impl<T, E: ErOpaqueError> ErOpaqueError for Result<T, E> {
+impl<T, E: ErOpaqueErrorExt> ErOpaqueErrorExt for Result<T, E> {
     type Output = Result<T, E::Output>;
 
     fn opaque_err(self) -> Self::Output {
@@ -110,20 +93,38 @@ impl<T, E: ErOpaqueError> ErOpaqueError for Result<T, E> {
     }
 }
 
-impl<T, Mode> ErContext<Mode> for Option<T> {
+impl<T, Mode> ErContextExt<Mode> for Option<T> {
     type Ok = T;
 
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er<A>(self, error: impl ErMake<A, Mode>) -> Er<T, A>
+    fn er<A>(self, error: impl ErMake<A, Mode>) -> ErResult<T, A>
     where
         A: Error + 'static,
     {
         match self {
             Some(value) => Ok(value),
-            None => {
-                let error = error.er_make();
-                Err(ErTree::from(error))
-            }
+            None => Err(ErTree::from(error.er_make())),
         }
+    }
+}
+
+#[cfg(feature = "macros")]
+impl<T, E: IntoErPart> ErAllItem<ErAllResult> for Result<T, E> {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_all_item(self) -> Result<(), ErPart> {
+        match self {
+            Ok(value) => {
+                drop(value);
+                Ok(())
+            }
+            Err(error) => Err(error.into_er_part()),
+        }
+    }
+}
+#[cfg(feature = "macros")]
+impl<E: IntoErPart> ErAllItem<ErAllError> for E {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_all_item(self) -> Result<(), ErPart> {
+        Err(self.into_er_part())
     }
 }

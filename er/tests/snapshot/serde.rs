@@ -8,9 +8,7 @@ pub fn round_trip() -> Result<(), serde_json::Error> {
         text: "HaandboldFuglen",
         source,
     };
-    let child = Message::new("child")
-        .er()
-        .er::<Message>(|| Message::new("parent"));
+    let child = ErTree::from(Message::new("child")).er::<Message>(|| Message::new("parent"));
     let tree = ErTree::new(root, [child]);
     let snapshot = tree.er_snapshot();
 

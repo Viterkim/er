@@ -18,7 +18,7 @@ pub struct LoginErr;
 #[test]
 pub fn nested_data() {
     let connection = Connection::new("ComputerKatten", "secret");
-    let tree = ConnectErr::new(connection).er();
+    let tree = ErTree::from(ConnectErr::new(connection));
 
     let expected =
         "ConnectErr { connection: Connection { host: \"ComputerKatten\", password: *CENSORED* } }";
@@ -162,7 +162,7 @@ pub struct SecretErr<T> {
 }
 #[test]
 pub fn censor_and_skip() {
-    let tree = SecretErr::new("login", Secret, Secret).er();
+    let tree = ErTree::from(SecretErr::new("login", Secret, Secret));
     assert_eq!(
         tree.er_top().to_string(),
         "login: *CENSORED* / *CENSORED* / *CENSORED* / *CENSORED*"
@@ -302,6 +302,8 @@ pub fn projected_and_borrowed_fields() {
     let tree = ErTree {
         top: BorrowedErr::new(&text),
         nodes: Vec::new(),
+        #[cfg(feature = "stack_traces")]
+        stack_traces: Vec::new(),
         #[cfg(feature = "src_locations")]
         src_location: std::panic::Location::caller(),
     };

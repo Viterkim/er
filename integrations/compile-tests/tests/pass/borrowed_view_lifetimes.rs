@@ -15,7 +15,7 @@ pub fn find_from_top<'a>(top: ErTopRef<'a, AppErr>) -> Option<&'a DbErr> {
 }
 
 pub fn main() {
-    let tree = ErTree::new(AppErr, [DbErr.er()]);
+    let tree = ErTree::new(AppErr, [ErTree::from(DbErr)]);
 
     let error = &tree.er_report().tree.top;
     let found = tree.er_report().er_find::<DbErr>();

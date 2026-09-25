@@ -1,8 +1,8 @@
 use crate::lines;
 use crate::render::write_top;
 use crate::{
-    ErAsError, ErLineError, ErNodes, ErOpaqueError, ErSources, ErTop, ErTopRef, ErTree, IntoErNode,
-    IntoErTree, Layout,
+    ErAsError, ErLineError, ErNodes, ErOpaqueErrorExt, ErSources, ErTop, ErTopRef, ErTree,
+    IntoErPart, IntoErTree, Layout,
 };
 use core::{error::Error, fmt};
 
@@ -72,7 +72,7 @@ impl<E: fmt::Display> fmt::Debug for ErTopRef<'_, E> {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl<E: fmt::Display> ErOpaqueError for ErTopRef<'_, E> {
+impl<E: fmt::Display> ErOpaqueErrorExt for ErTopRef<'_, E> {
     type Output = ErAsError<Self>;
 
     fn opaque_err(self) -> Self::Output {
@@ -98,6 +98,12 @@ impl<E> ErTop<E> {
 
     pub fn er_descendants(&self) -> ErNodes<'_> {
         self.tree.er_descendants()
+    }
+}
+impl<E: Error + 'static> From<E> for ErTop<E> {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn from(error: E) -> Self {
+        ErTree::from(error).into_er_top()
     }
 }
 impl<E> From<ErTree<E>> for ErTop<E> {
@@ -154,12 +160,12 @@ impl<E: fmt::Display> fmt::Debug for ErTop<E> {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl<E: Error + Send + Sync + 'static> IntoErNode for ErTop<E> {
-    fn into_er_node(self) -> crate::ErNode {
-        self.tree.into_er_node()
+impl<E: Error + Send + Sync + 'static> IntoErPart for ErTop<E> {
+    fn into_er_part(self) -> crate::ErPart {
+        self.tree.into_er_part()
     }
 }
-impl<E: fmt::Display> ErOpaqueError for ErTop<E> {
+impl<E: fmt::Display> ErOpaqueErrorExt for ErTop<E> {
     type Output = ErAsError<Self>;
 
     fn opaque_err(self) -> Self::Output {

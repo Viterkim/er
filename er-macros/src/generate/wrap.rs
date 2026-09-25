@@ -77,11 +77,11 @@ pub fn expand(
         let (node_impl, _, node_where) = node_generics.split_for_impl();
 
         quote! {
-            impl #node_impl #er_path::IntoErNode for #wrap #type_generics #node_where {
-                fn into_er_node(self) -> #er_path::ErNode {
+            impl #node_impl #er_path::IntoErPart for #wrap #type_generics #node_where {
+                fn into_er_part(self) -> #er_path::ErPart {
                     let #tree: #er_path::ErTree<#node_root> =
                         #er_path::IntoErTree::into_er_tree(self);
-                    #er_path::IntoErNode::into_er_node(#tree)
+                    #er_path::IntoErPart::into_er_part(#tree)
                 }
             }
         }
@@ -206,7 +206,7 @@ fn formatting(
                 ::core::fmt::Display::fmt(self, #formatter)
             }
         }
-        impl #impl_generics #er_path::ErOpaqueError for #wrap #type_generics #where_clause {
+        impl #impl_generics #er_path::ErOpaqueErrorExt for #wrap #type_generics #where_clause {
             type Output = #er_path::ErAsError<Self>;
 
             fn opaque_err(self) -> Self::Output {

@@ -1,6 +1,30 @@
+# 0.3.0
+
+`Er<T, E>` renamed to `ErResult<T, E>`.
+
+Rename extension traits, now ends in `Ext`, like `ErResultExt` and `ErErrorExt`.
+
+Add the macro `er_bail!()` (needs the `macros` default feature).
+
+Add the `stack_traces` feature with optional stack traces with `.er_trace()`, they follow the tree and you have to print them yourself.
+
+Add `.er_at_index()` / `.er_at_path()` for finding the error via an index/path in the tree.
+
+IntoErNode is now IntoErPart, so moving a subtree keeps its traces too.
+
+For iter added `.er_collect()` for collecting and stopping on the first error, or `.er_collect_all()` which keeps going and adds all as sub errors.
+
+`er_all!` now supports errors, results and trees (also mixed), and its now behind the 'macros' feature.
+
+Fix line numbers on non Er errors in er_all!().
+
+Raw errors take `.er(context)` like results and trees.
+
+`.er_wrap()` now supports the construction helpers.
+
 # 0.2.1
 
-Cleanup / simplify the docs (especially readme.md)
+Cleanup / simplify the docs (especially readme.md).
 
 # 0.2.0
 

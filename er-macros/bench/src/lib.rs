@@ -9,7 +9,7 @@ impl fmt::Display for ReadErr {
     }
 }
 impl Error for ReadErr {}
-pub fn read_port(input: &str) -> Er<u16, ReadErr> {
+pub fn read_port(input: &str) -> ErResult<u16, ReadErr> {
     input.parse().er(|| ReadErr)
 }
 

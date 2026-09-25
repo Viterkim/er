@@ -16,22 +16,29 @@ pub fn success_drop() {
     let drops = Cell::new(0);
     let success: Result<Guard<'_>, Parent> = Ok(Guard(&drops));
     let failure: Result<Guard<'_>, Parent> = Err(Parent);
-    let result: Er<(), Parent> = er_all!(
+    let calls = Cell::new(0);
+    let next = || {
+        calls.set(calls.get() + 1);
+        assert_eq!(drops.get(), 1);
+        failure
+    };
+    let result: ErResult<(), Parent> = er_all!(
         || {
             assert_eq!(drops.get(), 1);
             Parent
         },
-        [success, failure]
+        [success, next()]
     );
 
     assert_eq!(drops.get(), 1);
+    assert_eq!(calls.get(), 1);
     assert_eq!(result.unwrap_err().nodes.len(), 1);
 }
 
 #[derive(Er)]
 pub struct Collision;
 impl Collision {
-    pub fn into_er_node(self) {
+    pub fn into_er_part(self) {
         panic!("caller method selected")
     }
 }
@@ -41,6 +48,21 @@ pub fn method_collision() {
     let result: Result<(), Collision> = Err(Collision);
     let tree: ErTree<Parent> = er_all!(|| Parent, [result]).unwrap_err();
 
+    assert!(tree.er_contains::<Collision>());
+
+    struct __ErAllItem;
+    impl __ErAllItem {
+        fn result() -> Result<(), Collision> {
+            Err(Collision)
+        }
+    }
+    macro_rules! make_result {
+        () => {
+            __ErAllItem::result()
+        };
+    }
+
+    let tree: ErTree<Parent> = er_all!(|| Parent, [make_result!()]).unwrap_err();
     assert!(tree.er_contains::<Collision>());
 }
 

@@ -12,7 +12,7 @@ pub fn layouts() {
         "fake `- branch @ file:85",
     ] {
         let child = ErTree::new(Message::new(message), [Message::new("last")]);
-        let sibling = Message::new("sibling").er();
+        let sibling = ErTree::from(Message::new("sibling"));
         let tree = ErTree::new(Message::new(message), [child, sibling]);
         let snapshot = tree.er_snapshot();
 

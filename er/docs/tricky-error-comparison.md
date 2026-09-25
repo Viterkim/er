@@ -16,7 +16,7 @@ This is a made up `listen()` case to hit the pain points of different error libr
 
 [error-stack](#error-stack-080--thiserror-1)
 
-[Er](#er-020-1)
+[Er](#er-030-1)
 
 [thiserror, lazy style](#thiserror-lazy-style-2020-1)
 
@@ -46,13 +46,13 @@ Done on Rust 1.98.1
 
 ### thiserror, verbose style (2.0.20)
 
-Now we make the cases around what our caller cares about and keep the original errors too. `InvalidInput` needs another error enum underneath because IP and port parsing are different types. We also write every `map_err`, source field and bit of context ourselves.
+Now we make the cases around what our caller cares about and keep the original errors too. Here we use another error enum under `InvalidInput` to keep the IP and port parser errors typed. We could box the source instead, like the SNAFU example below. We also write every `map_err`, source field and bit of context ourselves.
 
 ### error-stack (0.8.0) (+ thiserror)
 
 We get a typed current error with the old errors in a report. The lazy context callback can't see the failed error, so bind needs `map_err`. Lookup finds the error we gave it but not its real nested io source in that copied text frame.
 
-### Er (0.2.0)
+### Er (0.3.0)
 
 We get a typed top error with the stuff our caller cares about. `.er_with()` can read the failed error and keep it underneath. Everything below `.top` needs a search. And the old error can't also sit in a typed source field on the top variant, because the tree owns it.
 
@@ -394,7 +394,7 @@ fn main() {
 }
 ```
 
-## Er (0.2.0)
+## Er (0.3.0)
 
 ```rust
 use er::*;
@@ -407,7 +407,7 @@ pub enum ListenErr {
     BindFailed { address: SocketAddrV4, kind: io::ErrorKind, available_ports: Vec<u16> },
 }
 
-pub fn listen(input: &str) -> Er<TcpListener, ListenErr> {
+pub fn listen(input: &str) -> ErResult<TcpListener, ListenErr> {
     // Normal stuff
     let (ip, port) = input.split_once(':').unwrap_or((input, ""));
 
@@ -419,7 +419,7 @@ pub fn listen(input: &str) -> Er<TcpListener, ListenErr> {
 
     // Third error, our own rule that port 85 is sacred
     if port == 85 {
-        return Err(ListenErr::sacred_port().er());
+        er_bail!(ListenErr::sacred_port());
     }
 
     // Fourth error, we might want to match on what happened

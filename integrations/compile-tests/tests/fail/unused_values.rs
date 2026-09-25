@@ -12,14 +12,14 @@ pub enum Kind {
 }
 
 pub fn main() {
-    let tree = AppErr.er();
+    let tree = ErTree::from(AppErr);
     tree.er_report();
     tree.er_top().single_line();
     tree.er_entries();
-    AppErr.er();
-    AppErr.er().into_er_node();
-    AppErr.er().into_er_report();
-    AppErrWrap { tree: AppErr.er() };
+    ErTree::from(AppErr);
+    ErTree::from(AppErr).into_er_node();
+    ErTree::from(AppErr).into_er_report();
+    AppErrWrap { tree: ErTree::from(AppErr) };
     AppErr::new();
     Kind::missing();
     AppErr.er_wrap();

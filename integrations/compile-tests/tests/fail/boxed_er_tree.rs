@@ -5,6 +5,6 @@ use er::*;
 pub struct AppErr;
 
 pub fn main() {
-    let error: ErTree<AppErr> = AppErr.er();
+    let error: ErTree<AppErr> = ErTree::from(AppErr);
     let _boxed: Box<dyn Error> = Box::new(error);
 }

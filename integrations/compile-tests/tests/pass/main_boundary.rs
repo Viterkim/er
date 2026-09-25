@@ -2,7 +2,7 @@ use er::*;
 
 #[derive(Er)]
 pub struct ReadPortErr;
-pub fn read_port(input: &str) -> Er<u16, ReadPortErr> {
+pub fn read_port(input: &str) -> ErResult<u16, ReadPortErr> {
     input.parse().er(())
 }
 

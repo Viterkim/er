@@ -1,6 +1,6 @@
 # Features
 
-The crate is `no_std` but requires `alloc`
+The crate is `no_std` but requires `alloc`. `stack_traces` needs `std`.
 
 ## default features
 
@@ -8,7 +8,7 @@ The crate is `no_std` but requires `alloc`
 
 ## non-default features
 
-`small_path_src, serde, lazy`
+`small_path_src, serde, lazy, stack_traces`
 
 ## non-default dev/testing feature
 
@@ -16,7 +16,7 @@ The crate is `no_std` but requires `alloc`
 
 ## macros
 
-Convenience macros that kinda are the point of Er, you get `#[derive(Er)]` and `#[derive(ErFormat)]` etc.
+Convenience macros like `#[derive(Er)]`, `#[derive(ErFormat)]`, `er_all!` and `er_bail!`.
 
 ## src_locations
 
@@ -28,7 +28,7 @@ Usually you'll just get `src/lib.rs` or `engine/src/lib.rs` in a workspace(so yo
 
 So this turns it into `secret/src/a.rs`. It just looks for the last `src` and gives you the path one step back from that.
 
-If you don't want to restructure stuff you can enable it BUT! it only affects it when PRINTING! It is STILL in your binary.
+If you don't want to restructure stuff you can enable it, but it only affects it when printing (it's still in your binary).
 
 ## serde, off by default
 
@@ -38,7 +38,7 @@ Er does NOT turn it into JSON for you. You pick a format crate in your own app `
 
 ```toml
 [dependencies]
-er = { version = "0.2", features = ["serde"] }
+er = { version = "0.3", features = ["serde"] }
 serde_json = "1"
 ```
 
@@ -59,6 +59,10 @@ If one side compiled `src_locations` out, the JSON just has no `src_location`. A
 
 For small scripts or prototyping, i don't think you should use this [Examples](lazy.md).
 
+## stack_traces, off by default
+
+Needs `std`. [Capturing and printing traces](examples.md#stack-traces).
+
 ## test, for dev dependencies, off by default
 
 `ErTest` and `.er(())?` for tests.
@@ -67,13 +71,13 @@ For small scripts or prototyping, i don't think you should use this [Examples](l
 
 ```toml
 [dependencies]
-er = { version = "0.2", features = ["small_path_src"] }
+er = { version = "0.3", features = ["small_path_src"] }
 
 [dev-dependencies]
-er = { version = "0.2", features = ["test"] }
+er = { version = "0.3", features = ["test"] }
 ```
 
 ```toml
 [dependencies]
-er = { version = "0.2", default-features = false, features = ["src_locations"] }
+er = { version = "0.3", default-features = false, features = ["src_locations"] }
 ```

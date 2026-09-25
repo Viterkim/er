@@ -17,7 +17,7 @@ impl fmt::Debug for NotSyncErr {
 impl Error for NotSyncErr {}
 
 pub fn main() {
-    let error = NotSyncErr(Cell::new(0)).er();
+    let error = ErTree::from(NotSyncErr(Cell::new(0)));
     require_sync(&error);
     let _ = error.into_er_node();
 }

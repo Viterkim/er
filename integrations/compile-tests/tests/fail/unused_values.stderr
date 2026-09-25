@@ -36,48 +36,59 @@ help: use `let _ = ...` to ignore the resulting value
 18 |     let _ = tree.er_entries();
    |     +++++++
 
-error: unused `ErTree` that must be used
+error: unused `er::ErTree` that must be used
   --> tests/fail/unused_values.rs:19:5
    |
-19 |     AppErr.er();
-   |     ^^^^^^^^^^^
+19 |     ErTree::from(AppErr);
+   |     ^^^^^^^^^^^^^^^^^^^^
    |
 help: use `let _ = ...` to ignore the resulting value
    |
-19 |     let _ = AppErr.er();
+19 |     let _ = ErTree::from(AppErr);
+   |     +++++++
+
+error: unused return value of `from` that must be used
+  --> tests/fail/unused_values.rs:19:5
+   |
+19 |     ErTree::from(AppErr);
+   |     ^^^^^^^^^^^^^^^^^^^^
+   |
+help: use `let _ = ...` to ignore the resulting value
+   |
+19 |     let _ = ErTree::from(AppErr);
    |     +++++++
 
 error: unused `ErNode` that must be used
   --> tests/fail/unused_values.rs:20:5
    |
-20 |     AppErr.er().into_er_node();
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+20 |     ErTree::from(AppErr).into_er_node();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
 help: use `let _ = ...` to ignore the resulting value
    |
-20 |     let _ = AppErr.er().into_er_node();
+20 |     let _ = ErTree::from(AppErr).into_er_node();
    |     +++++++
 
 error: unused `ErReport` that must be used
   --> tests/fail/unused_values.rs:21:5
    |
-21 |     AppErr.er().into_er_report();
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+21 |     ErTree::from(AppErr).into_er_report();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
 help: use `let _ = ...` to ignore the resulting value
    |
-21 |     let _ = AppErr.er().into_er_report();
+21 |     let _ = ErTree::from(AppErr).into_er_report();
    |     +++++++
 
 error: unused `AppErrWrap` that must be used
   --> tests/fail/unused_values.rs:22:5
    |
-22 |     AppErrWrap { tree: AppErr.er() };
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+22 |     AppErrWrap { tree: ErTree::from(AppErr) };
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
 help: use `let _ = ...` to ignore the resulting value
    |
-22 |     let _ = AppErrWrap { tree: AppErr.er() };
+22 |     let _ = AppErrWrap { tree: ErTree::from(AppErr) };
    |     +++++++
 
 error: unused return value of `AppErr::new` that must be used

@@ -6,8 +6,10 @@ Design your error types around what your caller cares about, not what combinatio
 
 ```toml
 [dependencies]
-er = "0.2"
+er = "0.3"
 ```
+
+[Full examples / usage patterns](er/docs/examples.md)
 
 ## Simple example
 
@@ -24,7 +26,7 @@ pub struct FileErr {
     pub path: PathBuf,
 }
 
-pub fn read_file(path: &Path) -> Er<String, FileErr> {
+pub fn read_file(path: &Path) -> ErResult<String, FileErr> {
     // Extra context with 'path' + automatic source location
     read_to_string(path).er(|_| path)
 }
@@ -166,7 +168,7 @@ Also check out the [full list of examples/patterns for 'er'](er/docs/examples.md
 #[derive(Er)]
 pub struct NoContextErr;
 
-pub fn no_context_example(path: &Path) -> Er<String, NoContextErr> {
+pub fn no_context_example(path: &Path) -> ErResult<String, NoContextErr> {
     // Still gets source location
     read_file(path).er(())
 }
@@ -179,7 +181,7 @@ pub struct ConfigErr {
 }
 
 // variant 1: Exit on the first error
-pub fn check_config_exit_early(path: &Path, port: &str, enabled: &str) -> Er<(), ConfigErr> {
+pub fn check_config_exit_early(path: &Path, port: &str, enabled: &str) -> ErResult<(), ConfigErr> {
     // Closures only run on failure
     let e = |_| (port, enabled);
 
@@ -191,7 +193,7 @@ pub fn check_config_exit_early(path: &Path, port: &str, enabled: &str) -> Er<(),
 }
 
 // variant 2: Aggregate/collect errors, runs all and errors if any failed
-pub fn check_config_collect(path: &Path, port: &str, enabled: &str) -> Er<(), ConfigErr> {
+pub fn check_config_collect(path: &Path, port: &str, enabled: &str) -> ErResult<(), ConfigErr> {
     let e = |_| (port, enabled);
 
     // Different error types are fine, adds the sub errors to the parent if anything fails
@@ -208,27 +210,19 @@ ConfigErr { port: "nope", enabled: "nah" } @ src/main.rs:46:5
 |- NoContextErr @ src/main.rs:19:21
 |  `- FileErr { path: "/file/path/missing.txt" } @ src/main.rs:11:26
 |     `- No such file or directory (os error 2)
-|- invalid digit found in string
-`- provided string was not `true` or `false`
+|- invalid digit found in string @ src/main.rs:49:9
+`- provided string was not `true` or `false` @ src/main.rs:50:9
 ```
 
 ## Motivations
 
 ### Convenience
 
-`#[derive(Er)]` generates helpers to avoid stuff like: `.change_context_lazy(|| ConfigErr { port: port.to_owned(), enabled: enabled.to_owned() })?`.
-
-`er_all!()` can collect different types (doesn't quit out early).
-
 `.er_with(|e|)` for interacting with the typed error below without accidentally destroying the tree (easy to accidentally do with `.map_err()`).
 
 `.er_find::<SomeErr>()` for the first match, and `.er_find_all::<SomeErr>()` for finding the original errors and suberrors below (also checks `.source()`).
 
 `wrap` for implementing foreign traits.
-
-`use er::*;` should be usable without shadowing normal types.
-
-Easy creation of public errors for consumers who don't have/want `er`.
 
 ### Philosophy
 
@@ -238,9 +232,11 @@ Worse errors/types lead to worse logic/flow because error states get grouped int
 
 The original inner error should not dictate your error type design or be given to your final consumer directly.
 
+Easy creation of public errors for consumers who don't have/want `er`.
+
 ## Docs
 
-### Repo links
+### Repo links (from `./er/docs/`)
 
 [Examples / Patterns](er/docs/examples.md)
 

@@ -3,14 +3,14 @@ use std::{fs::read_to_string, path::PathBuf};
 
 #[derive(Er)]
 pub struct FileErr(pub PathBuf);
-pub fn read_file(path: &str) -> Er<String, FileErr> {
+pub fn read_file(path: &str) -> ErResult<String, FileErr> {
     let text = read_to_string(path).er(|_| path)?;
     Ok(text)
 }
 
 #[derive(Er)]
 pub struct AnalyzeErr;
-pub fn analyze() -> Er<String, AnalyzeErr> {
+pub fn analyze() -> ErResult<String, AnalyzeErr> {
     read_file("/tmp/file.txt").er(())
 }
 
@@ -18,7 +18,7 @@ pub fn analyze() -> Er<String, AnalyzeErr> {
 pub struct PortErr {
     pub invalid_port: String,
 }
-pub fn read_port(input: &str) -> Er<u16, PortErr> {
+pub fn read_port(input: &str) -> ErResult<u16, PortErr> {
     let port: u16 = input.parse().er(|_| input)?;
     Ok(port)
 }
@@ -27,18 +27,18 @@ pub fn read_port(input: &str) -> Er<u16, PortErr> {
 pub enum ModeErr {
     MissingMode,
 }
-pub fn read_mode(mode: Option<&str>) -> Er<&str, ModeErr> {
+pub fn read_mode(mode: Option<&str>) -> ErResult<&str, ModeErr> {
     let mode = mode.er(ModeErr::missing_mode)?;
     Ok(mode)
 }
 
 #[derive(Er)]
 pub struct AuthErr(pub String);
-pub fn authenticate(machine: &str, token: &str) -> Er<(), AuthErr> {
+pub fn authenticate(machine: &str, token: &str) -> ErResult<(), AuthErr> {
     if token == format!("{machine}_token") {
         Ok(())
     } else {
-        Err(AuthErr::new(machine).er())
+        er_bail!(AuthErr::new(machine));
     }
 }
 
@@ -53,7 +53,7 @@ pub fn read_config(
     token: &str,
     port: &str,
     mode: Option<&str>,
-) -> Er<(), ConfigErr> {
+) -> ErResult<(), ConfigErr> {
     let e = |_| (machine, token);
 
     authenticate(machine, token).er(e)?;
@@ -65,7 +65,7 @@ pub fn read_config(
 
 #[derive(Er)]
 pub struct StartupErr(pub String);
-pub fn startup() -> Er<(), StartupErr> {
+pub fn startup() -> ErResult<(), StartupErr> {
     er_all!(
         |_| "some config checks failed",
         [
@@ -86,7 +86,7 @@ pub enum BingoErr {
     // BingoErr::parse() generated
     Parse { input: String, favorite_number: u32 },
 }
-pub fn bingo(input: &str) -> Er<u8, BingoErr> {
+pub fn bingo(input: &str) -> ErResult<u8, BingoErr> {
     input.parse().er(|| BingoErr::parse(input, 85))
 }
 

@@ -51,7 +51,7 @@ Fields are debug printed by default, foreign types too. In `#[er(format = "{inpu
 
 ## Constructors
 
-Both `Er` and `ErFormat` make constructors. Put `#[er(no_constructors)]` on the struct/enum to write your own instead. It skips `new` and all variant constructors. For `Er` structs it also skips the field conversions for `|_|`, but not `.er_wrap()`.
+Both `Er` and `ErFormat` make constructors. Put `#[er(no_constructors)]` on the struct/enum to write your own instead. It skips `new` and all variant constructors. For `Er` structs it also skips the field conversions for `|_|`, but `#[er(wrap)]` still makes `MyErr::er_wrap()`.
 
 For an empty struct, use `.er(())`. `no_constructors` turns that off too.
 
@@ -67,7 +67,7 @@ use std::{
 #[derive(Er)]
 pub struct FileErr(pub PathBuf);
 
-pub fn read_file(path: &Path) -> Er<String, FileErr> {
+pub fn read_file(path: &Path) -> ErResult<String, FileErr> {
     fs::read_to_string(path).er(|_| path)
 }
 ```
@@ -213,10 +213,12 @@ When you get its Result back, use this instead of `.er()`:
 
 ```rust
 #[derive(Er)]
-pub struct RequestErr;
+pub struct RequestErr {
+    pub input: String,
+}
 
-pub fn request(input: &str) -> Er<u16, RequestErr> {
-    handler(input).er_wrap(RequestErr::new)
+pub fn request(input: &str) -> ErResult<u16, RequestErr> {
+    handler(input).er_wrap(|_| input)
 }
 ```
 

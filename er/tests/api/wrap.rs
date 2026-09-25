@@ -56,7 +56,7 @@ pub fn conversions() {
     let report: ErReport<HandlerErr> = wrapped.into();
     assert_eq!(report.to_string(), expected);
 
-    fn propagate(result: Result<(), HandlerErrWrap>) -> Er<(), HandlerErr> {
+    fn propagate(result: Result<(), HandlerErrWrap>) -> ErResult<(), HandlerErr> {
         result?;
         Ok(())
     }
@@ -205,6 +205,11 @@ pub fn report_reentry() {
 #[er(wrap(output = report, std_error))]
 pub struct StandardErr<T>(pub T);
 
+#[derive(Er)]
+pub struct RequestErr {
+    pub input: String,
+}
+
 #[test]
 pub fn std_error() {
     let drops = Arc::new(AtomicUsize::new(0));
@@ -240,6 +245,12 @@ pub fn std_error() {
     assert_eq!(drops.load(Ordering::Relaxed), 2);
 
     let wrapped = StandardErrWrap::from(ErTree::new(StandardErr::new(85u8), [InnerErr]));
+    let result: ErResult<(), RequestErr> = Err::<(), _>(wrapped).er_wrap(|_| "port");
+    let tree = result.unwrap_err();
+    assert_eq!(tree.top.input, "port");
+    assert!(tree.er_contains::<InnerErr>());
+
+    let wrapped = StandardErrWrap::from(ErTree::new(StandardErr::new(85u8), [InnerErr]));
     let expected = wrapped.to_string();
     let outer = Err::<(), _>(wrapped).er::<HandlerErr>(()).unwrap_err();
 
@@ -272,7 +283,7 @@ pub fn generic_wrap() {
         GenericWrap::from(top).into_er_tree()
     }
 
-    let error = GenericErr { value: 7u8 }.er();
+    let error = ErTree::from(GenericErr { value: 7u8 });
     let wrapped = GenericWrap::from(roundtrip(error));
 
     assert!(wrapped.to_string().contains("GenericErr { value: 7 }"));
@@ -290,6 +301,8 @@ pub fn borrowed_top() {
     let tree = ErTree {
         top: BorrowedErr::new(&text),
         nodes: Vec::new(),
+        #[cfg(feature = "stack_traces")]
+        stack_traces: Vec::new(),
         #[cfg(feature = "src_locations")]
         src_location: std::panic::Location::caller(),
     };

@@ -6,11 +6,11 @@ use er::*;
 
 #[derive(Er)]
 pub struct NotFoundErr(pub String);
-pub fn lookup(name: &str) -> Er<&str, NotFoundErr> {
+pub fn lookup(name: &str) -> ErResult<&str, NotFoundErr> {
     if name == "HaandboldFuglen" {
         Ok(name)
     } else {
-        Err(NotFoundErr::new(name).er())
+        er_bail!(NotFoundErr::new(name));
     }
 }
 

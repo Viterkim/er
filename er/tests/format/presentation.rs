@@ -11,8 +11,8 @@ pub struct OuterErr;
 
 #[derive(Er)]
 pub struct AppErr;
-pub fn failing() -> Er<(), AppErr> {
-    Err(ErTree::new(AppErr, [InnerErr.er()]))
+pub fn failing() -> ErResult<(), AppErr> {
+    Err(ErTree::new(AppErr, [ErTree::from(InnerErr)]))
 }
 
 #[test]
@@ -98,7 +98,7 @@ pub fn results() -> Result<(), ErReport<AppErr>> {
     assert!(report.er_contains::<InnerErr>());
     assert_eq!(failing().er_top().unwrap_err().to_string(), "AppErr");
 
-    let success: Er<u32, AppErr> = Ok(7);
+    let success: ErResult<u32, AppErr> = Ok(7);
     assert_eq!(success.er_report()?, 7);
 
     Ok(())
@@ -117,6 +117,8 @@ pub fn display_only() -> fmt::Result {
     let tree = ErTree {
         top: Text(&text),
         nodes: Vec::new(),
+        #[cfg(feature = "stack_traces")]
+        stack_traces: Vec::new(),
         #[cfg(feature = "src_locations")]
         src_location: Location::caller(),
     };

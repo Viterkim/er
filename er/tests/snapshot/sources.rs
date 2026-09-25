@@ -38,7 +38,7 @@ static RIGHT: Cycle = Cycle {
 #[test]
 pub fn cycles() {
     for source in [&SELF, &LEFT] {
-        let tree = ErTree::new(source, [Message::new("healthy").er()]);
+        let tree = ErTree::new(source, [ErTree::from(Message::new("healthy"))]);
         let mut sources = tree.er_sources();
         assert_eq!(
             sources.by_ref().take(MAX_SOURCE_HOPS).count(),
@@ -97,7 +97,7 @@ pub fn chain(sources: usize) -> Message {
 #[test]
 pub fn boundaries() {
     for count in [MAX_SOURCE_HOPS - 1, MAX_SOURCE_HOPS, MAX_SOURCE_HOPS + 1] {
-        let tree = chain(count).er();
+        let tree = ErTree::from(chain(count));
         let expected = count.min(MAX_SOURCE_HOPS);
         let truncated = count > MAX_SOURCE_HOPS;
 
@@ -113,7 +113,10 @@ pub fn boundaries() {
         assert_eq!(report.contains("[source limit reached]"), truncated);
     }
 
-    let tree = ErTree::new(chain(MAX_SOURCE_HOPS + 1), [chain(MAX_SOURCE_HOPS).er()]);
+    let tree = ErTree::new(
+        chain(MAX_SOURCE_HOPS + 1),
+        [ErTree::from(chain(MAX_SOURCE_HOPS))],
+    );
     assert_eq!(
         tree.er_find_all::<Message>().count(),
         2 * (MAX_SOURCE_HOPS + 1)
