@@ -105,7 +105,7 @@ pub fn analyze() -> ErResult<(), AnalyzeErr> {
 }
 ```
 
-If it's a plain error (not a tree yet), then the `|e|` is the error:
+Raw errors take the same `.er(())`, `.er(|_| fields)` and `.er(|| MyErr::new(...))` forms too. If you need something from that error, use `.er_with()`:
 
 ```rust
 er_bail!(device.er_with(|e| AnalyzeErr::new(e.code)));
@@ -119,7 +119,7 @@ The `.er_with()` above adds to the old tree. Both of these copy the code into a 
 
 ```rust
 // ! BAD DO NOT DO THIS !
-read_device().map_err(|t| AnalyzeErr::new(t.top.code).er())
+read_device().map_err(|t| ErTree::from(AnalyzeErr::new(t.top.code)))
 
 // ! BAD DO NOT DO THIS !
 if let Err(t) = read_device() {
@@ -145,7 +145,7 @@ pub struct ConnectErr {
 }
 
 let connection = Connection::new("ComputerKatten", 85);
-let error = ConnectErr::new(connection).er();
+let error = ErTree::from(ConnectErr::new(connection));
 
 println!("{}", error.er_top());
 ```
@@ -492,7 +492,7 @@ If you need the error, you can use the index with `error.er_at_index(trace.error
 
 ## Bail
 
-You can use `er_bail!(err)` if you don't want to type `return Err(err.er())` (You can give it an existing tree too).
+You can use `er_bail!(err)` if you don't want to type `return Err(ErTree::from(err))` (You can give it an existing tree too).
 
 ```rust
 if mode != "haandbold" {

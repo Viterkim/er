@@ -20,7 +20,7 @@ pub fn converted_with_question_mark(expected_line: &mut u32) -> ErResult<(), App
 pub fn reject_if_missing(missing: bool, expected_line: &mut u32) -> ErResult<(), AppErr> {
     if missing {
         *expected_line = line!() + 1;
-        return Err(AppErr.er());
+        er_bail!(AppErr);
     }
 
     Ok(())
@@ -210,7 +210,7 @@ pub fn context_spellings() {
 
 #[test]
 pub fn local_roots() {
-    let root = local_error().er();
+    let root = ErTree::from(local_error());
     assert_eq!(root.top.attempts.get(), 7);
     assert!(root.er_report().to_string().contains("local"));
     assert!(root.er_find::<LocalErr>().is_some());
@@ -237,7 +237,7 @@ pub fn local_roots() {
 
     assert_eq!(context.er_find::<ChildErr>().unwrap().0, 1);
 
-    let context = ChildErr(2).er().er::<LocalErr>(local_error);
+    let context = ChildErr(2).er::<LocalErr>(local_error);
     assert_eq!(context.er_find::<ChildErr>().unwrap().0, 2);
 
     let grouped = ErTree::new(local_error(), [ChildErr(3)]);
@@ -255,6 +255,34 @@ impl From<u8> for ParentErr {
     fn from(value: u8) -> Self {
         Self(value)
     }
+}
+
+#[test]
+pub fn raw_context() {
+    let _line = line!() + 1;
+    let error = ChildErr(1).er::<AppErr>(());
+    assert_eq!(error.er_find::<ChildErr>().unwrap().0, 1);
+    #[cfg(feature = "src_locations")]
+    {
+        assert_eq!(error.src_location.line(), _line);
+        assert_eq!(error.nodes[0].src_location.line(), _line);
+    }
+
+    let error: ErTree<ParentErr> = ChildErr(2).er(|_| 7u8);
+    assert_eq!(error.top.0, 7);
+    assert_eq!(error.er_find::<ChildErr>().unwrap().0, 2);
+
+    let error = ChildErr(3).er::<ParentErr>(|_| 8u8);
+    assert_eq!(error.top.0, 8);
+
+    let error = ChildErr(5).er::<LocalErr>(|_| (Cell::new(6), "raw"));
+    assert_eq!(error.top.attempts.get(), 6);
+    assert_eq!(&*error.top.label, "raw");
+    assert_eq!(error.er_find::<ChildErr>().unwrap().0, 5);
+
+    let error = ChildErr(4).er(|| ParentErr::new(9));
+    assert_eq!(error.top.0, 9);
+    assert_eq!(error.er_find::<ChildErr>().unwrap().0, 4);
 }
 
 #[test]
@@ -277,7 +305,7 @@ pub fn er_with() {
     assert_eq!(error.top.0, 2);
     assert_eq!(error.er_find::<ChildErr>().unwrap().0, 2);
 
-    let error = ChildErr(3).er().er_with::<ParentErr>(|t| t.top.0.into());
+    let error = ErTree::from(ChildErr(3)).er_with::<ParentErr>(|t| t.top.0.into());
     assert_eq!(error.top.0, 3);
     assert_eq!(error.er_find::<ChildErr>().unwrap().0, 3);
 }

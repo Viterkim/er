@@ -71,6 +71,25 @@ pub fn ingestion() {
     );
     assert!(tree.er_find::<Box<io::Error>>().is_none());
 
+    let boxed: BoxError = Box::new(io::Error::from(io::ErrorKind::PermissionDenied));
+    let original = boxed.downcast_ref::<io::Error>().unwrap() as *const io::Error;
+    let tree = boxed.er::<StageErr>(());
+    assert!(core::ptr::eq(
+        tree.er_find::<io::Error>().unwrap(),
+        original
+    ));
+
+    let boxed: BoxError = Box::new(io::Error::from(io::ErrorKind::NotFound));
+    let original = boxed.downcast_ref::<io::Error>().unwrap() as *const io::Error;
+    let tree = boxed.er_with::<io::Error>(|old| {
+        io::Error::from(old.downcast_ref::<io::Error>().unwrap().kind())
+    });
+    assert_eq!(tree.top.kind(), io::ErrorKind::NotFound);
+    assert!(core::ptr::eq(
+        tree.nodes[0].er_find::<io::Error>().unwrap(),
+        original
+    ));
+
     let result: Result<(), String> = Err(String::from("plain message"));
     let tree = result.er::<StageErr>(()).unwrap_err();
 
@@ -84,7 +103,7 @@ pub fn ingestion() {
 
 #[test]
 pub fn erased_nodes() {
-    let inner = StageErr.er();
+    let inner = ErTree::from(StageErr);
     #[cfg(feature = "src_locations")]
     let src = inner.src_location;
     let node = inner.into_er_part();

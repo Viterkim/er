@@ -18,6 +18,8 @@ For iter added `.er_collect()` for collecting and stopping on the first error, o
 
 Fix line numbers on non Er errors in er_all!().
 
+Raw errors take `.er(context)` like results and trees.
+
 `.er_wrap()` now supports the construction helpers.
 
 # 0.2.1

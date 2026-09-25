@@ -74,7 +74,7 @@ pub fn batch() {
     let mut results: Vec<ErResult<(), Item>> = Vec::new();
 
     for index in 0..3 {
-        results.push(Err(Item(index).er()));
+        results.push(Err(ErTree::from(Item(index))));
     }
     #[cfg(feature = "src_locations")]
     let src = results[0].as_ref().unwrap_err().src_location;
@@ -99,7 +99,7 @@ pub fn mixed() {
     let success: Result<u16, Item> = Ok(10);
     let plain = Item(1);
     let boxed: Result<(), BoxError> = Err(Box::new(io::Error::other("disk gone")));
-    let subtree = ErTree::new(Item(2), [Item(3).er()]);
+    let subtree = ErTree::new(Item(2), [ErTree::from(Item(3))]);
     let existing = subtree;
     let wrapped = ItemWrap::from(ErTree::new(Item(4), [Item(5)]));
     let report = ErTree::new(Item(6), [Item(7)]).into_er_report();
@@ -211,19 +211,35 @@ pub fn collect_all() {
     let source = left.src_location;
     #[cfg(feature = "stack_traces")]
     let left = left.er_trace();
-    let right = Item(3).er();
+    let right = ErTree::from(Item(3));
     #[cfg(feature = "stack_traces")]
     let right = right.er_trace();
+    #[derive(Debug)]
+    struct Held<'a>(&'a Cell<usize>);
+    impl Drop for Held<'_> {
+        fn drop(&mut self) {
+            self.0.set(self.0.get() + 1);
+        }
+    }
+    let drops = Cell::new(0);
     let visited = Cell::new(0);
-    let input = [Ok(7), Err(left), Ok(8), Err(right), Ok(9)]
-        .into_iter()
-        .inspect(|_| {
-            visited.set(visited.get() + 1);
-        });
+    let input = [
+        Ok(Held(&drops)),
+        Err(left),
+        Ok(Held(&drops)),
+        Err(right),
+        Ok(Held(&drops)),
+    ]
+    .into_iter()
+    .inspect(|_| {
+        assert_eq!(drops.get(), 0);
+        visited.set(visited.get() + 1);
+    });
     let _line = line!() + 1;
     let result: ErResult<Vec<_>, Batch> = input.er_collect_all(context);
     let tree = result.unwrap_err();
     assert_eq!(visited.get(), 5);
+    assert_eq!(drops.get(), 3);
     assert_eq!(parents.get(), 1);
     assert_eq!(
         tree.er_find_all::<Item>()

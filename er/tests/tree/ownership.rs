@@ -49,7 +49,7 @@ pub fn native_source() {
 
 #[test]
 pub fn owned_context() {
-    let grandchild = fmt::Error.er();
+    let grandchild = ErTree::from(fmt::Error);
     #[cfg(feature = "src_locations")]
     let grandchild_src_location = grandchild.src_location;
 
@@ -123,14 +123,12 @@ pub fn drop_once() {
 
     for top in [false, true] {
         let drops = Arc::new(AtomicUsize::new(0));
-        let first = Tracked {
+        let first = ErTree::from(Tracked {
             drops: Arc::clone(&drops),
-        }
-        .er();
-        let second = Tracked {
+        });
+        let second = ErTree::from(Tracked {
             drops: Arc::clone(&drops),
-        }
-        .er();
+        });
 
         let error = ErTree::new(
             Tracked {

@@ -1,12 +1,13 @@
+use crate::{
+    BoxError, ErContextExt, ErErrorContextExt, ErErrorExt, ErMake, ErOpaqueErrorExt,
+    ErPresentationExt, ErReport, ErResult, ErResultExt, ErTop, ErTree, IntoErPart, IntoErTree,
+};
 #[cfg(feature = "macros")]
 use crate::{ErAllError, ErAllItem, ErAllResult, ErPart};
-use crate::{
-    ErContextExt, ErErrorExt, ErMake, ErOpaqueErrorExt, ErPresentationExt, ErReport, ErResult,
-    ErResultExt, ErTop, ErTree, IntoErPart, IntoErTree,
-};
 use core::error::Error;
 
-impl<T: Error + Sized + 'static> ErErrorExt for T {}
+impl<T: Into<BoxError>, Mode> ErErrorContextExt<Mode> for T {}
+impl<T: Into<BoxError>> ErErrorExt for T {}
 
 impl<T, E: IntoErPart, Mode> ErContextExt<Mode> for Result<T, E> {
     type Ok = T;

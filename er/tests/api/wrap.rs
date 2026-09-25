@@ -283,7 +283,7 @@ pub fn generic_wrap() {
         GenericWrap::from(top).into_er_tree()
     }
 
-    let error = GenericErr { value: 7u8 }.er();
+    let error = ErTree::from(GenericErr { value: 7u8 });
     let wrapped = GenericWrap::from(roundtrip(error));
 
     assert!(wrapped.to_string().contains("GenericErr { value: 7 }"));

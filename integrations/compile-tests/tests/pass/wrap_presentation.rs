@@ -20,7 +20,7 @@ pub fn main() {
     assert!(local.opaque_err().to_string().contains("LocalErr(7)"));
 
     // Wrap from another crate, its tree is still public.
-    let wrapped = BoundaryErrWrap::from(BoundaryErr.er());
+    let wrapped = BoundaryErrWrap::from(ErTree::from(BoundaryErr));
 
     println!("{}", wrapped.er_top());
     println!("{}", wrapped.er_report());

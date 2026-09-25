@@ -8,9 +8,7 @@ pub fn saved_tree() {
         text: "HaandboldFuglen",
         source,
     };
-    let child = Message::new("child")
-        .er()
-        .er::<Message>(|| Message::new("parent"));
+    let child = ErTree::from(Message::new("child")).er::<Message>(|| Message::new("parent"));
     let tree = ErTree::new(root, [child]);
     let snapshot = tree.er_snapshot();
 
@@ -57,9 +55,7 @@ pub fn broken_formatter() {
         text: "broken",
         source,
     };
-    let child = Message::new("child")
-        .er()
-        .er::<Message>(|| Message::new("broken"));
+    let child = ErTree::from(Message::new("child")).er::<Message>(|| Message::new("broken"));
     let tree = ErTree::new(root, [child]);
     let snapshot = tree.er_snapshot();
     let messages: Vec<_> = snapshot
@@ -77,7 +73,7 @@ pub fn broken_formatter() {
 
 #[test]
 pub fn deep_tree() {
-    let mut tree = Message::new("HaandboldFuglen").er();
+    let mut tree = ErTree::from(Message::new("HaandboldFuglen"));
     for _ in 0..20_000 {
         tree = tree.er(|| Message::new("HaandboldFuglen"));
     }

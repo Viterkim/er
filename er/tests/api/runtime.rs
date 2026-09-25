@@ -33,8 +33,34 @@ pub fn without_derives() {
         assert!(error.er_report().to_string().contains("invalid digit"));
     }
 
-    let root = Error::other("fresh").er();
+    let root = ErTree::from(Error::other("fresh"));
     assert!(root.nodes.is_empty());
+
+    let error = Error::other("source").er::<Error>(|| Error::other("context"));
+    assert_eq!(error.top.to_string(), "context");
+    assert_eq!(error.nodes[0].error.to_string(), "source");
+}
+
+#[test]
+pub fn collections() {
+    let input = || {
+        ["1", "bad", "2", "also bad"]
+            .into_iter()
+            .map(str::parse::<u8>)
+    };
+    let mut values = input();
+    let result = values
+        .by_ref()
+        .er_collect::<Vec<_>, Error>(|| Error::other("parse"));
+    assert_eq!(result.unwrap_err().nodes.len(), 1);
+    assert_eq!(values.next().unwrap().unwrap(), 2);
+
+    let result = input().er_collect_all::<Vec<_>, Error>(|| Error::other("parse"));
+    assert_eq!(result.unwrap_err().nodes.len(), 2);
+    let result = [Ok::<_, Error>(1), Ok(2)]
+        .into_iter()
+        .er_collect_all::<Vec<_>, Error>(|| Error::other("parse"));
+    assert_eq!(result.er_report().unwrap(), [1, 2]);
 }
 
 pub struct ManualWrap<E>(pub ErTree<E>);

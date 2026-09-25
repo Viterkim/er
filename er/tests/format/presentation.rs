@@ -12,7 +12,7 @@ pub struct OuterErr;
 #[derive(Er)]
 pub struct AppErr;
 pub fn failing() -> ErResult<(), AppErr> {
-    Err(ErTree::new(AppErr, [InnerErr.er()]))
+    Err(ErTree::new(AppErr, [ErTree::from(InnerErr)]))
 }
 
 #[test]

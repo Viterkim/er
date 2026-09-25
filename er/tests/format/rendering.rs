@@ -94,7 +94,10 @@ pub fn multiline() {
         assert_eq!(tree.er_report().to_string(), expected);
     }
 
-    let tree = ErTree::new(Message("root one\nroot two"), [Message("child").er()]);
+    let tree = ErTree::new(
+        Message("root one\nroot two"),
+        [ErTree::from(Message("child"))],
+    );
     #[cfg(feature = "src_locations")]
     let expected = format!(
         "root one\nroot two @ {}\n`- child @ {}",
@@ -113,7 +116,10 @@ pub fn branches() {
     let branch = ErTree::new(MidErr, [Message("alpha\nbeta")]);
     let tree = ErTree::new(
         WrapErr,
-        [branch.into_er_part(), Message("gamma").er().into_er_part()],
+        [
+            branch.into_er_part(),
+            ErTree::from(Message("gamma")).into_er_part(),
+        ],
     );
     #[cfg(feature = "src_locations")]
     let expected = format!(
@@ -190,7 +196,7 @@ pub fn chunks() {
         &["alp", "ha", "\n", "be", "ta"],
         &["alpha\r", "\nbeta"],
     ] {
-        let tree = Chunked(chunks).er();
+        let tree = ErTree::from(Chunked(chunks));
         #[cfg(feature = "src_locations")]
         let expected = format!("alpha\nbeta @ {}", tree.src_location);
         #[cfg(not(feature = "src_locations"))]
@@ -274,7 +280,7 @@ pub fn single_line() {
         (&["a\n", "\r\0"], "a"),
         (&["kølig 😀 værdi\ttab"], "kølig 😀 værdi\ttab"),
     ] {
-        let tree = Chunked(chunks).er();
+        let tree = ErTree::from(Chunked(chunks));
         assert_eq!(tree.er_top().single_line().to_string(), expected);
 
         let report = tree.into_er_report().single_line();
@@ -291,7 +297,7 @@ pub fn single_line() {
         assert_eq!(format!("{top:#?}"), expected);
     }
 
-    assert_eq!(Message("a\nb").er().er_top().to_string(), "a\nb");
+    assert_eq!(ErTree::from(Message("a\nb")).er_top().to_string(), "a\nb");
 }
 
 #[derive(Debug)]

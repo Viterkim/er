@@ -91,8 +91,8 @@ pub fn walk() {
     let tree = ErTree::new(
         Native(Leaf(0)),
         [
-            ErTree::new(Native(Leaf(1)), [Leaf(2).er()]).into_er_part(),
-            Leaf(3).er().into_er_part(),
+            ErTree::new(Native(Leaf(1)), [ErTree::from(Leaf(2))]).into_er_part(),
+            ErTree::from(Leaf(3)).into_er_part(),
         ],
     );
     let report = tree.into_er_report();
@@ -209,11 +209,11 @@ pub fn clone() {
 
 #[test]
 pub fn root_and_source() {
-    let tree = Native(Leaf(9)).er();
+    let tree = ErTree::from(Native(Leaf(9)));
     assert_eq!(tree.er_descendants().count(), 0);
     assert_eq!(tree.er_report().er_entries().count(), 2);
 
-    let top = Leaf(9).er().into_er_top();
+    let top = ErTree::from(Leaf(9)).into_er_top();
     assert!(std::ptr::eq(
         top.er_find_all::<Leaf>().next().unwrap(),
         &top.tree.top
@@ -223,7 +223,7 @@ pub fn root_and_source() {
 
 #[test]
 pub fn hidden_payloads() {
-    let tree = IoError::other(Leaf(7)).er();
+    let tree = ErTree::from(IoError::other(Leaf(7)));
     assert!(tree.er_find::<Leaf>().is_none());
     assert!(tree.er_find_all::<Leaf>().next().is_none());
     assert_eq!(tree.er_entries().count(), 1);
@@ -231,7 +231,7 @@ pub fn hidden_payloads() {
     let io = tree.er_find::<IoError>().unwrap();
     assert_eq!(io.get_ref().unwrap().downcast_ref::<Leaf>().unwrap().0, 7);
 
-    let tree = Box::new(Leaf(8)).er();
+    let tree = ErTree::from(Box::new(Leaf(8)));
     assert!(tree.er_find::<Leaf>().is_none());
     assert_eq!(tree.er_find::<Box<Leaf>>().unwrap().0, 8);
 }
@@ -292,8 +292,11 @@ pub fn nested_matches() {
     let tree = ErTree::new(
         Leaf(0),
         [
-            ErTree::new(Leaf(1), [ErTree::new(Leaf(2), [Leaf(3)]), Leaf(4).er()]),
-            Leaf(5).er(),
+            ErTree::new(
+                Leaf(1),
+                [ErTree::new(Leaf(2), [Leaf(3)]), ErTree::from(Leaf(4))],
+            ),
+            ErTree::from(Leaf(5)),
         ],
     );
     let entries = tree
@@ -323,7 +326,7 @@ impl Error for Pinned {}
 pub fn find_all_is_unpin() {
     pub fn needs_unpin(_: impl Unpin) {}
 
-    let tree = Pinned(PhantomPinned).er();
+    let tree = ErTree::from(Pinned(PhantomPinned));
     needs_unpin(tree.er_find_all::<Pinned>());
 }
 
@@ -345,14 +348,14 @@ pub fn public_data() {
         tree.top
     }
 
-    assert_eq!(inspect(Leaf(1).er()).0, 1);
+    assert_eq!(inspect(ErTree::from(Leaf(1))).0, 1);
 }
 
 #[test]
 #[cfg(feature = "src_locations")]
 pub fn src_locations() {
     let line = line!() + 1;
-    let direct = Leaf(0).er();
+    let direct = ErTree::from(Leaf(0));
     let src: SrcLocation = direct.src_location;
 
     assert_eq!((src.file(), src.line()), (file!(), line));

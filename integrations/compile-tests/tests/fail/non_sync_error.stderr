@@ -6,14 +6,14 @@ error[E0277]: `Cell<u8>` cannot be shared between threads safely
    |     |
    |     required by a bound introduced by this call
    |
-   = help: within `ErTree<NotSyncErr>`, the trait `Sync` is not implemented for `Cell<u8>`
+   = help: within `er::ErTree<NotSyncErr>`, the trait `Sync` is not implemented for `Cell<u8>`
    = note: if you want to do aliasing and mutation between multiple threads, use `std::sync::RwLock` or `std::sync::atomic::AtomicU8` instead
 note: required because it appears within the type `NotSyncErr`
   --> tests/fail/non_sync_error.rs:6:12
    |
  6 | pub struct NotSyncErr(pub Cell<u8>);
    |            ^^^^^^^^^^
-note: required because it appears within the type `ErTree<NotSyncErr>`
+note: required because it appears within the type `er::ErTree<NotSyncErr>`
   --> $ER/src/types.rs
    |
    | pub struct ErTree<E> {
@@ -37,7 +37,7 @@ note: required because it appears within the type `NotSyncErr`
    |
  6 | pub struct NotSyncErr(pub Cell<u8>);
    |            ^^^^^^^^^^
-note: required by a bound in `tree::<impl ErTree<E>>::into_er_node`
+note: required by a bound in `tree::<impl er::ErTree<E>>::into_er_node`
   --> $ER/src/impls/tree.rs
    |
    |     pub fn into_er_node(self) -> ErNode

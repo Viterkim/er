@@ -9,7 +9,7 @@ pub fn capture() {
     assert_eq!(ok.er_trace().ok(), Some(8));
 
     let _source = line!() + 1;
-    let tree = fmt::Error.er();
+    let tree = ErTree::from(fmt::Error);
     let report = tree.er_report().to_string();
     let first = line!() + 1;
     let tree = tree.er_trace();
@@ -99,7 +99,7 @@ pub mod composed {
             .iter()
             .map(|t| &*t.capture as *const Backtrace)
             .collect();
-        let right = ReadErr::new("manual").er().er_trace();
+        let right = ErTree::from(ReadErr::new("manual")).er_trace();
         let right_capture = &*right.stack_traces[0].capture as *const Backtrace;
         let right: Result<(), ReadErrWrap> = Err(right.into());
 

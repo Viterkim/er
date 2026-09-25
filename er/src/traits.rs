@@ -1,4 +1,4 @@
-use crate::{ErPart, ErReport, ErResult, ErTop, ErTree};
+use crate::{BoxError, ErPart, ErReport, ErResult, ErTop, ErTree};
 use core::error::Error;
 
 /// Use the error returned by the closure as the new top error.
@@ -29,18 +29,19 @@ impl<A: From<()>> ErMake<A, ErFields> for () {
     }
 }
 
-/// Start a tree from an error.
-pub trait ErErrorExt: Error + Sized + 'static {
-    /// Make a new Er error tree.
-    ///
-    /// `let tree = PortErr::new(85).er();`
-    ///
-    /// For adding context to a Result, see [`ErContextExt::er`].
+/// Add a new top error above a raw error.
+pub trait ErErrorContextExt<Mode>: Into<BoxError> + Sized {
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er(self) -> ErTree<Self> {
-        ErTree::from(self)
+    fn er<A>(self, error: impl ErMake<A, Mode>) -> ErTree<A>
+    where
+        A: Error + 'static,
+    {
+        ErTree::new(error.er_make(), [self])
     }
+}
 
+/// Build context using the old error.
+pub trait ErErrorExt: Into<BoxError> + Sized {
     /// Add your error on the top, move everything else below it.
     /// |e| is the old error.
     /// Use this when the new error needs something from the old one.
@@ -49,7 +50,6 @@ pub trait ErErrorExt: Error + Sized + 'static {
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er_with<A>(self, error: impl FnOnce(&Self) -> A) -> ErTree<A>
     where
-        Self: Send + Sync,
         A: Error + 'static,
     {
         let top = error(&self);
