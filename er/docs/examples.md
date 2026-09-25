@@ -10,7 +10,7 @@ If the name and location are enough:
 #[derive(Er)]
 pub struct ReadPortErr;
 
-pub fn read_port(input: &str) -> Er<u16, ReadPortErr> {
+pub fn read_port(input: &str) -> ErResult<u16, ReadPortErr> {
     input.parse().er(())
 }
 ```
@@ -25,7 +25,7 @@ pub struct ReadFileErr { // or `ReadFileErr(pub PathBuf)`
     pub path: PathBuf,
 }
 
-pub fn read_file(path: &Path) -> Er<String, ReadFileErr> {
+pub fn read_file(path: &Path) -> ErResult<String, ReadFileErr> {
     fs::read_to_string(path).er(|_| path)
 }
 ```
@@ -41,7 +41,7 @@ pub enum ModeErr {
     Unknown { input: String },
 }
 
-pub fn read_mode(input: Option<&str>) -> Er<&str, ModeErr> {
+pub fn read_mode(input: Option<&str>) -> ErResult<&str, ModeErr> {
     // Even on options (like .ok_or_else())
     let mode = input.er(ModeErr::missing)?;
 
@@ -98,8 +98,8 @@ pub struct AnalyzeErr {
     pub code: u8,
 }
 
-pub fn analyze() -> Er<(), AnalyzeErr> {
-    // read_device returns Er<_, DeviceErr>
+pub fn analyze() -> ErResult<(), AnalyzeErr> {
+    // read_device returns ErResult<_, DeviceErr>
     read_device().er_with(|t| AnalyzeErr::new(t.top.code))?;
     Ok(())
 }
@@ -166,7 +166,7 @@ pub struct ChecksErr {
     pub enabled: String,
 }
 
-pub fn check_inputs(port: &str, enabled: &str) -> Er<(), ChecksErr> {
+pub fn check_inputs(port: &str, enabled: &str) -> ErResult<(), ChecksErr> {
     er_all!(|_| (port, enabled), [port.parse::<u16>(), enabled.parse::<bool>()])
 }
 ```
@@ -186,7 +186,7 @@ pub struct ConfigErr {
     pub enabled: String,
 }
 
-pub fn check_config(path: &Path, port: &str, enabled: &str) -> Er<(), ConfigErr> {
+pub fn check_config(path: &Path, port: &str, enabled: &str) -> ErResult<(), ConfigErr> {
     let top_err = |_| (path, port, enabled);
     let host = read_file(path).er(top_err)?;
 
@@ -271,7 +271,7 @@ pub struct DeviceErr {
     pub status: u8,
 }
 
-pub fn check_device(result: Result<(), u8>) -> Er<(), DeviceErr> {
+pub fn check_device(result: Result<(), u8>) -> ErResult<(), DeviceErr> {
     // Remember, in rust if the first value of a closure just gets passed to a function,
     // you can pass the function directly. So you could also do `result.er_val(DeviceErr::new)`
     result.er_val(|status| DeviceErr::new(status))
@@ -323,7 +323,7 @@ pub enum ListenErr {
     BindFailed { address: SocketAddrV4, kind: io::ErrorKind, available_ports: Vec<u16> },
 }
 
-pub fn listen(input: &str) -> Er<TcpListener, ListenErr> {
+pub fn listen(input: &str) -> ErResult<TcpListener, ListenErr> {
     let (ip, port) = input.split_once(':').unwrap_or((input, ""));
 
     // First 2 errors, to us they're both just bad input
@@ -394,7 +394,7 @@ use er::*;
 #[derive(Er)]
 pub struct ReadPortErr;
 
-pub fn read_port(input: &str) -> Er<u16, ReadPortErr> {
+pub fn read_port(input: &str) -> ErResult<u16, ReadPortErr> {
     input.parse().er(())
 }
 
@@ -432,7 +432,7 @@ pub fn handler(input: &str) -> Result<u16, HandlerError> {
 #[derive(Er)]
 pub struct RequestErr;
 
-pub fn request(input: &str) -> Er<u16, RequestErr> {
+pub fn request(input: &str) -> ErResult<u16, RequestErr> {
     handler(input).er(())
 }
 ```

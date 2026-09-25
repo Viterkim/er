@@ -1,5 +1,5 @@
 use crate::{
-    Er, ErContextExt, ErErrorExt, ErMake, ErOpaqueErrorExt, ErPresentationExt, ErReport,
+    ErContextExt, ErErrorExt, ErMake, ErOpaqueErrorExt, ErPresentationExt, ErReport, ErResult,
     ErResultExt, ErTop, ErTree, IntoErPart, IntoErTree,
 };
 use core::error::Error;
@@ -10,7 +10,7 @@ impl<T, E: IntoErPart, Mode> ErContextExt<Mode> for Result<T, E> {
     type Ok = T;
 
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er<A>(self, error: impl ErMake<A, Mode>) -> Er<T, A>
+    fn er<A>(self, error: impl ErMake<A, Mode>) -> ErResult<T, A>
     where
         A: Error + 'static,
     {
@@ -25,7 +25,7 @@ impl<T, E> ErResultExt for Result<T, E> {
     type Err = E;
 
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_with<A>(self, error: impl FnOnce(&E) -> A) -> Er<T, A>
+    fn er_with<A>(self, error: impl FnOnce(&E) -> A) -> ErResult<T, A>
     where
         A: Error + 'static,
         E: IntoErPart,
@@ -40,7 +40,7 @@ impl<T, E> ErResultExt for Result<T, E> {
     }
 
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_val<A, F>(self, error: F) -> Er<T, A>
+    fn er_val<A, F>(self, error: F) -> ErResult<T, A>
     where
         A: Error + 'static,
         F: FnOnce(E) -> A,
@@ -58,7 +58,7 @@ impl<T, E: IntoErTree> ErPresentationExt for Result<T, E> {
     type Ok = T;
     type Err = E::Error;
 
-    fn er_tree(self) -> Er<T, E::Error> {
+    fn er_tree(self) -> ErResult<T, E::Error> {
         match self {
             Ok(value) => Ok(value),
             Err(error) => Err(error.into_er_tree()),
@@ -94,7 +94,7 @@ impl<T, Mode> ErContextExt<Mode> for Option<T> {
     type Ok = T;
 
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er<A>(self, error: impl ErMake<A, Mode>) -> Er<T, A>
+    fn er<A>(self, error: impl ErMake<A, Mode>) -> ErResult<T, A>
     where
         A: Error + 'static,
     {

@@ -10,14 +10,14 @@ pub fn plain_result() -> Result<(), AppErr> {
     Err(AppErr)
 }
 
-pub fn converted_with_question_mark(expected_line: &mut u32) -> Er<(), AppErr> {
+pub fn converted_with_question_mark(expected_line: &mut u32) -> ErResult<(), AppErr> {
     *expected_line = line!() + 1;
     plain_result()?;
 
     Ok(())
 }
 
-pub fn reject_if_missing(missing: bool, expected_line: &mut u32) -> Er<(), AppErr> {
+pub fn reject_if_missing(missing: bool, expected_line: &mut u32) -> ErResult<(), AppErr> {
     if missing {
         *expected_line = line!() + 1;
         return Err(AppErr.er());
@@ -62,7 +62,7 @@ pub fn early_return() {
 #[test]
 pub fn bail() {
     let mut expected_line = 0;
-    let result = (|| -> Er<(), AppErr> {
+    let result = (|| -> ErResult<(), AppErr> {
         expected_line = line!() + 1;
         er_bail!(AppErr,);
     })();
@@ -84,7 +84,7 @@ pub fn bail() {
                 errors.set(errors.get() + 1);
                 AppErr
             };
-            let result = (|| -> Er<(), AppErr> {
+            let result = (|| -> ErResult<(), AppErr> {
                 if unless {
                     expected_line = line!() + 1;
                     er_bail_unless!(error(), condition(),);
@@ -110,7 +110,7 @@ pub fn bail() {
     let nodes = tree.nodes.as_ptr();
     #[cfg(feature = "stack_traces")]
     let traces = tree.stack_traces.as_ptr();
-    let result = (|| -> Er<(), AppErr> { er_bail!(tree.into_er_report()) })();
+    let result = (|| -> ErResult<(), AppErr> { er_bail!(tree.into_er_report()) })();
     let tree = result.unwrap_err();
     assert_eq!(tree.nodes.as_ptr(), nodes);
     assert_eq!(tree.er_find::<ChildErr>().unwrap().0, 7);
@@ -124,7 +124,7 @@ pub struct ChildErr(pub u8);
 pub fn er_val() -> Result<(), ErReport<ChildErr>> {
     let calls = Cell::new(0);
     let input: Result<u8, u8> = Ok(7);
-    let result: Er<u8, ChildErr> = input.er_val(|value| {
+    let result: ErResult<u8, ChildErr> = input.er_val(|value| {
         calls.set(calls.get() + 1);
         ChildErr(value)
     });
@@ -177,15 +177,15 @@ pub enum PresetErr {
 #[derive(Er)]
 pub struct BoundaryErr;
 
-fn empty() -> Er<(), EmptyErr> {
+fn empty() -> ErResult<(), EmptyErr> {
     Err::<(), _>(std::fmt::Error).er(())
 }
 
-fn fields() -> Er<(), FieldErr> {
+fn fields() -> ErResult<(), FieldErr> {
     Err::<(), _>(std::fmt::Error).er(|_| "field")
 }
 
-fn boundary<T, E>(result: Result<T, E>) -> Er<T, BoundaryErr>
+fn boundary<T, E>(result: Result<T, E>) -> ErResult<T, BoundaryErr>
 where
     E: IntoErPart,
 {
@@ -276,7 +276,7 @@ impl From<u8> for ParentErr {
 pub fn er_with() {
     let calls = Cell::new(0);
     let ok: Result<u8, ChildErr> = Ok(7);
-    let result: Er<u8, ParentErr> = ok.er_with(|e| {
+    let result: ErResult<u8, ParentErr> = ok.er_with(|e| {
         calls.set(calls.get() + 1);
         ParentErr(e.0)
     });

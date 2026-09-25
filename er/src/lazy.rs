@@ -1,9 +1,9 @@
-use crate::Er;
+use crate::ErResult;
 use alloc::string::String;
 use core::{error::Error, fmt};
 
 /// A result where the top error has optional string context.
-pub type ErLazy<T = ()> = Er<T, ErLazyError>;
+pub type ErLazy<T = ()> = ErResult<T, ErLazyError>;
 
 /// The context added by `.er(())` or `.er(|_| message)`.
 #[derive(Debug)]

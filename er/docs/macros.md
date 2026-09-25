@@ -67,7 +67,7 @@ use std::{
 #[derive(Er)]
 pub struct FileErr(pub PathBuf);
 
-pub fn read_file(path: &Path) -> Er<String, FileErr> {
+pub fn read_file(path: &Path) -> ErResult<String, FileErr> {
     fs::read_to_string(path).er(|_| path)
 }
 ```
@@ -217,7 +217,7 @@ pub struct RequestErr {
     pub input: String,
 }
 
-pub fn request(input: &str) -> Er<u16, RequestErr> {
+pub fn request(input: &str) -> ErResult<u16, RequestErr> {
     handler(input).er_wrap(|_| input)
 }
 ```

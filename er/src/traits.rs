@@ -1,4 +1,4 @@
-use crate::{Er, ErPart, ErReport, ErTop, ErTree};
+use crate::{ErPart, ErReport, ErResult, ErTop, ErTree};
 use core::error::Error;
 
 /// Use the error returned by the closure as the new top error.
@@ -71,7 +71,7 @@ pub trait ErContextExt<Mode> {
     /// result.er(|| EnumErr::variant_name(arg1))?; // Enum variant
     /// ```
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er<A>(self, error: impl ErMake<A, Mode>) -> Er<Self::Ok, A>
+    fn er<A>(self, error: impl ErMake<A, Mode>) -> ErResult<Self::Ok, A>
     where
         A: Error + 'static;
 }
@@ -97,7 +97,7 @@ pub trait ErResultExt {
     ///
     /// `result.er_with(|t| AnalyzeErr::new(t.top.code))?;`
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_with<A>(self, error: impl FnOnce(&Self::Err) -> A) -> Er<Self::Ok, A>
+    fn er_with<A>(self, error: impl FnOnce(&Self::Err) -> A) -> ErResult<Self::Ok, A>
     where
         A: Error + 'static,
         Self::Err: IntoErPart;
@@ -112,7 +112,7 @@ pub trait ErResultExt {
     /// device_status().er_val(DeviceErr::new)?;
     /// ```
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_val<A, F>(self, error: F) -> Er<Self::Ok, A>
+    fn er_val<A, F>(self, error: F) -> ErResult<Self::Ok, A>
     where
         A: Error + 'static,
         F: FnOnce(Self::Err) -> A;
@@ -124,7 +124,7 @@ pub trait ErPresentationExt {
     type Err;
 
     /// Get the normal Er result back.
-    fn er_tree(self) -> Er<Self::Ok, Self::Err>;
+    fn er_tree(self) -> ErResult<Self::Ok, Self::Err>;
 
     /// Just the outer error, leaves Ok alone.
     ///
@@ -140,7 +140,7 @@ pub trait ErPresentationExt {
     ///
     /// !WARNING! Normal `.er()` boxes a Wrap with `std_error`, so you can't find the errors inside it.
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_wrap<A, Mode>(self, error: impl ErMake<A, Mode>) -> Er<Self::Ok, A>
+    fn er_wrap<A, Mode>(self, error: impl ErMake<A, Mode>) -> ErResult<Self::Ok, A>
     where
         Self: Sized,
         Self::Err: Error + Send + Sync + 'static,

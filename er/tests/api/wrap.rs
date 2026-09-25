@@ -56,7 +56,7 @@ pub fn conversions() {
     let report: ErReport<HandlerErr> = wrapped.into();
     assert_eq!(report.to_string(), expected);
 
-    fn propagate(result: Result<(), HandlerErrWrap>) -> Er<(), HandlerErr> {
+    fn propagate(result: Result<(), HandlerErrWrap>) -> ErResult<(), HandlerErr> {
         result?;
         Ok(())
     }
@@ -245,7 +245,7 @@ pub fn std_error() {
     assert_eq!(drops.load(Ordering::Relaxed), 2);
 
     let wrapped = StandardErrWrap::from(ErTree::new(StandardErr::new(85u8), [InnerErr]));
-    let result: Er<(), RequestErr> = Err::<(), _>(wrapped).er_wrap(|_| "port");
+    let result: ErResult<(), RequestErr> = Err::<(), _>(wrapped).er_wrap(|_| "port");
     let tree = result.unwrap_err();
     assert_eq!(tree.top.input, "port");
     assert!(tree.er_contains::<InnerErr>());

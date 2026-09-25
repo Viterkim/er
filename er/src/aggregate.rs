@@ -1,6 +1,6 @@
 #[cfg(feature = "stack_traces")]
 use crate::impls::stack_trace::append_traces;
-use crate::{Er, ErNode, ErTree, IntoErPart};
+use crate::{ErNode, ErResult, ErTree, IntoErPart};
 use alloc::vec::Vec;
 use core::error::Error;
 
@@ -9,7 +9,7 @@ use core::error::Error;
 pub fn collect<A, E, T>(
     top: impl FnOnce() -> A,
     results: impl IntoIterator<Item = Result<T, E>>,
-) -> Er<(), A>
+) -> ErResult<(), A>
 where
     A: Error + 'static,
     E: IntoErPart,

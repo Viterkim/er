@@ -2,11 +2,11 @@ use er::*;
 
 #[derive(Er)]
 pub struct BackendErr;
-pub fn ingest<T>(result: anyhow::Result<T>) -> Er<T, BackendErr> {
+pub fn ingest<T>(result: anyhow::Result<T>) -> ErResult<T, BackendErr> {
     result.er(())
 }
 
-pub fn outward(result: Er<(), BackendErr>) -> anyhow::Result<()> {
+pub fn outward(result: ErResult<(), BackendErr>) -> anyhow::Result<()> {
     result.er_report().opaque_err()?;
     Ok(())
 }

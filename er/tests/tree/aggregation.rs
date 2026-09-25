@@ -71,7 +71,7 @@ pub fn no_failures() -> Result<(), ErReport<Batch>> {
 
 #[test]
 pub fn batch() {
-    let mut results: Vec<Er<(), Item>> = Vec::new();
+    let mut results: Vec<ErResult<(), Item>> = Vec::new();
 
     for index in 0..3 {
         results.push(Err(Item(index).er()));
@@ -100,7 +100,7 @@ pub fn mixed() {
     let plain: Result<bool, Item> = Err(Item(1));
     let boxed: Result<(), BoxError> = Err(Box::new(io::Error::other("disk gone")));
     let subtree = ErTree::new(Item(2), [Item(3).er()]);
-    let existing: Er<u8, Item> = Err(subtree);
+    let existing: ErResult<u8, Item> = Err(subtree);
     let wrapped = Err::<(), _>(ItemWrap::from(ErTree::new(Item(4), [Item(5)])));
     let report = Err::<(), _>(ErTree::new(Item(6), [Item(7)]).into_er_report());
     let std_error = Err::<(), _>(StandardWrap::from(ErTree::new(Standard, [Item(8)])));

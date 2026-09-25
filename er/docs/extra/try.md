@@ -1,6 +1,6 @@
 # Rust 'Try'
 
-Er is normal Result: `Er<T, E> = Result<T, ErTree<E>>`.
+Er is normal Result: `ErResult<T, E> = Result<T, ErTree<E>>`.
 
 You might think that it would be cool if `?` would add context automatically
 

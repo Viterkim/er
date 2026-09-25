@@ -20,7 +20,7 @@ pub fn success_drop() {
         assert_eq!(drops.get(), 1);
         failure
     };
-    let result: Er<(), Parent> = er_all!(
+    let result: ErResult<(), Parent> = er_all!(
         || {
             assert_eq!(drops.get(), 1);
             Parent

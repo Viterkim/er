@@ -184,7 +184,7 @@ use er::*;
 #[derive(Er)]
 pub struct PortErr;
 
-pub fn read_port(input: &str) -> Er<u16, PortErr> {
+pub fn read_port(input: &str) -> ErResult<u16, PortErr> {
     let port: u16 = input.parse().er(())?;
     Ok(port)
 }
@@ -207,7 +207,7 @@ pub struct PortErr {
     pub input: String,
 }
 
-pub fn read_port(input: &str) -> Er<u16, PortErr> {
+pub fn read_port(input: &str) -> ErResult<u16, PortErr> {
     let port: u16 = input.parse().er(|_| input)?;
     Ok(port)
 }

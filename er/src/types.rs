@@ -2,7 +2,7 @@ use alloc::{boxed::Box, vec::Vec};
 use core::{error::Error, panic::Location};
 
 /// A Result with your typed error on top.
-pub type Er<T, E> = Result<T, ErTree<E>>;
+pub type ErResult<T, E> = Result<T, ErTree<E>>;
 
 /// Where an error entered the tree.
 pub type SrcLocation = &'static Location<'static>;

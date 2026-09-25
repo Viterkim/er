@@ -5,13 +5,13 @@ use std::io;
 
 #[derive(Er)]
 pub struct ParsePortErr(pub String);
-pub fn parse_port(input: &str) -> Er<u16, ParsePortErr> {
+pub fn parse_port(input: &str) -> ErResult<u16, ParsePortErr> {
     input.parse::<u16>().er(|_| input)
 }
 
 #[derive(Er)]
 pub struct LoadConfigErr;
-pub fn load_config(port: &str) -> Er<u16, LoadConfigErr> {
+pub fn load_config(port: &str) -> ErResult<u16, LoadConfigErr> {
     parse_port(port).er(())
 }
 
@@ -48,7 +48,7 @@ pub fn panic_output() {
         } else {
             tree.er_report().to_string()
         };
-        let result: Er<(), Message> = Err(tree);
+        let result: ErResult<(), Message> = Err(tree);
         let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             if top {
                 result.er_top().expect("operation failed");

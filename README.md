@@ -26,7 +26,7 @@ pub struct FileErr {
     pub path: PathBuf,
 }
 
-pub fn read_file(path: &Path) -> Er<String, FileErr> {
+pub fn read_file(path: &Path) -> ErResult<String, FileErr> {
     // Extra context with 'path' + automatic source location
     read_to_string(path).er(|_| path)
 }
@@ -168,7 +168,7 @@ Also check out the [full list of examples/patterns for 'er'](er/docs/examples.md
 #[derive(Er)]
 pub struct NoContextErr;
 
-pub fn no_context_example(path: &Path) -> Er<String, NoContextErr> {
+pub fn no_context_example(path: &Path) -> ErResult<String, NoContextErr> {
     // Still gets source location
     read_file(path).er(())
 }
@@ -181,7 +181,7 @@ pub struct ConfigErr {
 }
 
 // variant 1: Exit on the first error
-pub fn check_config_exit_early(path: &Path, port: &str, enabled: &str) -> Er<(), ConfigErr> {
+pub fn check_config_exit_early(path: &Path, port: &str, enabled: &str) -> ErResult<(), ConfigErr> {
     // Closures only run on failure
     let e = |_| (port, enabled);
 
@@ -193,7 +193,7 @@ pub fn check_config_exit_early(path: &Path, port: &str, enabled: &str) -> Er<(),
 }
 
 // variant 2: Aggregate/collect errors, runs all and errors if any failed
-pub fn check_config_collect(path: &Path, port: &str, enabled: &str) -> Er<(), ConfigErr> {
+pub fn check_config_collect(path: &Path, port: &str, enabled: &str) -> ErResult<(), ConfigErr> {
     let e = |_| (port, enabled);
 
     // Different error types are fine, adds the sub errors to the parent if anything fails

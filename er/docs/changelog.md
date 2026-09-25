@@ -1,5 +1,7 @@
 # 0.3.0
 
+`Er<T, E>` renamed to `ErResult<T, E>`.
+
 Rename extension traits, now ends in `Ext`, like `ErResultExt` and `ErErrorExt`.
 
 Add the macros `er_bail!()`, `er_bail_if!()` and `er_bail_unless!()` (needs the `macros` default feature).

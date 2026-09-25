@@ -5,7 +5,7 @@ use std::fmt;
 
 #[test]
 pub fn capture() {
-    let ok: Er<u8, fmt::Error> = Ok(8);
+    let ok: ErResult<u8, fmt::Error> = Ok(8);
     assert_eq!(ok.er_trace().ok(), Some(8));
 
     let _source = line!() + 1;
@@ -76,11 +76,11 @@ pub mod composed {
     #[derive(Er)]
     pub struct Batch;
 
-    pub fn read(input: &str) -> Er<u16, ReadErr> {
+    pub fn read(input: &str) -> ErResult<u16, ReadErr> {
         input.parse().er(|_| input).er_trace()
     }
 
-    pub fn job(input: &str) -> Er<u16, JobErr> {
+    pub fn job(input: &str) -> ErResult<u16, JobErr> {
         read(input).er(|| JobErr::failed(input)).er_trace()
     }
 
@@ -160,7 +160,7 @@ pub mod composed {
 
     #[test]
     pub fn construction() {
-        let result: Er<(), ReadErr> = Err::<(), _>(std::fmt::Error).er(|_| "fields");
+        let result: ErResult<(), ReadErr> = Err::<(), _>(std::fmt::Error).er(|_| "fields");
         assert!(result.as_ref().unwrap_err().stack_traces.is_empty());
         assert_eq!(result.er_trace().unwrap_err().stack_traces.len(), 1);
 
@@ -180,7 +180,7 @@ pub mod composed {
         assert_eq!(tree.top.path, PathBuf::from("raw value"));
 
         let _source = line!() + 1;
-        let batch: Er<(), Batch> = er_all!((), [read("batch")]);
+        let batch: ErResult<(), Batch> = er_all!((), [read("batch")]);
         let requested = line!() + 1;
         let batch = batch.er_trace().unwrap_err();
         assert_eq!(batch.stack_traces.len(), 2);

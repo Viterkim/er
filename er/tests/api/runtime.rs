@@ -3,7 +3,7 @@ use std::io::Error;
 #[cfg(feature = "macros")]
 use std::io::ErrorKind;
 
-pub fn read_port(input: &str) -> Er<u16, Error> {
+pub fn read_port(input: &str) -> ErResult<u16, Error> {
     input.parse().er(|| Error::other("port"))
 }
 

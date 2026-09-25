@@ -407,7 +407,7 @@ pub enum ListenErr {
     BindFailed { address: SocketAddrV4, kind: io::ErrorKind, available_ports: Vec<u16> },
 }
 
-pub fn listen(input: &str) -> Er<TcpListener, ListenErr> {
+pub fn listen(input: &str) -> ErResult<TcpListener, ListenErr> {
     // Normal stuff
     let (ip, port) = input.split_once(':').unwrap_or((input, ""));
 

@@ -22,7 +22,7 @@ impl Error for Native {
 #[test]
 pub fn lookup() {
     let group = ErTree::new(Native(Leaf(99)), [Leaf(1), Leaf(2)]);
-    let read: Er<(), Leaf> = Err("bad".parse::<u8>().unwrap_err()).er(|| Leaf(3));
+    let read: ErResult<(), Leaf> = Err("bad".parse::<u8>().unwrap_err()).er(|| Leaf(3));
     #[cfg(feature = "stack_traces")]
     let read = read.er_trace();
     let tree: ErTree<Leaf> =
@@ -358,7 +358,7 @@ pub fn src_locations() {
     assert_eq!((src.file(), src.line()), (file!(), line));
 
     let plain: Result<(), Leaf> = Err(Leaf(1));
-    let existing: Er<(), Leaf> = Err(direct);
+    let existing: ErResult<(), Leaf> = Err(direct);
     let line = line!() + 3;
     let first_line = line!() + 6;
     let second_line = line!() + 6;
