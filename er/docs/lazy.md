@@ -6,7 +6,7 @@ For tests, use the [`test` feature](examples.md#tests), not this:
 
 ```toml
 [dev-dependencies]
-er = { version = "0.2", features = ["test"] }
+er = { version = "0.3", features = ["test"] }
 ```
 
 Then your tests can return `ErTest` and use `.er(())?`.
@@ -15,7 +15,7 @@ Then your tests can return `ErTest` and use `.er(())?`.
 
 ```toml
 [dependencies]
-er = { version = "0.2", features = ["lazy"] }
+er = { version = "0.3", features = ["lazy"] }
 ```
 
 ## Examples

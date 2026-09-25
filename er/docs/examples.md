@@ -301,7 +301,7 @@ Enable `serde` on Er, then add `serde_json` (or toml, or whatever).
 
 ```toml
 [dependencies]
-er = { version = "0.2", features = ["serde"] }
+er = { version = "0.3", features = ["serde"] }
 serde_json = "1"
 ```
 
@@ -383,7 +383,7 @@ Enable `test` on your dev deps:
 
 ```toml
 [dev-dependencies]
-er = { version = "0.2", features = ["test"] }
+er = { version = "0.3", features = ["test"] }
 ```
 
 Make the test return `ErTest` and use `.er(())?`.

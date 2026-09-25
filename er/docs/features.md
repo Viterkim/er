@@ -38,7 +38,7 @@ Er does NOT turn it into JSON for you. You pick a format crate in your own app `
 
 ```toml
 [dependencies]
-er = { version = "0.2", features = ["serde"] }
+er = { version = "0.3", features = ["serde"] }
 serde_json = "1"
 ```
 
@@ -71,13 +71,13 @@ Needs `std`. [Capturing and printing traces](examples.md#stack-traces).
 
 ```toml
 [dependencies]
-er = { version = "0.2", features = ["small_path_src"] }
+er = { version = "0.3", features = ["small_path_src"] }
 
 [dev-dependencies]
-er = { version = "0.2", features = ["test"] }
+er = { version = "0.3", features = ["test"] }
 ```
 
 ```toml
 [dependencies]
-er = { version = "0.2", default-features = false, features = ["src_locations"] }
+er = { version = "0.3", default-features = false, features = ["src_locations"] }
 ```

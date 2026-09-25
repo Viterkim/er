@@ -172,7 +172,7 @@ You can also use 'Attachments' to add data.
 
 I love the typed context and keeping the original errors. But you still need to make the error types yourself or use another derive, and `.change_context_lazy()` is a lot to type.
 
-## Er (0.2)
+## Er (0.3)
 
 (hey that's this one)
 

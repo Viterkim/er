@@ -52,7 +52,7 @@ Now we make the cases around what our caller cares about and keep the original e
 
 We get a typed current error with the old errors in a report. The lazy context callback can't see the failed error, so bind needs `map_err`. Lookup finds the error we gave it but not its real nested io source in that copied text frame.
 
-### Er (0.2.0)
+### Er (0.3.0)
 
 We get a typed top error with the stuff our caller cares about. `.er_with()` can read the failed error and keep it underneath. Everything below `.top` needs a search. And the old error can't also sit in a typed source field on the top variant, because the tree owns it.
 
@@ -394,7 +394,7 @@ fn main() {
 }
 ```
 
-## Er (0.2.0)
+## Er (0.3.0)
 
 ```rust
 use er::*;
