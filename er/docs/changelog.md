@@ -1,3 +1,9 @@
+# 0.3.0
+
+Fix line endings on non Er errors in er_all!()
+
+Feature gate er_all!() behind the 'macros' feature
+
 # 0.2.1
 
 Cleanup / simplify the docs (especially readme.md)

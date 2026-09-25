@@ -1,16 +1,15 @@
-use crate::{Er, ErMake, ErTree, IntoErNode};
+use crate::{Er, ErTree, IntoErNode};
 use alloc::vec::Vec;
 use core::error::Error;
 
 /// The collection loop behind `er_all!`.
 #[cfg_attr(feature = "src_locations", track_caller)]
-pub fn collect<A, Mode, Top, E, T>(
-    top: impl FnOnce() -> Top,
+pub fn collect<A, E, T>(
+    top: impl FnOnce() -> A,
     results: impl IntoIterator<Item = Result<T, E>>,
 ) -> Er<(), A>
 where
     A: Error + 'static,
-    Top: ErMake<A, Mode>,
     E: IntoErNode,
 {
     let mut nodes = Vec::new();
@@ -26,7 +25,7 @@ where
     } else {
         Err(ErTree {
             nodes,
-            ..ErTree::from(top().er_make())
+            ..ErTree::from(top())
         })
     }
 }

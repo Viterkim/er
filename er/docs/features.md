@@ -16,7 +16,7 @@ The crate is `no_std` but requires `alloc`
 
 ## macros
 
-Convenience macros that kinda are the point of Er, you get `#[derive(Er)]` and `#[derive(ErFormat)]` etc.
+Convenience macros like `#[derive(Er)]`, `#[derive(ErFormat)]` and `er_all!`.
 
 ## src_locations
 
@@ -28,7 +28,7 @@ Usually you'll just get `src/lib.rs` or `engine/src/lib.rs` in a workspace(so yo
 
 So this turns it into `secret/src/a.rs`. It just looks for the last `src` and gives you the path one step back from that.
 
-If you don't want to restructure stuff you can enable it BUT! it only affects it when PRINTING! It is STILL in your binary.
+If you don't want to restructure stuff you can enable it, but it only affects it when printing (it's still in your binary).
 
 ## serde, off by default
 

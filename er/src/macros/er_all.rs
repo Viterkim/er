@@ -6,22 +6,11 @@
 #[macro_export]
 macro_rules! er_all {
     ($top:expr, [$($result:expr),* $(,)?] $(,)?) => {{
-        let __er_results: [::core::result::Result<(), $crate::ErNode>; _] = [$(
-            match $result {
-                ::core::result::Result::Ok(__er_success) => {
-                    ::core::mem::drop(__er_success);
-                    ::core::result::Result::Ok(())
-                },
-                ::core::result::Result::Err(__er_failure) => {
-                    ::core::result::Result::Err(
-                        $crate::IntoErNode::into_er_node(__er_failure)
-                    )
-                }
-            }
-        ),*];
-        $crate::aggregate::collect(|| $top, __er_results)
+        let __er_results: [::core::result::Result<(), $crate::ErNode>; _] =
+            $crate::__er_all_results!($crate::IntoErNode, [$($result),*]);
+        $crate::aggregate::collect(|| $crate::ErMake::er_make($top), __er_results)
     }};
     ($top:expr, $results:expr $(,)?) => {{
-        $crate::aggregate::collect(|| $top, $results)
+        $crate::aggregate::collect(|| $crate::ErMake::er_make($top), $results)
     }};
 }

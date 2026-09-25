@@ -1,5 +1,7 @@
 use er::*;
-use std::io::{Error, ErrorKind};
+use std::io::Error;
+#[cfg(feature = "macros")]
+use std::io::ErrorKind;
 
 pub fn read_port(input: &str) -> Er<u16, Error> {
     input.parse().er(|| Error::other("port"))
@@ -9,20 +11,27 @@ pub fn read_port(input: &str) -> Er<u16, Error> {
 pub fn without_derives() {
     assert_eq!(read_port("85").er_report().unwrap(), 85);
 
-    let error: ErTree<Error> = er_all!(
-        || Error::other("config"),
-        [
-            read_port("fakenumber"),
-            None::<()>.er::<Error>(|| Error::new(ErrorKind::NotFound, "mode")),
-        ]
-    )
-    .err()
-    .unwrap();
+    let results = [Err::<(), _>(Error::other("mode"))];
+    let error: ErTree<Error> = aggregate::collect(|| Error::other("config"), results).unwrap_err();
+    assert_eq!(error.nodes.len(), 1);
 
-    assert_eq!(error.nodes.len(), 2);
-    assert!(error.er_find::<std::num::ParseIntError>().is_some());
-    assert_eq!(error.er_top().to_string(), "config");
-    assert!(error.er_report().to_string().contains("invalid digit"));
+    #[cfg(feature = "macros")]
+    {
+        let error: ErTree<Error> = er_all!(
+            || Error::other("config"),
+            [
+                read_port("fakenumber"),
+                None::<()>.er::<Error>(|| Error::new(ErrorKind::NotFound, "mode")),
+            ]
+        )
+        .err()
+        .unwrap();
+
+        assert_eq!(error.nodes.len(), 2);
+        assert!(error.er_find::<std::num::ParseIntError>().is_some());
+        assert_eq!(error.er_top().to_string(), "config");
+        assert!(error.er_report().to_string().contains("invalid digit"));
+    }
 
     let root = Error::other("fresh").er();
     assert!(root.nodes.is_empty());

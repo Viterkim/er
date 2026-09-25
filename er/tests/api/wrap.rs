@@ -205,6 +205,11 @@ pub fn report_reentry() {
 #[er(wrap(output = report, std_error))]
 pub struct StandardErr<T>(pub T);
 
+#[derive(Er)]
+pub struct RequestErr {
+    pub input: String,
+}
+
 #[test]
 pub fn std_error() {
     let drops = Arc::new(AtomicUsize::new(0));
@@ -238,6 +243,12 @@ pub fn std_error() {
     assert_eq!(drops.load(Ordering::Relaxed), 0);
     drop(tree);
     assert_eq!(drops.load(Ordering::Relaxed), 2);
+
+    let wrapped = StandardErrWrap::from(ErTree::new(StandardErr::new(85u8), [InnerErr]));
+    let result: Er<(), RequestErr> = Err::<(), _>(wrapped).er_wrap(|_| "port");
+    let tree = result.unwrap_err();
+    assert_eq!(tree.top.input, "port");
+    assert!(tree.er_contains::<InnerErr>());
 
     let wrapped = StandardErrWrap::from(ErTree::new(StandardErr::new(85u8), [InnerErr]));
     let expected = wrapped.to_string();

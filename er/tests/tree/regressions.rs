@@ -16,12 +16,16 @@ pub fn success_drop() {
     let drops = Cell::new(0);
     let success: Result<Guard<'_>, Parent> = Ok(Guard(&drops));
     let failure: Result<Guard<'_>, Parent> = Err(Parent);
+    let next = || {
+        assert_eq!(drops.get(), 1);
+        failure
+    };
     let result: Er<(), Parent> = er_all!(
         || {
             assert_eq!(drops.get(), 1);
             Parent
         },
-        [success, failure]
+        [success, next()]
     );
 
     assert_eq!(drops.get(), 1);
@@ -41,6 +45,21 @@ pub fn method_collision() {
     let result: Result<(), Collision> = Err(Collision);
     let tree: ErTree<Parent> = er_all!(|| Parent, [result]).unwrap_err();
 
+    assert!(tree.er_contains::<Collision>());
+
+    struct __ErAllIntoErNode;
+    impl __ErAllIntoErNode {
+        fn result() -> Result<(), Collision> {
+            Err(Collision)
+        }
+    }
+    macro_rules! make_result {
+        () => {
+            __ErAllIntoErNode::result()
+        };
+    }
+
+    let tree: ErTree<Parent> = er_all!(|| Parent, [make_result!()]).unwrap_err();
     assert!(tree.er_contains::<Collision>());
 }
 

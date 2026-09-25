@@ -9,6 +9,7 @@ pub mod impls;
 #[cfg(feature = "lazy")]
 pub mod lazy;
 pub mod lines;
+#[cfg(feature = "macros")]
 pub mod macros;
 pub mod render;
 pub mod snapshot;
@@ -18,6 +19,9 @@ pub mod types;
 pub mod types_test;
 pub mod walk;
 
+#[cfg(feature = "macros")]
+#[doc(hidden)]
+pub use er_macros::__er_all_results;
 #[cfg(feature = "macros")]
 #[doc(inline)]
 pub use er_macros::{Er, ErFormat};

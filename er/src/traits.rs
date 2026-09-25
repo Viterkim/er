@@ -140,12 +140,11 @@ pub trait ErPresentation {
     ///
     /// !WARNING! Normal `.er()` boxes a Wrap with `std_error`, so you can't find the errors inside it.
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_wrap<A, F>(self, error: F) -> Er<Self::Ok, A>
+    fn er_wrap<A, Mode>(self, error: impl ErMake<A, Mode>) -> Er<Self::Ok, A>
     where
         Self: Sized,
         Self::Err: Error + Send + Sync + 'static,
         A: Error + 'static,
-        F: FnOnce() -> A,
     {
         self.er_tree().er(error)
     }

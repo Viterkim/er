@@ -208,8 +208,8 @@ ConfigErr { port: "nope", enabled: "nah" } @ src/main.rs:46:5
 |- NoContextErr @ src/main.rs:19:21
 |  `- FileErr { path: "/file/path/missing.txt" } @ src/main.rs:11:26
 |     `- No such file or directory (os error 2)
-|- invalid digit found in string
-`- provided string was not `true` or `false`
+|- invalid digit found in string @ src/main.rs:49:9
+`- provided string was not `true` or `false` @ src/main.rs:50:9
 ```
 
 ## Motivations

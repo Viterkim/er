@@ -292,12 +292,25 @@ pub fn src_locations() {
 
     let plain: Result<(), Leaf> = Err(Leaf(1));
     let existing: Er<(), Leaf> = Err(direct);
-    let line = line!() + 1;
-    let tree: ErTree<Leaf> = er_all!(|| Leaf(2), [plain, existing]).unwrap_err();
+    let line = line!() + 3;
+    let first_line = line!() + 6;
+    let second_line = line!() + 6;
+    let tree: ErTree<Leaf> = er_all!(
+        || Leaf(2),
+        [
+            plain,
+            "not a valid unsigned port number".parse::<u16>(),
+            "not a valid boolean option value".parse::<bool>(),
+            existing,
+        ]
+    )
+    .unwrap_err();
 
     assert_eq!(tree.src_location.line(), line);
-    assert_eq!(tree.nodes[0].src_location.line(), line);
-    assert_eq!(tree.nodes[1].src_location, src);
+    assert_eq!(tree.nodes[0].src_location.line(), line + 3);
+    assert_eq!(tree.nodes[1].src_location.line(), first_line);
+    assert_eq!(tree.nodes[2].src_location.line(), second_line);
+    assert_eq!(tree.nodes[3].src_location, src);
 
     let missing: Option<()> = None;
     let line = line!() + 1;

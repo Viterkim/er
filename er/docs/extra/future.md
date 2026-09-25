@@ -2,7 +2,16 @@
 
 ## More convenient enum variant creation
 
-Maybe a more convenient enum variant thing (maybe type E = VeryLongErrorName; thing.er(|| E::invalid_input(input))?;) but probably not, that idea sucks, but its the last 'ergonomic annoyance' i have.
+Maybe generate a `config_err` module for `ConfigErr`
+
+```rust
+use config_err::*;
+
+port.parse::<u16>().er(|_| invalid_port(port))?;
+mode.parse::<bool>().er(|_| invalid_mode(mode))?;
+```
+
+but who would use that so whatever. and its more generated stuff...
 
 ## Fix wrap / std_error, even though its a really rare edge case
 
