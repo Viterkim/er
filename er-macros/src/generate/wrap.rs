@@ -206,7 +206,7 @@ fn formatting(
                 ::core::fmt::Display::fmt(self, #formatter)
             }
         }
-        impl #impl_generics #er_path::ErOpaqueError for #wrap #type_generics #where_clause {
+        impl #impl_generics #er_path::ErOpaqueErrorExt for #wrap #type_generics #where_clause {
             type Output = #er_path::ErAsError<Self>;
 
             fn opaque_err(self) -> Self::Output {

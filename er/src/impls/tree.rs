@@ -4,7 +4,7 @@ use crate::ErSnapshotLocation;
 use crate::impls::stack_trace::append_traces;
 use crate::{
     ErEntries, ErEntry, ErErrorId, ErFindAll, ErMake, ErNode, ErNodes, ErPart, ErReport,
-    ErReportRef, ErSnapshot, ErSnapshotEntry, ErSources, ErTop, ErTopRef, ErTree, ErTreeContext,
+    ErReportRef, ErSnapshot, ErSnapshotEntry, ErSources, ErTop, ErTopRef, ErTree, ErTreeContextExt,
     IntoErPart, IntoErTree, Layout,
 };
 #[cfg(feature = "src_locations")]
@@ -194,7 +194,7 @@ impl<E: Error + 'static> ErTree<E> {
         ErSnapshot { entries }
     }
 }
-impl<E: Error + Send + Sync + 'static, Mode> ErTreeContext<Mode> for ErTree<E> {
+impl<E: Error + Send + Sync + 'static, Mode> ErTreeContextExt<Mode> for ErTree<E> {
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er<A>(self, top: impl ErMake<A, Mode>) -> ErTree<A>
     where

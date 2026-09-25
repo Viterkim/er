@@ -1,8 +1,8 @@
 use crate::lines;
 use crate::render::write_top;
 use crate::{
-    ErAsError, ErLineError, ErNodes, ErOpaqueError, ErSources, ErTop, ErTopRef, ErTree, IntoErPart,
-    IntoErTree, Layout,
+    ErAsError, ErLineError, ErNodes, ErOpaqueErrorExt, ErSources, ErTop, ErTopRef, ErTree,
+    IntoErPart, IntoErTree, Layout,
 };
 use core::{error::Error, fmt};
 
@@ -72,7 +72,7 @@ impl<E: fmt::Display> fmt::Debug for ErTopRef<'_, E> {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl<E: fmt::Display> ErOpaqueError for ErTopRef<'_, E> {
+impl<E: fmt::Display> ErOpaqueErrorExt for ErTopRef<'_, E> {
     type Output = ErAsError<Self>;
 
     fn opaque_err(self) -> Self::Output {
@@ -159,7 +159,7 @@ impl<E: Error + Send + Sync + 'static> IntoErPart for ErTop<E> {
         self.tree.into_er_part()
     }
 }
-impl<E: fmt::Display> ErOpaqueError for ErTop<E> {
+impl<E: fmt::Display> ErOpaqueErrorExt for ErTop<E> {
     type Output = ErAsError<Self>;
 
     fn opaque_err(self) -> Self::Output {

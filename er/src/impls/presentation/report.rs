@@ -1,7 +1,7 @@
 use crate::lines;
 use crate::render::report::write_entries;
 use crate::{
-    ErAsError, ErEntries, ErEntry, ErLineError, ErNodes, ErOpaqueError, ErReport, ErReportRef,
+    ErAsError, ErEntries, ErEntry, ErLineError, ErNodes, ErOpaqueErrorExt, ErReport, ErReportRef,
     ErSources, ErTree, IntoErPart, IntoErTree, Layout,
 };
 use core::{error::Error, fmt};
@@ -80,7 +80,7 @@ impl<E: Error + 'static> fmt::Debug for ErReportRef<'_, E> {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl<E: Error + 'static> ErOpaqueError for ErReportRef<'_, E> {
+impl<E: Error + 'static> ErOpaqueErrorExt for ErReportRef<'_, E> {
     type Output = ErAsError<Self>;
 
     fn opaque_err(self) -> Self::Output {
@@ -175,7 +175,7 @@ impl<E: Error + Send + Sync + 'static> IntoErPart for ErReport<E> {
         self.tree.into_er_part()
     }
 }
-impl<E: Error + 'static> ErOpaqueError for ErReport<E> {
+impl<E: Error + 'static> ErOpaqueErrorExt for ErReport<E> {
     type Output = ErAsError<Self>;
 
     fn opaque_err(self) -> Self::Output {

@@ -242,7 +242,7 @@ The original inner error should not dictate your error type design or be given t
 
 ## Docs
 
-### Repo links
+### Repo links (from `./er/docs/`)
 
 [Examples / Patterns](er/docs/examples.md)
 

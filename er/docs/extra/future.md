@@ -11,7 +11,9 @@ port.parse::<u16>().er(|_| invalid_port(port))?;
 mode.parse::<bool>().er(|_| invalid_mode(mode))?;
 ```
 
-but who would use that so whatever. and its more generated stuff...
+but who would use that so whatever. and its more generated stuff.
+
+And doing an alias to E with E::invalid_port() is the same, so eh.
 
 ## Fix wrap / std_error, even though its a really rare edge case
 

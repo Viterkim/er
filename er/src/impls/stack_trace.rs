@@ -1,4 +1,4 @@
-use crate::{ErErrorId, ErStackTrace, ErTrace, ErTree};
+use crate::{ErErrorId, ErStackTrace, ErTraceExt, ErTree};
 use alloc::{boxed::Box, vec::Vec};
 use core::{any::type_name, fmt, panic::Location};
 use std::backtrace::Backtrace;
@@ -18,7 +18,7 @@ impl fmt::Debug for ErStackTrace {
     }
 }
 
-impl<E> ErTrace for ErTree<E> {
+impl<E> ErTraceExt for ErTree<E> {
     #[track_caller]
     fn er_trace(mut self) -> Self {
         self.stack_traces.push(ErStackTrace {
@@ -30,7 +30,7 @@ impl<E> ErTrace for ErTree<E> {
         self
     }
 }
-impl<T, E> ErTrace for Result<T, ErTree<E>> {
+impl<T, E> ErTraceExt for Result<T, ErTree<E>> {
     #[track_caller]
     fn er_trace(self) -> Self {
         match self {

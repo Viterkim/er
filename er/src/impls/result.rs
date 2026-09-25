@@ -1,12 +1,12 @@
 use crate::{
-    Er, ErContext, ErError, ErMake, ErOpaqueError, ErPresentation, ErReport, ErResult, ErTop,
-    ErTree, IntoErPart, IntoErTree,
+    Er, ErContextExt, ErErrorExt, ErMake, ErOpaqueErrorExt, ErPresentationExt, ErReport,
+    ErResultExt, ErTop, ErTree, IntoErPart, IntoErTree,
 };
 use core::error::Error;
 
-impl<T: Error + Sized + 'static> ErError for T {}
+impl<T: Error + Sized + 'static> ErErrorExt for T {}
 
-impl<T, E: IntoErPart, Mode> ErContext<Mode> for Result<T, E> {
+impl<T, E: IntoErPart, Mode> ErContextExt<Mode> for Result<T, E> {
     type Ok = T;
 
     #[cfg_attr(feature = "src_locations", track_caller)]
@@ -20,7 +20,7 @@ impl<T, E: IntoErPart, Mode> ErContext<Mode> for Result<T, E> {
         }
     }
 }
-impl<T, E> ErResult for Result<T, E> {
+impl<T, E> ErResultExt for Result<T, E> {
     type Ok = T;
     type Err = E;
 
@@ -54,7 +54,7 @@ impl<T, E> ErResult for Result<T, E> {
         }
     }
 }
-impl<T, E: IntoErTree> ErPresentation for Result<T, E> {
+impl<T, E: IntoErTree> ErPresentationExt for Result<T, E> {
     type Ok = T;
     type Err = E::Error;
 
@@ -79,7 +79,7 @@ impl<T, E: IntoErTree> ErPresentation for Result<T, E> {
         }
     }
 }
-impl<T, E: ErOpaqueError> ErOpaqueError for Result<T, E> {
+impl<T, E: ErOpaqueErrorExt> ErOpaqueErrorExt for Result<T, E> {
     type Output = Result<T, E::Output>;
 
     fn opaque_err(self) -> Self::Output {
@@ -90,7 +90,7 @@ impl<T, E: ErOpaqueError> ErOpaqueError for Result<T, E> {
     }
 }
 
-impl<T, Mode> ErContext<Mode> for Option<T> {
+impl<T, Mode> ErContextExt<Mode> for Option<T> {
     type Ok = T;
 
     #[cfg_attr(feature = "src_locations", track_caller)]

@@ -30,12 +30,12 @@ impl<A: From<()>> ErMake<A, ErFields> for () {
 }
 
 /// Start a tree from an error.
-pub trait ErError: Error + Sized + 'static {
+pub trait ErErrorExt: Error + Sized + 'static {
     /// Make a new Er error tree.
     ///
     /// `let tree = PortErr::new(85).er();`
     ///
-    /// For adding context to a Result, see [`ErContext::er`].
+    /// For adding context to a Result, see [`ErContextExt::er`].
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er(self) -> ErTree<Self> {
         ErTree::from(self)
@@ -58,7 +58,7 @@ pub trait ErError: Error + Sized + 'static {
 }
 
 /// Add context to a Result or turn None into an error.
-pub trait ErContext<Mode> {
+pub trait ErContextExt<Mode> {
     type Ok;
 
     /// Add your error on the top, move everything else below it.
@@ -77,7 +77,7 @@ pub trait ErContext<Mode> {
 }
 
 /// Add a new top error above an existing tree.
-pub trait ErTreeContext<Mode> {
+pub trait ErTreeContextExt<Mode> {
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er<A>(self, error: impl ErMake<A, Mode>) -> ErTree<A>
     where
@@ -85,7 +85,7 @@ pub trait ErTreeContext<Mode> {
 }
 
 /// Other ways to work with a Result's error.
-pub trait ErResult {
+pub trait ErResultExt {
     type Ok;
     type Err;
 
@@ -119,7 +119,7 @@ pub trait ErResult {
 }
 
 /// Get the tree or pick the output for a Result with a tree, Wrap or owned presentation.
-pub trait ErPresentation {
+pub trait ErPresentationExt {
     type Ok;
     type Err;
 
@@ -151,7 +151,7 @@ pub trait ErPresentation {
 }
 
 /// Give a presentation standard Error support. On a Result, leaves Ok alone.
-pub trait ErOpaqueError {
+pub trait ErOpaqueErrorExt {
     type Output;
 
     /// The presentation stays in `.0`, but error searches can't see inside it.
@@ -188,7 +188,7 @@ pub trait IntoErTree {
 }
 
 #[cfg(feature = "stack_traces")]
-pub trait ErTrace: Sized {
+pub trait ErTraceExt: Sized {
     /// Capture the current stack for this layer. Leaves Ok alone.
     #[track_caller]
     fn er_trace(self) -> Self;
