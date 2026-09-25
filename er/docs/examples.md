@@ -457,6 +457,23 @@ BONUS: Nothing is deleted `ErAsError` keeps the presentation in its public `.0` 
 
 BUT `.opaque_err()` stops searches (source() is empty), and going the other way, Anyhow's boxed conversion can also be sneaky and hide types from er_find. [The anyhow example](../../integrations/anyhow/src/lib.rs) shows both.
 
+## Stack traces
+
+Enable `stack_traces` (needs `std`), then add `.er_trace()` where you want to capture the stack (only runs on errors).
+
+```rust
+if let Err(error) = read_port("fakenumber").er_trace() {
+    eprintln!("{}", error.er_report());
+    for trace in &error.stack_traces {
+        eprintln!("{trace}");
+    }
+}
+```
+
+They follow the tree as you add context or aggregate it. You print them separately, you can always call `.er_trace()` again and there's no env variables to turn on.
+
+If you need the error, you can use the id with `error.er_at_id(trace.error_id)`.
+
 ## Macros
 
 Custom text does both Display and Debug. `exact` takes the field type directly instead of `impl Into<T>`:

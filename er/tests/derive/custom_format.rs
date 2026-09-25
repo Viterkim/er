@@ -302,6 +302,8 @@ pub fn projected_and_borrowed_fields() {
     let tree = ErTree {
         top: BorrowedErr::new(&text),
         nodes: Vec::new(),
+        #[cfg(feature = "stack_traces")]
+        stack_traces: Vec::new(),
         #[cfg(feature = "src_locations")]
         src_location: std::panic::Location::caller(),
     };

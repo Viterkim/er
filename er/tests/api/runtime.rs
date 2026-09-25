@@ -52,6 +52,8 @@ pub fn manual_wrap() {
     let tree = ErTree {
         top: text.as_str(),
         nodes: Vec::new(),
+        #[cfg(feature = "stack_traces")]
+        stack_traces: Vec::new(),
         #[cfg(feature = "src_locations")]
         src_location: std::panic::Location::caller(),
     };

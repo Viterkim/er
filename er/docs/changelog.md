@@ -1,8 +1,14 @@
 # 0.3.0
 
-Fix line endings on non Er errors in er_all!()
+Add the `stack_traces` feature with optional stack traces with `.er_trace()`, they follow the tree and you have to print them yourself.
+
+Add `.er_at_id()` / `.er_at_path()` for finding the error via an index/path in the tree.
+
+IntoErNode is now IntoErPart, so moving a subtree keeps its traces too
 
 Feature gate er_all!() behind the 'macros' feature
+
+Fix line numbers on non Er errors in er_all!()
 
 # 0.2.1
 

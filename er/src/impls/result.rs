@@ -1,15 +1,12 @@
 use crate::{
     Er, ErContext, ErError, ErMake, ErOpaqueError, ErPresentation, ErReport, ErResult, ErTop,
-    ErTree, IntoErNode, IntoErTree,
+    ErTree, IntoErPart, IntoErTree,
 };
-use alloc::vec;
 use core::error::Error;
-#[cfg(feature = "src_locations")]
-use core::panic::Location;
 
 impl<T: Error + Sized + 'static> ErError for T {}
 
-impl<T, E: IntoErNode, Mode> ErContext<Mode> for Result<T, E> {
+impl<T, E: IntoErPart, Mode> ErContext<Mode> for Result<T, E> {
     type Ok = T;
 
     #[cfg_attr(feature = "src_locations", track_caller)]
@@ -19,17 +16,7 @@ impl<T, E: IntoErNode, Mode> ErContext<Mode> for Result<T, E> {
     {
         match self {
             Ok(value) => Ok(value),
-            Err(source) => {
-                let error = error.er_make();
-                let nodes = vec![source.into_er_node()];
-
-                Err(ErTree {
-                    top: error,
-                    nodes,
-                    #[cfg(feature = "src_locations")]
-                    src_location: Location::caller(),
-                })
-            }
+            Err(source) => Err(ErTree::from(error.er_make()).with_part(source.into_er_part())),
         }
     }
 }
@@ -41,20 +28,13 @@ impl<T, E> ErResult for Result<T, E> {
     fn er_with<A>(self, error: impl FnOnce(&E) -> A) -> Er<T, A>
     where
         A: Error + 'static,
-        E: IntoErNode,
+        E: IntoErPart,
     {
         match self {
             Ok(value) => Ok(value),
             Err(source) => {
-                let error = error(&source);
-                let nodes = vec![source.into_er_node()];
-
-                Err(ErTree {
-                    top: error,
-                    nodes,
-                    #[cfg(feature = "src_locations")]
-                    src_location: Location::caller(),
-                })
+                let tree = ErTree::from(error(&source));
+                Err(tree.with_part(source.into_er_part()))
             }
         }
     }
@@ -120,10 +100,7 @@ impl<T, Mode> ErContext<Mode> for Option<T> {
     {
         match self {
             Some(value) => Ok(value),
-            None => {
-                let error = error.er_make();
-                Err(ErTree::from(error))
-            }
+            None => Err(ErTree::from(error.er_make())),
         }
     }
 }

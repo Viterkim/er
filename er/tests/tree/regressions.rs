@@ -35,7 +35,7 @@ pub fn success_drop() {
 #[derive(Er)]
 pub struct Collision;
 impl Collision {
-    pub fn into_er_node(self) {
+    pub fn into_er_part(self) {
         panic!("caller method selected")
     }
 }
@@ -47,15 +47,15 @@ pub fn method_collision() {
 
     assert!(tree.er_contains::<Collision>());
 
-    struct __ErAllIntoErNode;
-    impl __ErAllIntoErNode {
+    struct __ErAllIntoErPart;
+    impl __ErAllIntoErPart {
         fn result() -> Result<(), Collision> {
             Err(Collision)
         }
     }
     macro_rules! make_result {
         () => {
-            __ErAllIntoErNode::result()
+            __ErAllIntoErPart::result()
         };
     }
 

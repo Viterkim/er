@@ -1,7 +1,7 @@
 use crate::lines;
 use crate::render::write_top;
 use crate::{
-    ErAsError, ErLineError, ErNodes, ErOpaqueError, ErSources, ErTop, ErTopRef, ErTree, IntoErNode,
+    ErAsError, ErLineError, ErNodes, ErOpaqueError, ErSources, ErTop, ErTopRef, ErTree, IntoErPart,
     IntoErTree, Layout,
 };
 use core::{error::Error, fmt};
@@ -154,9 +154,9 @@ impl<E: fmt::Display> fmt::Debug for ErTop<E> {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl<E: Error + Send + Sync + 'static> IntoErNode for ErTop<E> {
-    fn into_er_node(self) -> crate::ErNode {
-        self.tree.into_er_node()
+impl<E: Error + Send + Sync + 'static> IntoErPart for ErTop<E> {
+    fn into_er_part(self) -> crate::ErPart {
+        self.tree.into_er_part()
     }
 }
 impl<E: fmt::Display> ErOpaqueError for ErTop<E> {

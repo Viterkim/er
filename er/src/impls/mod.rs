@@ -4,6 +4,8 @@ pub mod presentation;
 pub mod render;
 pub mod result;
 pub mod snapshot;
+#[cfg(feature = "stack_traces")]
+pub mod stack_trace;
 #[cfg(feature = "test")]
 pub mod testing;
 pub mod tree;

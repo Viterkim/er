@@ -1,4 +1,4 @@
-use crate::{Er, ErNode, ErReport, ErTop, ErTree};
+use crate::{Er, ErPart, ErReport, ErTop, ErTree};
 use core::error::Error;
 
 /// Use the error returned by the closure as the new top error.
@@ -100,7 +100,7 @@ pub trait ErResult {
     fn er_with<A>(self, error: impl FnOnce(&Self::Err) -> A) -> Er<Self::Ok, A>
     where
         A: Error + 'static,
-        Self::Err: IntoErNode;
+        Self::Err: IntoErPart;
 
     /// For values that don't implement `Error`, like `Err(85)`.
     ///
@@ -158,10 +158,10 @@ pub trait ErOpaqueError {
     fn opaque_err(self) -> Self::Output;
 }
 
-/// Turns an error or tree into a node.
-pub trait IntoErNode {
+/// Turns an error or tree into a node and its metadata.
+pub trait IntoErPart {
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn into_er_node(self) -> ErNode;
+    fn into_er_part(self) -> ErPart;
 }
 
 /// Get the tree out of a tree, Wrap or owned presentation. Leaves the old layout behind.
@@ -185,4 +185,11 @@ pub trait IntoErTree {
     {
         self.into_er_tree().into_er_report()
     }
+}
+
+#[cfg(feature = "stack_traces")]
+pub trait ErTrace: Sized {
+    /// Capture the current stack for this layer. Leaves Ok alone.
+    #[track_caller]
+    fn er_trace(self) -> Self;
 }

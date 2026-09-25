@@ -1,6 +1,6 @@
 # Features
 
-The crate is `no_std` but requires `alloc`
+The crate is `no_std` but requires `alloc`. `stack_traces` needs `std`.
 
 ## default features
 
@@ -8,7 +8,7 @@ The crate is `no_std` but requires `alloc`
 
 ## non-default features
 
-`small_path_src, serde, lazy`
+`small_path_src, serde, lazy, stack_traces`
 
 ## non-default dev/testing feature
 
@@ -58,6 +58,10 @@ If one side compiled `src_locations` out, the JSON just has no `src_location`. A
 ## lazy, off by default
 
 For small scripts or prototyping, i don't think you should use this [Examples](lazy.md).
+
+## stack_traces, off by default
+
+Needs `std`. [Capturing and printing traces](examples.md#stack-traces).
 
 ## test, for dev dependencies, off by default
 

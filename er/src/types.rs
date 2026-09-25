@@ -7,11 +7,18 @@ pub type Er<T, E> = Result<T, ErTree<E>>;
 /// Where an error entered the tree.
 pub type SrcLocation = &'static Location<'static>;
 
+/// Root 0, then each child and its descendants. Native sources don't count.
+/// IDs belong to the current tree, wrapping updates the ones stored in its traces.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ErErrorId(pub usize);
+
 /// Your top error and the errors below, the typed one is in `tree.top`.
 #[must_use]
 pub struct ErTree<E> {
     pub top: E,
     pub nodes: Vec<ErNode>,
+    #[cfg(feature = "stack_traces")]
+    pub stack_traces: Vec<ErStackTrace>,
     #[cfg(feature = "src_locations")]
     pub src_location: SrcLocation,
 }
@@ -26,6 +33,22 @@ pub struct ErNode {
     pub nodes: Vec<ErNode>,
     #[cfg(feature = "src_locations")]
     pub src_location: SrcLocation,
+}
+
+/// An erased subtree with its stack traces, ready to go under another error.
+#[must_use]
+pub struct ErPart {
+    pub node: ErNode,
+    #[cfg(feature = "stack_traces")]
+    pub stack_traces: Vec<ErStackTrace>,
+}
+
+#[cfg(feature = "stack_traces")]
+pub struct ErStackTrace {
+    pub error_name: &'static str,
+    pub trace_location: SrcLocation,
+    pub error_id: ErErrorId,
+    pub capture: Box<std::backtrace::Backtrace>,
 }
 
 /// Just the outer top error, owns the tree.

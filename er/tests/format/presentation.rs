@@ -117,6 +117,8 @@ pub fn display_only() -> fmt::Result {
     let tree = ErTree {
         top: Text(&text),
         nodes: Vec::new(),
+        #[cfg(feature = "stack_traces")]
+        stack_traces: Vec::new(),
         #[cfg(feature = "src_locations")]
         src_location: Location::caller(),
     };

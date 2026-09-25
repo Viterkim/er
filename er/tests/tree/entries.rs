@@ -20,12 +20,79 @@ impl Error for Native {
 }
 
 #[test]
+pub fn lookup() {
+    let group = ErTree::new(Native(Leaf(99)), [Leaf(1), Leaf(2)]);
+    let read: Er<(), Leaf> = Err("bad".parse::<u8>().unwrap_err()).er(|| Leaf(3));
+    #[cfg(feature = "stack_traces")]
+    let read = read.er_trace();
+    let tree: ErTree<Leaf> =
+        er_all!(|| Leaf(0), [Err::<(), _>(group), Ok::<u8, Leaf>(7), read]).unwrap_err();
+
+    assert!(tree.er_at_id(ErErrorId(1)).unwrap().is::<Native>());
+    for (id, path, value) in [
+        (0, &[][..], 0),
+        (2, &[0, 0][..], 1),
+        (3, &[0, 1][..], 2),
+        (4, &[1][..], 3),
+    ] {
+        let by_id = tree.er_at_id(ErErrorId(id)).unwrap();
+        let by_path = tree.er_at_path(path).unwrap();
+        assert!(std::ptr::eq(by_id, by_path));
+        assert_eq!(by_id.downcast_ref::<Leaf>().unwrap().0, value);
+    }
+    assert!(
+        tree.er_at_id(ErErrorId(5))
+            .unwrap()
+            .is::<std::num::ParseIntError>()
+    );
+    assert!(tree.er_at_id(ErErrorId(6)).is_none());
+    assert!(tree.er_at_path(&[0, 2]).is_none());
+    assert!(tree.er_at_path(&[1, 1]).is_none());
+    assert!(tree.er_find_all::<Leaf>().any(|leaf| leaf.0 == 99));
+
+    #[cfg(feature = "stack_traces")]
+    {
+        assert_eq!(tree.stack_traces.len(), 1);
+        assert_eq!(tree.stack_traces[0].error_id, ErErrorId(4));
+        assert_eq!(
+            tree.er_at_id(tree.stack_traces[0].error_id)
+                .unwrap()
+                .downcast_ref::<Leaf>()
+                .unwrap()
+                .0,
+            3
+        );
+    }
+    let tree = tree.er(|| Leaf(8));
+    assert_eq!(
+        tree.er_at_id(ErErrorId(5))
+            .unwrap()
+            .downcast_ref::<Leaf>()
+            .unwrap()
+            .0,
+        3
+    );
+    #[cfg(feature = "stack_traces")]
+    {
+        assert_eq!(tree.stack_traces[0].error_id, ErErrorId(5));
+        assert_eq!(
+            tree.er_at_id(tree.stack_traces[0].error_id)
+                .unwrap()
+                .downcast_ref::<Leaf>()
+                .unwrap()
+                .0,
+            3
+        );
+    }
+}
+
+#[test]
 pub fn walk() {
     let tree = ErTree::new(
         Native(Leaf(0)),
         [
-            ErTree::new(Native(Leaf(1)), [Leaf(2).er()]).into_er_node(),
-            Leaf(3).er().into_er_node(),
+            ErTree::new(Native(Leaf(1)), [Leaf(2).er()]).into_er_part(),
+            Leaf(3).er().into_er_part(),
         ],
     );
     let report = tree.into_er_report();
@@ -338,7 +405,7 @@ pub fn src_locations() {
 
     let boxed: BoxError = Box::new(Leaf(9));
     let line = line!() + 1;
-    let node = boxed.into_er_node();
+    let node = boxed.into_er_part();
 
-    assert_eq!(node.src_location.line(), line);
+    assert_eq!(node.node.src_location.line(), line);
 }

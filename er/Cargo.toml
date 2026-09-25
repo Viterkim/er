@@ -17,6 +17,7 @@ doctest = false
 [features]
 default = ["src_locations", "macros"]
 src_locations = []
+stack_traces = []
 small_path_src = []
 macros = ["dep:er-macros"]
 lazy = []

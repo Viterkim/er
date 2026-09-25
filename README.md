@@ -9,6 +9,8 @@ Design your error types around what your caller cares about, not what combinatio
 er = "0.2"
 ```
 
+[Full examples / usage patterns](er/docs/examples.md)
+
 ## Simple example
 
 Use `.er()` on any result/error/option/tree, even on different types.

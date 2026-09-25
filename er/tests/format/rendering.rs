@@ -113,7 +113,7 @@ pub fn branches() {
     let branch = ErTree::new(MidErr, [Message("alpha\nbeta")]);
     let tree = ErTree::new(
         WrapErr,
-        [branch.into_er_node(), Message("gamma").er().into_er_node()],
+        [branch.into_er_part(), Message("gamma").er().into_er_part()],
     );
     #[cfg(feature = "src_locations")]
     let expected = format!(

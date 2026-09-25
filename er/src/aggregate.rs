@@ -1,4 +1,6 @@
-use crate::{Er, ErTree, IntoErNode};
+#[cfg(feature = "stack_traces")]
+use crate::impls::stack_trace::append_traces;
+use crate::{Er, ErNode, ErTree, IntoErPart};
 use alloc::vec::Vec;
 use core::error::Error;
 
@@ -10,13 +12,35 @@ pub fn collect<A, E, T>(
 ) -> Er<(), A>
 where
     A: Error + 'static,
-    E: IntoErNode,
+    E: IntoErPart,
 {
-    let mut nodes = Vec::new();
+    let mut nodes: Vec<ErNode> = Vec::new();
+    #[cfg(feature = "stack_traces")]
+    let mut traces = Vec::new();
+    #[cfg(feature = "stack_traces")]
+    let (mut counted, mut next_id) = (0, 1);
+
     for result in results {
         match result {
             Ok(value) => drop(value),
-            Err(error) => nodes.push(IntoErNode::into_er_node(error)),
+            Err(error) => {
+                let part = IntoErPart::into_er_part(error);
+                #[cfg(feature = "stack_traces")]
+                {
+                    let mut incoming = part.stack_traces;
+                    if !incoming.is_empty() {
+                        for node in &nodes[counted..] {
+                            next_id += 1 + node.er_descendants().count();
+                        }
+                        counted = nodes.len();
+                        for trace in &mut incoming {
+                            trace.error_id.0 += next_id;
+                        }
+                    }
+                    append_traces(&mut traces, incoming);
+                }
+                nodes.push(part.node);
+            }
         }
     }
 
@@ -25,6 +49,8 @@ where
     } else {
         Err(ErTree {
             nodes,
+            #[cfg(feature = "stack_traces")]
+            stack_traces: traces,
             ..ErTree::from(top())
         })
     }

@@ -6,8 +6,8 @@
 #[macro_export]
 macro_rules! er_all {
     ($top:expr, [$($result:expr),* $(,)?] $(,)?) => {{
-        let __er_results: [::core::result::Result<(), $crate::ErNode>; _] =
-            $crate::__er_all_results!($crate::IntoErNode, [$($result),*]);
+        let __er_results: [::core::result::Result<(), $crate::ErPart>; _] =
+            $crate::__er_all_results!($crate::IntoErPart, [$($result),*]);
         $crate::aggregate::collect(|| $crate::ErMake::er_make($top), __er_results)
     }};
     ($top:expr, $results:expr $(,)?) => {{

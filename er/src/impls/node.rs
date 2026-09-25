@@ -1,4 +1,4 @@
-use crate::{BoxError, ErFindAll, ErNode, ErNodes, ErSources, IntoErNode};
+use crate::{BoxError, ErFindAll, ErNode, ErNodes, ErPart, ErSources, IntoErPart};
 use alloc::vec::Vec;
 #[cfg(feature = "src_locations")]
 use core::panic::Location;
@@ -60,23 +60,36 @@ impl Drop for ErNode {
         }
     }
 }
-impl IntoErNode for ErNode {
-    fn into_er_node(self) -> Self {
+impl IntoErPart for ErNode {
+    fn into_er_part(self) -> ErPart {
+        ErPart {
+            node: self,
+            #[cfg(feature = "stack_traces")]
+            stack_traces: Vec::new(),
+        }
+    }
+}
+impl IntoErPart for ErPart {
+    fn into_er_part(self) -> Self {
         self
     }
 }
 
-impl<E: Into<BoxError>> IntoErNode for E {
+impl<E: Into<BoxError>> IntoErPart for E {
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn into_er_node(self) -> ErNode {
+    fn into_er_part(self) -> ErPart {
         let error = self.into();
         let nodes = Vec::new();
 
-        ErNode {
-            error,
-            nodes,
-            #[cfg(feature = "src_locations")]
-            src_location: Location::caller(),
+        ErPart {
+            node: ErNode {
+                error,
+                nodes,
+                #[cfg(feature = "src_locations")]
+                src_location: Location::caller(),
+            },
+            #[cfg(feature = "stack_traces")]
+            stack_traces: Vec::new(),
         }
     }
 }

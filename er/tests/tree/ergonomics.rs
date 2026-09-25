@@ -128,7 +128,7 @@ fn fields() -> Er<(), FieldErr> {
 
 fn boundary<T, E>(result: Result<T, E>) -> Er<T, BoundaryErr>
 where
-    E: IntoErNode,
+    E: IntoErPart,
 {
     result.er(())
 }
@@ -207,6 +207,11 @@ pub fn local_roots() {
 
 #[derive(Er)]
 pub struct ParentErr(pub u8);
+impl From<u8> for ParentErr {
+    fn from(value: u8) -> Self {
+        Self(value)
+    }
+}
 
 #[test]
 pub fn er_with() {
@@ -220,15 +225,15 @@ pub fn er_with() {
     assert_eq!(calls.get(), 0);
 
     let result: Result<(), ChildErr> = Err(ChildErr(1));
-    let error = result.er_with(|e| ParentErr(e.0)).unwrap_err();
+    let error = result.er_with::<ParentErr>(|e| e.0.into()).unwrap_err();
     assert_eq!(error.top.0, 1);
     assert_eq!(error.er_find::<ChildErr>().unwrap().0, 1);
 
-    let error = ChildErr(2).er_with(|e| ParentErr(e.0));
+    let error = ChildErr(2).er_with::<ParentErr>(|e| e.0.into());
     assert_eq!(error.top.0, 2);
     assert_eq!(error.er_find::<ChildErr>().unwrap().0, 2);
 
-    let error = ChildErr(3).er().er_with(|t| ParentErr(t.top.0));
+    let error = ChildErr(3).er().er_with::<ParentErr>(|t| t.top.0.into());
     assert_eq!(error.top.0, 3);
     assert_eq!(error.er_find::<ChildErr>().unwrap().0, 3);
 }

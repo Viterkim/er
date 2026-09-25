@@ -136,7 +136,7 @@ pub fn drop_once() {
             Tracked {
                 drops: Arc::clone(&drops),
             },
-            [first.into_er_node(), second.into_er_node()],
+            [first.into_er_part(), second.into_er_part()],
         );
 
         assert_eq!(drops.load(Ordering::Relaxed), 0);

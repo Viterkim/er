@@ -3,6 +3,8 @@
 #![doc = include_str!("../docs/macros.md")]
 
 extern crate alloc;
+#[cfg(feature = "stack_traces")]
+extern crate std;
 
 pub mod aggregate;
 pub mod impls;

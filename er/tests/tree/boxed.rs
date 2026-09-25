@@ -70,13 +70,13 @@ pub fn erased_nodes() {
     let inner = StageErr.er();
     #[cfg(feature = "src_locations")]
     let src = inner.src_location;
-    let node = inner.into_er_node();
+    let node = inner.into_er_part();
     #[cfg(feature = "src_locations")]
-    assert_eq!(node.src_location, src);
+    assert_eq!(node.node.src_location, src);
 
     let cause = io::Error::new(io::ErrorKind::PermissionDenied, "no access");
     let boxed: BoxError = Box::new(DriverErr(cause));
-    let tree = ErTree::new(OuterErr, [node, boxed.into_er_node()]);
+    let tree = ErTree::new(OuterErr, [node, boxed.into_er_part()]);
 
     assert!(tree.er_contains::<StageErr>());
     assert!(tree.er_contains::<DriverErr>());
