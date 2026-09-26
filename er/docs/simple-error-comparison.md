@@ -172,7 +172,7 @@ You can also use 'Attachments' to add data.
 
 I love the typed context and keeping the original errors. But you still need to make the error types yourself or use another derive, and `.change_context_lazy()` is a lot to type.
 
-## Er (0.3)
+## Er (0.4)
 
 (hey that's this one)
 
@@ -743,4 +743,3 @@ Report prints what you already have, it doesn't add context. Single line by defa
 [terrors](https://docs.rs/terrors/0.3.3/terrors/) is closer to Eros, with a set of possible errors where you can handle one and pass the rest up. [error_set](https://docs.rs/error_set/0.9.2/error_set/) actually makes enums with your own variants, and lets you combine smaller sets. I haven't tried either in the tricky example.
 
 [lazy_errors](https://docs.rs/lazy_errors/latest/lazy_errors/) is worth a look if collecting several failures and you want to keep going and collect the failures, including errors from cleanup. It has nesting and locations too, aggregation focus is interesting.
-
