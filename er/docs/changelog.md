@@ -1,3 +1,13 @@
+# 0.4.0
+
+New `.er_add([error])` instead of `with_part` and `push_part`.
+
+`er_add!(tree, [first, second])` added (mixed types and results behind the `macros` feature).
+
+`.er_with(|e|)` now gets the 'top' error instead of the tree. So `e.top.path` is now `e.path` (If you need the old one, you can use `.er_with_tree(|t|)`).
+
+Add `ErShared<T>` for sharing data between errors by passing `&old.field` (used with `.er_with(|old|)`).
+
 # 0.3.0
 
 `Er<T, E>` renamed to `ErResult<T, E>`.

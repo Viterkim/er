@@ -18,47 +18,32 @@ impl<E: Error + 'static> ErTree<E> {
     /// Put existing errors below this one, even if the list is empty.
     #[cfg_attr(feature = "src_locations", track_caller)]
     pub fn new(error: E, nodes: impl IntoIterator<Item = impl IntoErPart>) -> Self {
-        let nodes = nodes.into_iter();
-        let mut tree = Self::from(error);
-        tree.nodes.reserve_exact(nodes.size_hint().0);
-        #[cfg(feature = "stack_traces")]
-        let (mut counted, mut next_index) = (0, 1);
-
-        for node in nodes {
-            let part = IntoErPart::into_er_part(node);
-            #[cfg(feature = "stack_traces")]
-            {
-                let mut traces = part.stack_traces;
-                if !traces.is_empty() {
-                    for node in &tree.nodes[counted..] {
-                        next_index += 1 + node.er_descendants().count();
-                    }
-                    counted = tree.nodes.len();
-                    for trace in &mut traces {
-                        trace.error_index.0 += next_index;
-                    }
-                }
-                append_traces(&mut tree.stack_traces, traces);
-            }
-            tree.nodes.push(part.node);
-        }
-
-        tree
+        Self::from(error).er_add(nodes)
     }
 
     /// Add your error on the top, move everything else below it.
-    /// |t| is the tree. The error is `t.top`.
+    /// |e| is the typed top error.
     /// Use this when the new error needs something from the old one.
     /// Otherwise use `.er()`.
     ///
-    /// `let error = error.er_with(|t| AnalyzeErr::new(t.top.code));`
+    /// `let error = error.er_with(|e| AnalyzeErr::new(e.code));`
     #[cfg_attr(feature = "src_locations", track_caller)]
-    pub fn er_with<A>(self, top: impl FnOnce(&Self) -> A) -> ErTree<A>
+    pub fn er_with<A>(self, top: impl FnOnce(&E) -> A) -> ErTree<A>
     where
         E: Send + Sync,
         A: Error + 'static,
     {
-        ErTree::from(top(&self)).with_part(self.into_er_part())
+        ErTree::from(top(&self.top)).er_add([self])
+    }
+
+    /// Like `.er_with()`, but borrows the whole tree so you can search its children too.
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    pub fn er_with_tree<A>(self, top: impl FnOnce(&Self) -> A) -> ErTree<A>
+    where
+        E: Send + Sync,
+        A: Error + 'static,
+    {
+        ErTree::from(top(&self)).er_add([self])
     }
 
     /// Erase the top error. This drops its stack traces, use `into_er_part()` to keep them.
@@ -200,29 +185,43 @@ impl<E: Error + Send + Sync + 'static, Mode> ErTreeContextExt<Mode> for ErTree<E
     where
         A: Error + 'static,
     {
-        ErTree::from(top.er_make()).with_part(self.into_er_part())
+        ErTree::from(top.er_make()).er_add([self])
     }
 }
 impl<E> ErTree<E> {
-    pub fn with_part(mut self, part: ErPart) -> Self {
-        self.nodes.reserve_exact(1);
-        self.push_part(part);
-        self
-    }
-
-    pub fn push_part(&mut self, part: ErPart) {
-        #[cfg(feature = "stack_traces")]
-        {
-            let mut traces = part.stack_traces;
-            if !traces.is_empty() {
-                let offset = 1 + self.er_descendants().count();
-                for trace in &mut traces {
-                    trace.error_index.0 += offset;
-                }
-            }
-            append_traces(&mut self.stack_traces, traces);
+    /// Add errors or subtrees below the current top.
+    /// Use `er_add!(tree, [first, second])` for different types.
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    pub fn er_add(mut self, nodes: impl IntoIterator<Item = impl IntoErPart>) -> Self {
+        let nodes = nodes.into_iter();
+        if self.nodes.capacity() == 0 {
+            self.nodes.reserve_exact(nodes.size_hint().0);
+        } else {
+            self.nodes.reserve(nodes.size_hint().0);
         }
-        self.nodes.push(part.node);
+        #[cfg(feature = "stack_traces")]
+        let (mut counted, mut next_index) = (0, 1);
+
+        for node in nodes {
+            let part = IntoErPart::into_er_part(node);
+            #[cfg(feature = "stack_traces")]
+            {
+                let mut traces = part.stack_traces;
+                if !traces.is_empty() {
+                    for node in &self.nodes[counted..] {
+                        next_index += 1 + node.er_descendants().count();
+                    }
+                    counted = self.nodes.len();
+                    for trace in &mut traces {
+                        trace.error_index.0 += next_index;
+                    }
+                }
+                append_traces(&mut self.stack_traces, traces);
+            }
+            self.nodes.push(part.node);
+        }
+
+        self
     }
 
     /// The stored sub errors, no root or native sources.
@@ -297,6 +296,12 @@ impl<E: Error + 'static> From<E> for ErTree<E> {
     }
 }
 impl<E: Error + Send + Sync + 'static> IntoErPart for ErTree<E> {
+    type Error = E;
+
+    fn er_error(&self) -> &E {
+        &self.top
+    }
+
     fn into_er_part(self) -> ErPart {
         ErTree::into_er_part(self)
     }

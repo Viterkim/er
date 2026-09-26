@@ -1,8 +1,17 @@
+#[cfg(target_has_atomic = "ptr")]
+use alloc::sync::Arc;
 use alloc::{boxed::Box, vec::Vec};
 use core::{error::Error, panic::Location};
 
 /// A Result with your typed error on top.
 pub type ErResult<T, E> = Result<T, ErTree<E>>;
+
+/// Share data between errors by passing `&old.field` to the next constructor.
+/// Uses Arc, so the target needs pointer atomics.
+#[cfg(target_has_atomic = "ptr")]
+pub struct ErShared<T: ?Sized> {
+    pub value: Arc<T>,
+}
 
 /// Where an error entered the tree.
 pub type SrcLocation = &'static Location<'static>;

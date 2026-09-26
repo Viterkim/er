@@ -177,6 +177,12 @@ impl<E: Error + 'static> fmt::Debug for ErReport<E> {
     }
 }
 impl<E: Error + Send + Sync + 'static> IntoErPart for ErReport<E> {
+    type Error = E;
+
+    fn er_error(&self) -> &E {
+        &self.tree.top
+    }
+
     fn into_er_part(self) -> crate::ErPart {
         self.tree.into_er_part()
     }

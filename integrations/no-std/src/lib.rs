@@ -25,6 +25,17 @@ pub fn diagnostic() -> FirmwareErrWrap {
     FirmwareErr::new(device).er_wrap()
 }
 
+#[cfg(target_has_atomic = "ptr")]
+#[derive(Er)]
+pub struct SharedErr {
+    pub device: ErShared<Device>,
+}
+#[cfg(target_has_atomic = "ptr")]
+pub fn shared_diagnostic() -> ErTree<SharedErr> {
+    let error = ErTree::from(SharedErr::new(Device::new(85, Secret)));
+    error.er_with(|old| SharedErr::new(&old.device))
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
@@ -44,5 +55,15 @@ pub mod tests {
         )
         .unwrap_err();
         assert_eq!(errors.nodes.len(), 2);
+        let errors = er_add!(errors, [core::fmt::Error, "bad".parse::<u16>()]);
+        assert_eq!(errors.nodes.len(), 4);
+
+        #[cfg(target_has_atomic = "ptr")]
+        {
+            let shared = shared_diagnostic();
+            let old = shared.nodes[0].er_find::<SharedErr>().unwrap();
+            assert_eq!(shared.top.device.bus, 85);
+            assert!(ErShared::ptr_eq(&shared.top.device, &old.device));
+        }
     }
 }

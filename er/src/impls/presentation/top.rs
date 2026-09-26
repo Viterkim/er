@@ -161,6 +161,12 @@ impl<E: fmt::Display> fmt::Debug for ErTop<E> {
     }
 }
 impl<E: Error + Send + Sync + 'static> IntoErPart for ErTop<E> {
+    type Error = E;
+
+    fn er_error(&self) -> &E {
+        &self.tree.top
+    }
+
     fn into_er_part(self) -> crate::ErPart {
         self.tree.into_er_part()
     }

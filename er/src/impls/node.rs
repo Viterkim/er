@@ -61,6 +61,12 @@ impl Drop for ErNode {
     }
 }
 impl IntoErPart for ErNode {
+    type Error = dyn Error + Send + Sync;
+
+    fn er_error(&self) -> &Self::Error {
+        &*self.error
+    }
+
     fn into_er_part(self) -> ErPart {
         ErPart {
             node: self,
@@ -70,12 +76,24 @@ impl IntoErPart for ErNode {
     }
 }
 impl IntoErPart for ErPart {
+    type Error = dyn Error + Send + Sync;
+
+    fn er_error(&self) -> &Self::Error {
+        &*self.node.error
+    }
+
     fn into_er_part(self) -> Self {
         self
     }
 }
 
 impl<E: Into<BoxError>> IntoErPart for E {
+    type Error = E;
+
+    fn er_error(&self) -> &E {
+        self
+    }
+
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn into_er_part(self) -> ErPart {
         let error = self.into();

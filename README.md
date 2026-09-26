@@ -218,7 +218,7 @@ ConfigErr { port: "nope", enabled: "nah" } @ src/main.rs:46:5
 
 ### Convenience
 
-`.er_with(|e|)` for interacting with the typed error below without accidentally destroying the tree (easy to accidentally do with `.map_err()`).
+`.er_with(|e|)` for interacting with the typed error below without accidentally destroying the tree (easy to accidentally do with `.map_err()`). `.er_with_tree(|t|)` for the whole tree.
 
 `.er_find::<SomeErr>()` for the first match, and `.er_find_all::<SomeErr>()` for finding the original errors and suberrors below (also checks `.source()`).
 

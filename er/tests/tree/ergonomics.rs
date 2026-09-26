@@ -305,7 +305,47 @@ pub fn er_with() {
     assert_eq!(error.top.0, 2);
     assert_eq!(error.er_find::<ChildErr>().unwrap().0, 2);
 
-    let error = ErTree::from(ChildErr(3)).er_with::<ParentErr>(|t| t.top.0.into());
+    let error = ErTree::from(ChildErr(3)).er_with::<ParentErr>(|e| e.0.into());
     assert_eq!(error.top.0, 3);
     assert_eq!(error.er_find::<ChildErr>().unwrap().0, 3);
+
+    let error = Err::<(), _>(error)
+        .er_with::<ParentErr>(|e| (e.0 + 1).into())
+        .unwrap_err();
+    assert_eq!(error.top.0, 4);
+    assert_eq!(error.er_find::<ChildErr>().unwrap().0, 3);
+    assert_eq!(error.er_find_all::<ParentErr>().count(), 2);
+}
+
+#[test]
+pub fn er_with_tree() {
+    let calls = Cell::new(0);
+    let ok: ErResult<u8, ParentErr> = Ok(7);
+    let result = ok.er_with_tree(|tree| {
+        calls.set(calls.get() + 1);
+        ParentErr(tree.top.0)
+    });
+    assert_eq!(result.ok(), Some(7));
+    assert_eq!(calls.get(), 0);
+
+    let tree = ChildErr(3).er::<ParentErr>(|_| 7u8);
+    #[cfg(feature = "src_locations")]
+    let location = tree.src_location;
+    let tree =
+        tree.er_with_tree(|tree| ParentErr(tree.top.0 + tree.er_find::<ChildErr>().unwrap().0));
+    assert_eq!(tree.top.0, 10);
+    assert_eq!(tree.er_find::<ChildErr>().unwrap().0, 3);
+    #[cfg(feature = "src_locations")]
+    assert_eq!(tree.nodes[0].src_location, location);
+
+    let tree = Err::<(), _>(tree)
+        .er_with_tree(|tree| {
+            calls.set(calls.get() + 1);
+            ParentErr(tree.er_find::<ChildErr>().unwrap().0)
+        })
+        .unwrap_err();
+    assert_eq!(calls.get(), 1);
+    assert_eq!(tree.top.0, 3);
+    assert_eq!(tree.er_find_all::<ParentErr>().count(), 3);
+    assert_eq!(tree.er_find::<ChildErr>().unwrap().0, 3);
 }

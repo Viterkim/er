@@ -16,7 +16,7 @@ The crate is `no_std` but requires `alloc`. `stack_traces` needs `std`.
 
 ## macros
 
-Convenience macros like `#[derive(Er)]`, `#[derive(ErFormat)]`, `er_all!` and `er_bail!`.
+Convenience macros like `#[derive(Er)]`, `#[derive(ErFormat)]`, `er_all!`, `er_add!` and `er_bail!`.
 
 ## src_locations
 
@@ -66,6 +66,10 @@ Needs `std`. [Capturing and printing traces](examples.md#stack-traces).
 ## test, for dev dependencies, off by default
 
 `ErTest` and `.er(())?` for tests.
+
+## Extras
+
+`ErShared` is only on targets with pointer atomics.
 
 ## Examples
 

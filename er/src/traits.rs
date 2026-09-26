@@ -91,13 +91,28 @@ pub trait ErResultExt {
 
     /// Add your error on the top, move everything else below it.
     /// Only happens on failures.
-    /// If the Err is already an Er tree, |t| is the tree. The error is `t.top`.
+    /// If the Err is already an Er tree, |e| is its typed top error.
     /// Use this when the new error needs something from the old one.
     /// Otherwise use `.er()`.
     ///
-    /// `result.er_with(|t| AnalyzeErr::new(t.top.code))?;`
+    /// `result.er_with(|e| AnalyzeErr::new(e.code))?;`
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_with<A>(self, error: impl FnOnce(&Self::Err) -> A) -> ErResult<Self::Ok, A>
+    fn er_with<A>(
+        self,
+        error: impl FnOnce(&<Self::Err as IntoErPart>::Error) -> A,
+    ) -> ErResult<Self::Ok, A>
+    where
+        Self: Sized,
+        A: Error + 'static,
+        Self::Err: IntoErPart,
+    {
+        self.er_with_tree(|source| error(IntoErPart::er_error(source)))
+    }
+
+    /// Like `.er_with()`, but with tree.
+    /// On an ErResult, |t| is the tree, so you can search its children too.
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_with_tree<A>(self, error: impl FnOnce(&Self::Err) -> A) -> ErResult<Self::Ok, A>
     where
         A: Error + 'static,
         Self::Err: IntoErPart;
@@ -180,6 +195,11 @@ pub trait ErOpaqueErrorExt {
 
 /// Turns an error or tree into a node and its metadata.
 pub trait IntoErPart {
+    type Error: ?Sized;
+
+    /// Borrow the error, or the top if this is a tree.
+    fn er_error(&self) -> &Self::Error;
+
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn into_er_part(self) -> ErPart;
 }

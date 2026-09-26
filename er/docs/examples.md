@@ -83,8 +83,6 @@ Missing: missing85
 
 If you need something from the old error, `.er_with()` lets you look at it and still keep it in the tree.
 
-If it's already an Er tree, `t.top` is the error you made.
-
 ```rust
 // The old pal
 #[derive(Er)]
@@ -100,10 +98,12 @@ pub struct AnalyzeErr {
 
 pub fn analyze() -> ErResult<(), AnalyzeErr> {
     // read_device returns ErResult<_, DeviceErr>
-    read_device().er_with(|t| AnalyzeErr::new(t.top.code))?;
+    read_device().er_with(|e| AnalyzeErr::new(e.code))?;
     Ok(())
 }
 ```
+
+`.er_with_tree(|t| ...)` exists to get the tree instead of the top error, if you need to search further down.
 
 Raw errors take the same `.er(())`, `.er(|_| fields)` and `.er(|| MyErr::new(...))` forms too. If you need something from that error, use `.er_with()`:
 
@@ -125,6 +125,33 @@ read_device().map_err(|t| ErTree::from(AnalyzeErr::new(t.top.code)))
 if let Err(t) = read_device() {
     // the t tree is gone, (womp womp, sad sounds)
     er_bail!(AnalyzeErr::new(t.top.code));
+}
+```
+
+## Shared / References
+
+If you want the same data in multiple errors without spamming clone you can use `ErShared<T>`.
+
+```rust
+use std::{fs, path::PathBuf};
+
+#[derive(Er)]
+pub struct OneErr {
+    pub path: ErShared<PathBuf>,
+}
+
+pub fn read_file(path: PathBuf) -> ErResult<String, OneErr> {
+    fs::read_to_string(&path).er(|_| path)
+}
+
+#[derive(Er)]
+pub struct TwoErr {
+    pub path: ErShared<PathBuf>,
+    pub machine: String,
+}
+
+pub fn read_config(path: PathBuf, machine: &str) -> ErResult<String, TwoErr> {
+    read_file(path).er_with(|old| TwoErr::new(&old.path, machine))
 }
 ```
 
@@ -209,6 +236,34 @@ pub fn check_config(path: &Path, port: &str, enabled: &str) -> ErResult<(), Conf
     ])
 }
 ```
+
+## Add errors / er_add!()
+
+You can bunch up errors over time with `.er_add()`, it keeps the same parent and adds more sub errors.
+
+```rust
+use std::path::Path;
+
+pub fn read_with_fallback(path: &Path, fallback: &Path) -> ErResult<String, ReadFileErr> {
+    let first_error = match read_file(path) {
+        Ok(text) => return Ok(text),
+        Err(error) => error,
+    };
+
+    match read_file(fallback) {
+        Ok(text) => Ok(text),
+        Err(second_error) => Err(first_error.er_add([second_error])),
+    }
+}
+```
+
+When you want to add multiple errors to a previous one, `er_add!` lets them have different types:
+
+```rust
+error = er_add!(error, [first_error, second_error]);
+```
+
+It drops the oks from results like `er_all!`.
 
 ## Find original error
 

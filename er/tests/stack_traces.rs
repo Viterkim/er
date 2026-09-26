@@ -155,8 +155,8 @@ pub mod composed {
         assert_eq!(tree.stack_traces.as_ptr(), records);
         assert_eq!(tree.stack_traces[0].error_index, ErErrorIndex(5));
 
-        let mut tree = ErTree::new(Batch, [read("first").unwrap_err()]).er_trace();
-        tree.push_part(job("second").unwrap_err().into_er_part());
+        let tree = ErTree::new(Batch, [read("first").unwrap_err()]).er_trace();
+        let tree = er_add!(tree, [job("second"), read("third")]);
         assert_eq!(
             tree.stack_traces
                 .iter()
@@ -166,10 +166,11 @@ pub mod composed {
                 ErErrorIndex(1),
                 ErErrorIndex(0),
                 ErErrorIndex(4),
-                ErErrorIndex(3)
+                ErErrorIndex(3),
+                ErErrorIndex(6)
             ]
         );
-        for (trace, path) in [(0, "first"), (2, "second")] {
+        for (trace, path) in [(0, "first"), (2, "second"), (4, "third")] {
             let error = tree
                 .er_at_index(tree.stack_traces[trace].error_index)
                 .unwrap();
@@ -197,7 +198,7 @@ pub mod composed {
         assert_eq!(result.er_trace().unwrap_err().stack_traces.len(), 1);
 
         let tree = read("bad")
-            .er_with::<JobErr>(|old| JobErr::failed(old.top.path.to_str().unwrap()))
+            .er_with::<JobErr>(|old| JobErr::failed(old.path.to_str().unwrap()))
             .er_trace()
             .unwrap_err();
         assert_eq!(tree.stack_traces.len(), 2);

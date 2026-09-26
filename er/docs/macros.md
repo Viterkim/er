@@ -49,6 +49,8 @@ Fields are debug printed by default, foreign types too. In `#[er(format = "{inpu
 
 `er_all!((), [a(), b()])` runs both, keeps the errors and drops the oks. They can be different types in that list (a Vec needs them to match). The top error only gets made if something failed.
 
+`er_add!(error, [a(), b()])` adds them below an existing top instead (returns the tree even if nothing failed).
+
 ## Constructors
 
 Both `Er` and `ErFormat` make constructors. Put `#[er(no_constructors)]` on the struct/enum to write your own instead. It skips `new` and all variant constructors. For `Er` structs it also skips the field conversions for `|_|`, but `#[er(wrap)]` still makes `MyErr::er_wrap()`.

@@ -288,6 +288,13 @@ pub fn generic_wrap() {
 
     assert!(wrapped.to_string().contains("GenericErr { value: 7 }"));
     assert_eq!(wrapped.tree.top.value, 7);
+
+    let result: Result<(), GenericWrap<u8>> = Err(wrapped);
+    let tree = result
+        .er_with(|old| RequestErr::new(old.value.to_string()))
+        .unwrap_err();
+    assert_eq!(tree.top.input, "7");
+    assert_eq!(tree.er_find::<GenericErr<u8>>().unwrap().value, 7);
 }
 
 #[derive(Er)]

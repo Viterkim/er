@@ -19,7 +19,7 @@ impl<T, E: IntoErPart, Mode> ErContextExt<Mode> for Result<T, E> {
     {
         match self {
             Ok(value) => Ok(value),
-            Err(source) => Err(ErTree::from(error.er_make()).with_part(source.into_er_part())),
+            Err(source) => Err(ErTree::from(error.er_make()).er_add([source])),
         }
     }
 }
@@ -28,7 +28,7 @@ impl<T, E> ErResultExt for Result<T, E> {
     type Err = E;
 
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_with<A>(self, error: impl FnOnce(&E) -> A) -> ErResult<T, A>
+    fn er_with_tree<A>(self, error: impl FnOnce(&E) -> A) -> ErResult<T, A>
     where
         A: Error + 'static,
         E: IntoErPart,
@@ -37,7 +37,7 @@ impl<T, E> ErResultExt for Result<T, E> {
             Ok(value) => Ok(value),
             Err(source) => {
                 let tree = ErTree::from(error(&source));
-                Err(tree.with_part(source.into_er_part()))
+                Err(tree.er_add([source]))
             }
         }
     }

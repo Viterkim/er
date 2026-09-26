@@ -12,6 +12,88 @@ pub struct Item(pub u8);
 #[derive(Er)]
 #[er(wrap(output = top, std_error))]
 pub struct Standard;
+
+#[test]
+pub fn append() {
+    let child = ErTree::new(Item(1), [Item(2)]);
+    #[cfg(feature = "src_locations")]
+    let child_location = child.src_location;
+    let tree = ErTree::from(Batch).er_add([child]);
+    let _error_line = line!() + 1;
+    let tree = tree.er_add([io::Error::other("rollback failed")]);
+    let _items_line = line!() + 1;
+    let tree = tree.er_add([Item(3), Item(4)]);
+
+    assert_eq!(tree.nodes.len(), 4);
+    assert_eq!(
+        tree.er_find_all::<Item>()
+            .map(|item| item.0)
+            .collect::<Vec<_>>(),
+        [1, 2, 3, 4]
+    );
+    assert_eq!(
+        tree.er_find::<io::Error>().unwrap().to_string(),
+        "rollback failed"
+    );
+    #[cfg(feature = "src_locations")]
+    {
+        assert_eq!(tree.nodes[0].src_location, child_location);
+        assert_eq!(tree.nodes[1].src_location.file(), file!());
+        assert_eq!(tree.nodes[1].src_location.line(), _error_line);
+        assert_eq!(tree.nodes[2].src_location.file(), file!());
+        assert_eq!(tree.nodes[2].src_location.line(), _items_line);
+        assert_eq!(tree.nodes[3].src_location.line(), _items_line);
+    }
+}
+
+#[test]
+pub fn append_mixed() {
+    let tree = ErTree::new(Item(0), [Item(1)]);
+    #[cfg(feature = "src_locations")]
+    let location = tree.src_location;
+    let child = ErTree::new(Item(2), [Item(3)]);
+    let visited = Cell::new(0);
+    let _error_line = line!() + 5;
+    let tree = er_add!(
+        tree,
+        [
+            child,
+            io::Error::other("cleanup failed"),
+            Err::<(), _>(Item(4)),
+            {
+                visited.set(visited.get() + 1);
+                Ok::<_, Item>(7)
+            },
+        ]
+    );
+    assert_eq!(visited.get(), 1);
+    assert_eq!(tree.top.0, 0);
+    assert_eq!(tree.nodes.len(), 4);
+    assert_eq!(
+        tree.er_find_all::<Item>()
+            .map(|item| item.0)
+            .collect::<Vec<_>>(),
+        [0, 1, 2, 3, 4]
+    );
+    assert_eq!(
+        tree.er_find::<io::Error>().unwrap().to_string(),
+        "cleanup failed"
+    );
+    #[cfg(feature = "src_locations")]
+    {
+        assert_eq!(tree.src_location, location);
+        assert_eq!(tree.nodes[2].src_location.line(), _error_line);
+    }
+
+    let tree = er_add!(tree, []);
+    let tree = er_add!(tree, [Ok::<_, Item>(7)]);
+    assert_eq!(tree.nodes.len(), 4);
+    let results = [Ok(7), Err(Item(5)), Err(Item(6))].into_iter();
+    let tree = er_add!(tree, results);
+    assert_eq!(tree.nodes.len(), 6);
+    assert_eq!(tree.top.0, 0);
+}
+
 #[test]
 pub fn every_result() {
     let parents = Cell::new(0);

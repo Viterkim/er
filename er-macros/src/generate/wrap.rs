@@ -78,6 +78,12 @@ pub fn expand(
 
         quote! {
             impl #node_impl #er_path::IntoErPart for #wrap #type_generics #node_where {
+                type Error = #stored;
+
+                fn er_error(&self) -> &#stored {
+                    &self.tree.top
+                }
+
                 fn into_er_part(self) -> #er_path::ErPart {
                     let #tree: #er_path::ErTree<#node_root> =
                         #er_path::IntoErTree::into_er_tree(self);
