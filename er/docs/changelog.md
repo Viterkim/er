@@ -1,3 +1,15 @@
+# 0.5.0
+
+Added `er_try!()` which is like `er_all!()` but gives you the Ok values back (if they all were Ok).
+
+Enabled the `test` feature by default.
+
+`ErTest` now does `?` without `.er()` (but another `ErTest` passes through without adding context, so use a specific type for your test helpers).
+
+For `ErTest` renamed the `TestError` to `ErTestError` so `use er::*` doesn't take a potential user error name in tests.
+
+`.unwrap_report()` and `.expect_report(message)` added.
+
 # 0.4.0
 
 New `.er_add([error])` instead of `with_part` and `push_part`.

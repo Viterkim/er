@@ -23,7 +23,7 @@ pub mod walk;
 
 #[cfg(feature = "macros")]
 #[doc(hidden)]
-pub use er_macros::__er_all_results;
+pub use er_macros::{__er_all_results, __er_try_results};
 #[cfg(feature = "macros")]
 #[doc(inline)]
 pub use er_macros::{Er, ErFormat};

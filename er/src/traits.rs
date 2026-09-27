@@ -171,6 +171,36 @@ pub trait ErPresentationExt {
     /// `read_port("85").er_report()?;`
     fn er_report(self) -> Result<Self::Ok, ErReport<Self::Err>>;
 
+    /// Get the Ok value, or panic with the whole report.
+    ///
+    /// Same as `.er_report().unwrap()`.
+    ///
+    /// # Panics
+    /// Panics if the result is Err.
+    #[track_caller]
+    fn unwrap_report(self) -> Self::Ok
+    where
+        Self: Sized,
+        Self::Err: Error + 'static,
+    {
+        self.er_report().unwrap()
+    }
+
+    /// Get the Ok value, or panic with your message and the whole report.
+    ///
+    /// Same as `.er_report().expect(message)`.
+    ///
+    /// # Panics
+    /// Panics if the result is Err.
+    #[track_caller]
+    fn expect_report(self, message: &str) -> Self::Ok
+    where
+        Self: Sized,
+        Self::Err: Error + 'static,
+    {
+        self.er_report().expect(message)
+    }
+
     /// Take the tree out of a Wrap with `std_error` and add context. Leaves Ok alone.
     ///
     /// !WARNING! Normal `.er()` boxes a Wrap with `std_error`, so you can't find the errors inside it.
@@ -237,6 +267,8 @@ pub trait ErTraceExt: Sized {
 #[cfg(feature = "macros")]
 #[doc(hidden)]
 pub trait ErAllItem<Mode> {
+    type Ok;
+
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_all_item(self) -> Result<(), ErPart>;
+    fn er_all_item(self) -> Result<Self::Ok, ErPart>;
 }

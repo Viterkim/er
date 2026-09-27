@@ -49,6 +49,8 @@ Fields are debug printed by default, foreign types too. In `#[er(format = "{inpu
 
 `er_all!((), [a(), b()])` runs both, keeps the errors and drops the oks. They can be different types in that list (a Vec needs them to match). The top error only gets made if something failed.
 
+`er_try!((), [a(), b()])` keeps the values too and returns `Ok((a, b))` if both succeed. If either fails, it drops the values and keeps every error. The results can have different success and error types. Bare errors and trees work too, with `()` as their success slot.
+
 `er_add!(error, [a(), b()])` adds them below an existing top instead (returns the tree even if nothing failed).
 
 ## Constructors

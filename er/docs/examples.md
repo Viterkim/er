@@ -2,6 +2,8 @@
 
 All examples use `use er::*;`
 
+`#[derive(Er)]` implements `Error`, `Display`, `Debug` and helpers.
+
 ## Empty struct
 
 If the name and location are enough:
@@ -55,13 +57,19 @@ pub fn read_mode(input: Option<&str>) -> ErResult<&str, ModeErr> {
 
 ## Print report
 
+Your `pub fn main()` can return `Result<(), ErReport<AppErr>>`.
+
+In normal code you would usually want to log your report before converting your error to a user facing error.
+
 ```rust
 if let Err(error) = read_port("fakenumber") {
     eprintln!("{}", error.er_report());
 }
-```
 
-`main` can also just return `Result<(), ErReport<AppErr>>`.
+// You can also unwrap it (have to pick report/top)
+// Or you can use `.unwrap_report()` for short, and `.expect_report("bad port")`
+let port = read_port("85").er_report().unwrap();
+```
 
 ## Print top error
 
@@ -78,6 +86,16 @@ Missing: missing85
 ```
 
 `error.top` is still your type, just read its fields. `.er_top()` only chooses what gets printed.
+
+## Helpers / Constructors
+
+The `#[derive(Er)]` gives you `new()` and tuple convenience constructors on structs.
+
+`.er(())` for empty structs, `.er(|_| path)` for 1 field structs, and `.er(|_| (port, enabled))` for 2 or more fields.
+
+Enums need a variant specified like `.er(|| ModeErr::variant_name(arg1))`.
+
+You can still do `.er(|| MyTypeErr { a, b })` but the helpers take care of stuff like not having to call `.into()` or type the error name.
 
 ## Use stuff from the previous error
 
@@ -192,7 +210,7 @@ pub fn read_ports(inputs: &[&str]) -> ErResult<Vec<u16>, ReadPortErr> {
 
 Use `.er_collect_all(())` to keep going and collect every error instead. If anything failed, the collected values get dropped.
 
-## Collect / aggregate / er_all!
+## Collect / aggregate / er_all!()
 
 Can be different types of sub error types. Already have an error or tree? Put it in the list directly, no need to wrap it in `Err(...)`.
 
@@ -236,6 +254,25 @@ pub fn check_config(path: &Path, port: &str, enabled: &str) -> ErResult<(), Conf
     ])
 }
 ```
+
+## Collect / try / get the values / er_try!()
+
+If you need the values `er_try!` gives them back as a tuple when everything succeeds.
+
+```rust
+pub fn read_inputs(port: &str, enabled: &str) -> ErResult<(u16, bool), ChecksErr> {
+    let (port, enabled) = er_try!(
+        |_| (port, enabled),
+        [port.parse::<u16>(), enabled.parse::<bool>()],
+    )?;
+
+    Ok((port, enabled))
+}
+```
+
+It runs every result in order and if any fail it drops the successful values and returns one tree with every failure (the top error only gets made if something failed).
+
+For an iterator of the same type you can use `.er_collect_all()`.
 
 ## Add errors / er_add!()
 
@@ -368,7 +405,7 @@ Enable `serde` on Er, then add `serde_json` (or toml, or whatever).
 
 ```toml
 [dependencies]
-er = { version = "0.4", features = ["serde"] }
+er = { version = "0.5", features = ["serde"] }
 serde_json = "1"
 ```
 
@@ -446,14 +483,14 @@ fn main() {
 
 ## Tests
 
-Enable `test` on your dev deps:
+`test` is on by default. If you only use Er in tests, put the dependency here:
 
 ```toml
 [dev-dependencies]
-er = { version = "0.4", features = ["test"] }
+er = "0.5"
 ```
 
-Make the test return `ErTest` and use `.er(())?`.
+Make the test return `ErTest` and use `?`. Ordinary errors and Er trees get TestError on top with the location of the `?`, and keep the original errors below it.
 
 ```rust,ignore
 use er::*;
@@ -467,16 +504,18 @@ pub fn read_port(input: &str) -> ErResult<u16, ReadPortErr> {
 
 #[test]
 pub fn the_best_test() -> ErTest {
-    read_port("nope").er(())?;
+    read_port("nope")?;
     Ok(())
 }
 ```
 ```text
-Error: ErTest @ tests/the_best_test.rs:12:23
+Error: TestError @ tests/the_best_test.rs:12:5
 `- ReadPortErr @ tests/the_best_test.rs:7:19
    `- invalid digit found in string
 test the_best_test ... FAILED
 ```
+
+Make your test helper functions return other types since `?` would fall through without adding context.
 
 ## Other traits
 
@@ -505,6 +544,8 @@ pub fn request(input: &str) -> ErResult<u16, RequestErr> {
 ```
 
 [Wrap options and the trait impl](macros.md#wrap).
+
+If the foreign trait needs the Wrap itself to implement `Error`, use [std_error](macros.md#wrap-with-std_error) and `.er_wrap()` when adding context, so you can still find the errors inside.
 
 ## Opaque (edge case)
 

@@ -2,8 +2,8 @@
 
 Same bad port for every library. First the easy version, then one with the input added so we can actually see what went wrong.
 
-Links on this page: [thiserror](#thiserror-2020), [error-stack](#error-stack-080), [Er](#er-03), [Anyhow](#anyhow-10104), [SNAFU](#snafu-092), [rootcause](#rootcause-0130),
-[exn](#exn-031), [Eros](#eros-080-rc1), [Problemo](#problemo-0013), [Nightly std::error::Report](#nightly-stderrorreport), [Others](#others)
+Links on this page: [thiserror](#thiserror-2020), [error-stack](#error-stack-080), [Er](#er-04), [Anyhow](#anyhow-10104), [SNAFU](#snafu-092), [rootcause](#rootcause-0130),
+[exn](#exn-031), [Eros](#eros-080), [Problemo](#problemo-0013), [Nightly std::error::Report](#nightly-stderrorreport), [Others](#others)
 
 For the messy version with several errors and a public boundary, see the [tricky comparison](tricky-error-comparison.md).
 
@@ -399,7 +399,7 @@ println!("{error}");
 
 Now the return type requires `PortErr` as top, with the parser error kept as a sub error it can also use text context.
 
-`{}` prints the report (other crates would do the report on {:?}), it has attachments, sub reports, lookup and shared cloning too, actually many many features. [Report](https://docs.rs/rootcause/0.13.0/rootcause/struct.Report.html)
+Both `{}` and `{:?}` print the report, it has attachments, sub reports, lookup and shared cloning too aka many many features. [Report](https://docs.rs/rootcause/0.13.0/rootcause/struct.Report.html)
 
 It also has global hooks for creating and formatting reports. I'd rather put the data in a small error type than an attachment.
 
@@ -515,13 +515,13 @@ println!("{}", saved.er_report());
 
 There's `.single_line()` and `for_each_line()` for printing too, mostly because logging multiline errors can be [complete shit](extra/systemd.md).
 
-You don't HAVE to make an error type per function with Exn or Er. But i like distinct types because then the caller can't just `?` the error up unchanged. Er has a [`lazy` feature](lazy.md) if you don't want that.
+You don't HAVE to make an error type per function with Exn or Er. But i like distinct types because then the caller can't just `?` the error up unchanged.
 
-## Eros (0.8.0-rc.1)
+## Eros (0.8.0)
 
 ### Lazy
 
-No type to write, no error set to list unless you want one. [Docs](https://docs.rs/eros/0.8.0-rc.1/eros/)
+No type to write, no error set to list unless you want one. [Docs](https://docs.rs/eros/0.8.0/eros/)
 
 ```rust
 pub fn read_port(input: &str) -> eros::Result<u16> {
@@ -565,7 +565,7 @@ Backtrace (disabled):
 
 The caller sees `ParseIntError`, with context saved alongside it. You can erase the set or narrow it (which is cool and different to Er).
 
-There's an optional `context` attribute over the whole function. You can use the arguments but not body locals. For 'this exact command failed', add `.with_context()` at the call. [Attribute](https://docs.rs/eros/0.8.0-rc.1/eros/attr.context.html)
+There's an optional `context` attribute over the whole function. You can use the arguments but not body locals. For 'this exact command failed', add `.with_context()` at the call. [Attribute](https://docs.rs/eros/0.8.0/eros/attr.context.html)
 
 ### With typed context
 
@@ -628,7 +628,7 @@ fn file_port(path: &str) -> eros::Result<u16, FilePortErr> {
 }
 ```
 
-The union gives the caller the original errors, not necessarily the cases you want them to handle. If you want your own typed context, you still have to make and map those types. The [tricky example](tricky-error-comparison.md#eros-080-rc1--thiserror-1) does that at the public boundary.
+The union gives the caller the original errors, not necessarily the cases you want them to handle. If you want your own typed context, you still have to make and map those types. The [tricky example](tricky-error-comparison.md#eros-080--thiserror-1) does that at the public boundary.
 
 ## Problemo (0.0.13)
 

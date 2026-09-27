@@ -6,7 +6,7 @@ Design your error types around what your caller cares about, not what combinatio
 
 ```toml
 [dependencies]
-er = "0.4"
+er = "0.5"
 ```
 
 [Full examples / usage patterns](er/docs/examples.md)
@@ -16,6 +16,8 @@ er = "0.4"
 Use `.er()` on any result/error/option/tree, even on different types.
 
 `er` builds a tree/report and keeps the original typed error below. It also adds compile time file names/line numbers.
+
+`#[derive(Er)]` implements `Error`, `Display`, `Debug` and helpers.
 
 ```rust
 use er::*;
@@ -155,13 +157,11 @@ let port = input.parse::<u16>().change_context(PortErr)?;
 
 If you want bigger / more detailed comparisons for `thiserror, anyhow, snafu, error-stack, rootcause, exn, eros, problemo` or you are thinking "why not one of those?"
 
-Overview of a [minimal error example compared (basic usage, context, output)](er/docs/simple-error-comparison.md)
+[Simple comparison: basic usage, context and output](er/docs/simple-error-comparison.md)
 
-There's also a [huge tricky error comparison (foreign errors, own errors, the original error, string context, typed context, using / consuming, public boundary)](er/docs/tricky-error-comparison.md)
+[Tricky comparison: multiple errors, using their data and public boundaries](er/docs/tricky-error-comparison.md)
 
 ## Putting it all together
-
-Also check out the [full list of examples/patterns for 'er'](er/docs/examples.md)
 
 ```rust
 // -- First part --
@@ -214,17 +214,35 @@ ConfigErr { port: "nope", enabled: "nah" } @ src/main.rs:46:5
 `- provided string was not `true` or `false` @ src/main.rs:50:9
 ```
 
-## Motivations
+## Using 'er'
 
-### Convenience
+### Helpers / constructors
 
-`.er_with(|e|)` for interacting with the typed error below without accidentally destroying the tree (easy to accidentally do with `.map_err()`). `.er_with_tree(|t|)` for the whole tree.
+Structs: Use `.er(())` for empty structs, `.er(|_| path)` for 1 field structs, and `.er(|_| (port, enabled))` for 2 or more fields.
 
-`.er_find::<SomeErr>()` for the first match, and `.er_find_all::<SomeErr>()` for finding the original errors and suberrors below (also checks `.source()`).
+Enums: Needs a variant specified like `.er(|| ModeErr::variant_name(arg1))`.
 
-`wrap` for implementing foreign traits.
+You can also do `.er(|| MyTypeErr { a, b })` but the helpers take care of stuff like not having to call `.into()` or type the error name.
 
-### Philosophy
+### Don't use .map_err()
+
+Do NOT use `map_err`. It's easy to accidentally nuke the tree/report. It should only ever be used at the final boundary when you are 'done' with your tree/report.
+
+Always use `.er()` and `.er_with(|e|)` when you need to interact with the previous type.
+
+### Picking between `Report` and `Top` (or unwrapping)
+
+To avoid Debug/Display implicitly meaning either a report or the top error, you need to specify which you want with `.er_report()` or `.er_top()`. But... if you really miss unwrapping there's `.unwrap_report()` or `.expect_report("message")`.
+
+For main you can write: `pub fn main() -> Result<(), ErReport<AppErr>>`, and for tests you can use `pub fn test_name() -> ErTest` and `?` errors without `.er()`. 
+
+### Give your public consumer a non 'er' error
+
+When you (as a library) want to give your consumer an error, don't give them an `ErReport` or an `ErTree`, give them a boring normal error (with `#[derive(Er)]`).
+
+Decide if you want to `error!("{report}")` before mapping your type (saying goodbye to it with `.map_err()`). But look at the [public error example](er/docs/examples.md#public-error)
+
+## Philosophy
 
 The distinction should not be app/lib error handling, it should be public consumer/internal consumer based, and `er` does both.
 
@@ -232,7 +250,7 @@ Worse errors/types lead to worse logic/flow because error states get grouped int
 
 The original inner error should not dictate your error type design or be given to your final consumer directly.
 
-Easy creation of public errors for consumers who don't have/want `er`.
+It's not the user's fault when mistakes happen. There should be convenience and helpers to avoid footguns if possible (`.er_with(|e|)`, `.er_find::<SomeErr>()`, `wrap`, `ErTree` not having `Debug` / `Display` etc).
 
 ## Docs
 

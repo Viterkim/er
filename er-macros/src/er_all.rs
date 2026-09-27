@@ -42,16 +42,16 @@ pub fn expand(
             ({
                 use #er_all_item as #trait_alias;
                 #call_alias::er_all_item
-            })(#result)
+            })(#result).map(::core::mem::drop)
         }
     });
     quote!([#(#items),*])
 }
 
-fn expression_span(result: &TokenTree) -> Span {
+pub fn expression_span(result: &TokenTree) -> Span {
     match result {
         TokenTree::Group(group) if group.delimiter() == Delimiter::None => {
-            // macro_rules! gives us a group whose span points at er_all!.
+            // macro_rules! gives us a group whose span points at the macro invocation.
             group
                 .stream()
                 .into_iter()

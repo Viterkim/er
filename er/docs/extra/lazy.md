@@ -1,21 +1,16 @@
 # Lazy
 
-I don't recommend this for normal app code, or really anything. Read the [README](../../README.md) and the [examples](examples.md) first. This is for small scripts or prototyping, i really believe adding small types with the macros is easy, so this should not be needed.
+I don't recommend this for normal code. Read the [README](../../../README.md) and the [examples](../examples.md) first.
 
-For tests, use the [`test` feature](examples.md#tests), not this:
+This is for small scripts or prototyping, but even then it's easy to add types, so this is not needed.
 
-```toml
-[dev-dependencies]
-er = { version = "0.4", features = ["test"] }
-```
-
-Then your tests can return `ErTest` and use `.er(())?`.
+For tests, use [`ErTest`](../examples.md#tests)
 
 ## Using it
 
 ```toml
 [dependencies]
-er = { version = "0.4", features = ["lazy"] }
+er = { version = "0.5", features = ["lazy"] }
 ```
 
 ## Examples
