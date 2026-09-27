@@ -10,6 +10,8 @@ pub fn read_port(input: &str) -> ErResult<u16, Error> {
 #[test]
 pub fn without_derives() {
     assert_eq!(read_port("85").er_report().unwrap(), 85);
+    assert_eq!(read_port("85").unwrap_report(), 85);
+    assert_eq!(read_port("85").expect_report("bad port"), 85);
 
     let results = [Err::<(), _>(Error::other("mode"))];
     let error: ErTree<Error> = aggregate::collect(|| Error::other("config"), results).unwrap_err();
@@ -39,6 +41,18 @@ pub fn without_derives() {
     let error = Error::other("source").er::<Error>(|| Error::other("context"));
     assert_eq!(error.top.to_string(), "context");
     assert_eq!(error.nodes[0].error.to_string(), "source");
+}
+
+#[test]
+#[should_panic(expected = "invalid digit found in string")]
+pub fn unwrap_report() {
+    read_port("fakenumber").unwrap_report();
+}
+
+#[test]
+#[should_panic(expected = "bad port: port")]
+pub fn expect_report() {
+    read_port("fakenumber").expect_report("bad port");
 }
 
 #[test]
@@ -98,8 +112,10 @@ pub fn manual_wrap() {
 #[cfg(feature = "test")]
 #[test]
 pub fn test_helpers() -> ErTest {
-    let port = read_port("85").er(())?;
+    let port = read_port("85")?;
     assert_eq!(port, 85);
+    assert_eq!("85".parse::<u16>()?, port);
+    assert_eq!(Some(port).ok_or("expected a port")?, port);
 
     Ok(())
 }

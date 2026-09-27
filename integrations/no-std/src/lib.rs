@@ -58,6 +58,13 @@ pub mod tests {
         let errors = er_add!(errors, [core::fmt::Error, "bad".parse::<u16>()]);
         assert_eq!(errors.nodes.len(), 4);
 
+        let values = er_try!(
+            || FirmwareErr::new(Device::new(85, Secret)),
+            ["85".parse::<u8>(), "true".parse::<bool>()],
+        )
+        .unwrap_report();
+        assert_eq!(values, (85, true));
+
         #[cfg(target_has_atomic = "ptr")]
         {
             let shared = shared_diagnostic();

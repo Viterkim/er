@@ -4,19 +4,15 @@ The crate is `no_std` but requires `alloc`. `stack_traces` needs `std`.
 
 ## default features
 
-`macros, src_locations`
+`macros, src_locations, test`
 
 ## non-default features
 
 `small_path_src, serde, lazy, stack_traces`
 
-## non-default dev/testing feature
-
-`test`
-
 ## macros
 
-Convenience macros like `#[derive(Er)]`, `#[derive(ErFormat)]`, `er_all!`, `er_add!` and `er_bail!`.
+Convenience macros like `#[derive(Er)]`, `#[derive(ErFormat)]`, `er_all!`, `er_try!`, `er_add!` and `er_bail!`.
 
 ## src_locations
 
@@ -38,7 +34,7 @@ Er does NOT turn it into JSON for you. You pick a format crate in your own app `
 
 ```toml
 [dependencies]
-er = { version = "0.4", features = ["serde"] }
+er = { version = "0.5", features = ["serde"] }
 serde_json = "1"
 ```
 
@@ -57,15 +53,15 @@ If one side compiled `src_locations` out, the JSON just has no `src_location`. A
 
 ## lazy, off by default
 
-For small scripts or prototyping, i don't think you should use this [Examples](lazy.md).
+For small scripts or prototyping, i don't think you should use this [Examples](./extra/lazy.md).
 
 ## stack_traces, off by default
 
 Needs `std`. [Capturing and printing traces](examples.md#stack-traces).
 
-## test, for dev dependencies, off by default
+## test
 
-`ErTest` and `.er(())?` for tests.
+`ErTest` lets tests use `?` to keep the original error and add the location, just return `-> ErTest`.
 
 ## Extras
 
@@ -75,13 +71,10 @@ Needs `std`. [Capturing and printing traces](examples.md#stack-traces).
 
 ```toml
 [dependencies]
-er = { version = "0.4", features = ["small_path_src"] }
-
-[dev-dependencies]
-er = { version = "0.4", features = ["test"] }
+er = { version = "0.5", features = ["small_path_src"] }
 ```
 
 ```toml
 [dependencies]
-er = { version = "0.4", default-features = false, features = ["src_locations"] }
+er = { version = "0.5", default-features = false, features = ["src_locations"] }
 ```

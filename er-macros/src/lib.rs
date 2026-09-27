@@ -2,6 +2,7 @@
 #![doc = include_str!("../README.md")]
 
 mod er_all;
+mod er_try;
 mod fields;
 mod format;
 mod generate;
@@ -20,6 +21,13 @@ use syn::{DeriveInput, parse_macro_input};
 pub fn __er_all_results(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as er_all::Input);
     er_all::expand(input).into()
+}
+
+#[proc_macro]
+#[doc(hidden)]
+pub fn __er_try_results(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as er_try::Input);
+    er_try::expand(input).into()
 }
 
 #[proc_macro_derive(Er, attributes(er))]

@@ -110,19 +110,20 @@ impl<T, Mode> ErContextExt<Mode> for Option<T> {
 
 #[cfg(feature = "macros")]
 impl<T, E: IntoErPart> ErAllItem<ErAllResult> for Result<T, E> {
+    type Ok = T;
+
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_all_item(self) -> Result<(), ErPart> {
+    fn er_all_item(self) -> Result<T, ErPart> {
         match self {
-            Ok(value) => {
-                drop(value);
-                Ok(())
-            }
+            Ok(value) => Ok(value),
             Err(error) => Err(error.into_er_part()),
         }
     }
 }
 #[cfg(feature = "macros")]
 impl<E: IntoErPart> ErAllItem<ErAllError> for E {
+    type Ok = ();
+
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er_all_item(self) -> Result<(), ErPart> {
         Err(self.into_er_part())

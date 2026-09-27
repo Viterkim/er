@@ -146,6 +146,16 @@ pub fn no_failures() -> Result<(), ErReport<Batch>> {
     er_all!(parent, successes).er_report()?;
     er_all!(parent, []).er_report()?;
 
+    let value = std::cell::RefCell::new(0);
+    er_all!(
+        parent,
+        [Ok::<_, Item>(value.borrow_mut()), {
+            *value.borrow_mut() = 7;
+            Ok::<_, Item>(())
+        },]
+    )
+    .er_report()?;
+    assert_eq!(*value.borrow(), 7);
     assert_eq!(parents.get(), 0);
 
     Ok(())
@@ -338,5 +348,128 @@ pub fn collect_all() {
     {
         assert_eq!(tree.stack_traces[0].error_index, ErErrorIndex(1));
         assert_eq!(tree.stack_traces[1].error_index, ErErrorIndex(3));
+    }
+}
+
+#[test]
+pub fn try_values() -> Result<(), ErReport<Batch>> {
+    let parents = Cell::new(0);
+    let text = String::from("borrowed");
+    let owned = String::from("owned");
+    let (owned, borrowed, number) = er_try!(
+        {
+            parents.set(parents.get() + 1);
+            || Batch
+        },
+        [
+            Ok::<_, Item>(owned),
+            Ok::<_, io::Error>(&text),
+            "85".parse::<u16>()
+        ],
+    )?;
+    assert_eq!(owned, "owned");
+    assert!(std::ptr::eq(borrowed, &text));
+    assert_eq!(number, 85);
+    assert_eq!(parents.get(), 0);
+
+    let (number,) = er_try!((), [Ok::<_, Item>(7)])?;
+    assert_eq!(number, 7);
+    er_try!((), [])?;
+    Ok(())
+}
+
+#[test]
+pub fn try_results() {
+    struct Value<'a>(&'a Cell<usize>);
+    impl Drop for Value<'_> {
+        fn drop(&mut self) {
+            self.0.set(self.0.get() + 1);
+        }
+    }
+
+    for failures in 0u32..4 {
+        let drops = Cell::new(0);
+        let calls = Cell::new(0);
+        let parents = Cell::new(0);
+        let result = er_try!(
+            || {
+                parents.set(parents.get() + 1);
+                Batch
+            },
+            [
+                {
+                    assert_eq!(calls.replace(1), 0);
+                    if failures & 1 == 0 {
+                        Ok(Value(&drops))
+                    } else {
+                        Err(Item(1))
+                    }
+                },
+                {
+                    assert_eq!(calls.replace(2), 1);
+                    assert_eq!(drops.get(), 0);
+                    if failures & 2 == 0 {
+                        Ok((Value(&drops), true))
+                    } else {
+                        Err(io::Error::other("failed"))
+                    }
+                },
+            ],
+        );
+        assert_eq!(calls.get(), 2);
+        match result {
+            Ok(values) => {
+                assert_eq!(failures, 0);
+                assert_eq!(parents.get(), 0);
+                assert_eq!(drops.get(), 0);
+                drop(values);
+            }
+            Err(tree) => {
+                assert_ne!(failures, 0);
+                assert_eq!(parents.get(), 1);
+                assert_eq!(tree.nodes.len(), failures.count_ones() as usize);
+                assert_eq!(tree.er_contains::<Item>(), failures & 1 != 0);
+                assert_eq!(tree.er_contains::<io::Error>(), failures & 2 != 0);
+            }
+        }
+        assert_eq!(drops.get(), 2 - failures.count_ones() as usize);
+    }
+}
+
+#[test]
+pub fn try_tree() {
+    let child = ErTree::new(Item(1), [Item(2)]);
+    #[cfg(feature = "stack_traces")]
+    let child = child.er_trace();
+    #[cfg(feature = "src_locations")]
+    let location = child.src_location;
+    let original = child.nodes[0].error.downcast_ref::<Item>().unwrap() as *const Item;
+    let _line = line!() + 1;
+    let result: ErResult<((), String, (), bool), Item> = er_try!(
+        |_| 9u8,
+        [
+            child.into_er_report(),
+            Ok::<_, Item>(String::from("discarded")),
+            io::Error::other("disk"),
+            Err::<bool, _>(Item(3)),
+        ],
+    );
+    let tree = result.unwrap_err();
+    assert_eq!(tree.top.0, 9);
+    assert_eq!(tree.nodes.len(), 3);
+    assert!(std::ptr::eq(
+        original,
+        tree.nodes[0].nodes[0].error.downcast_ref::<Item>().unwrap()
+    ));
+    #[cfg(feature = "src_locations")]
+    {
+        assert_eq!(tree.src_location.line(), _line);
+        assert_eq!(tree.nodes[0].src_location, location);
+        assert_eq!(tree.nodes[1].src_location.line(), _line + 5);
+    }
+    #[cfg(feature = "stack_traces")]
+    {
+        assert_eq!(tree.stack_traces.len(), 1);
+        assert_eq!(tree.stack_traces[0].error_index, ErErrorIndex(1));
     }
 }

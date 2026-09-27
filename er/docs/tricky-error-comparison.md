@@ -16,7 +16,7 @@ This is a made up `listen()` case to hit the pain points of different error libr
 
 [error-stack](#error-stack-080--thiserror-1)
 
-[Er](#er-030-1)
+[Er](#er-040-1)
 
 [thiserror, lazy style](#thiserror-lazy-style-2020-1)
 
@@ -28,7 +28,7 @@ This is a made up `listen()` case to hit the pain points of different error libr
 
 [exn](#exn-031--thiserror-1)
 
-[Eros](#eros-080-rc1--thiserror-1)
+[Eros](#eros-080--thiserror-1)
 
 [Problemo](#problemo-0013-1)
 
@@ -76,7 +76,7 @@ We get a typed current error with the old error kept underneath. Reading `kind()
 
 Exn has a typed top error and a tree underneath. It keeps the old errors, but there's no built-in type search. Native sources get copied into frames as text, so searching those frames misses the actual io error. Reading `kind()` at bind needs `map_err`. I still think exn is very close to great, which is why i made Er.
 
-### Eros (0.8.0-rc.1) (+ thiserror)
+### Eros (0.8.0) (+ thiserror)
 
 Eros gives us a union of the original error types, which is nice if those types are what the caller wants. Here bad IP and bad port still differ, and the ports sit in separate context. You can map them into our own cases, but then you have to make those types and map them yourself.
 
@@ -743,7 +743,7 @@ fn main() {
 
 Similar to error-stack and rootcause.
 
-## Eros (0.8.0-rc.1) (+ thiserror)
+## Eros (0.8.0) (+ thiserror)
 
 Eros keeps the errors in a union and puts the extra information in context.
 
@@ -1128,7 +1128,7 @@ pub fn public_error_example(input: &str) -> Result<TcpListener, ListenError> {
 
 ## Eros
 
-Eros's [public API guide](https://docs.rs/eros/0.8.0-rc.1/eros/#public-apis) suggests returning the union too, especially between internal crates. Then the caller has to use Eros to handle it. Here we want to give them a plain error, so we convert it:
+Eros's [public API guide](https://docs.rs/eros/0.8.0/eros/#public-apis) shows both returning the union, especially between internal crates, and converting it into a plain error. Returning the union makes the caller use Eros to handle it. Here we want to give them a plain error with our cases and fields, so we convert it:
 
 ```rust
 pub fn public_error_example(input: &str) -> Result<TcpListener, ApiError> {
