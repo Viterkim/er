@@ -213,30 +213,7 @@ ConfigErr { port: "nope", enabled: "nah" } @ src/main.rs:46:5
 
 ## Using 'er'
 
-Please check out the full [examples / patterns docs](er/docs/examples.md) which show most patterns you can use with 'er' (but below are some important notes).
-
-### Making errors
-
-Most functions that deal with errors, should have their own error type.
-
-```rust
-// Just put your error type directly above your function.
-#[derive(Er)]
-pub struct MyFuncErr;
-
-pub fn my_func() -> ErResult<(), MyFuncErr> {
-  something_else().er(())?;
-  // more real code
-}
-```
-
-This forces you to re add context with `.er()` (otherwise you can just '?' the same error up all the way).
-
-Your errors should not be giant pyramids, they should be local to the things you are doing, related to what your consumer cares about and not which errors you got (the original errors are always stored automatically in the tree below).
-
-Think about what your caller wants to 'match on', or what is relevant for the flow/logic of your code.
-
-You can carry data up instead of runtime searching(`.er_find()`) by using `.er_with(|e|)` to inspect the previous error. You can also use `ErShared<DataType>` on your fields in your error types to avoid cloning the value.
+Check out the full [examples / patterns docs](er/docs/examples.md) which show most patterns you can use (but below are some important ideas).
 
 ### Helpers / constructors
 
@@ -245,6 +222,46 @@ Structs: Use `.er(())` for empty structs, `.er(|_| path)` for 1 field structs, a
 Enums: Need a variant specified like `.er(|| ModeErr::variant_name(arg1))`.
 
 Just use the helpers then the type is inferred, but you can also manually write out `.er(|| MyTypeErr { a, b })`. The helpers take care of stuff like not having to call `.into()` or type the error name, which is why you should just do `.er(())?` instead of `.er(|| MyGoodError)?`.
+
+### Making errors
+
+Most functions that deal with errors should have their own error type.
+
+```rust
+// Put your error type directly above your function.
+// You don't have to do '#[er(format)]' and you don't have to 'hide' what's going on. In many cases, errors are for internal use.
+#[derive(Er)]
+pub struct MyFuncErr;
+
+pub fn my_func() -> ErResult<(), MyFuncErr> {
+    something_else().er(())?;
+    // more real code
+}
+
+// Context which is relevant in your logs / to your consumer
+#[derive(Er)]
+pub struct MyOtherErr {
+    pub path: PathBuf, // What file didn't exist
+    // Include messages in the type itself, don't use `#[er(format)]` for that
+    pub msg: &'static str, // Bonus: even if it was an Option<>, Some(v)/.into() wouldn't be needed
+}
+
+pub fn other_func(path: &str) -> ErResult<(), MyOtherErr> {
+    // Usually pass values directly, no .as_ref()/.as_str(), and Option<T> takes T without Some().
+    if path.is_empty() {
+        er_bail!(MyOtherErr::new(path, "no file given"));
+    }
+    my_func().er(|_| (path, "some cool msg"))
+}
+```
+
+This forces you to re add context with `.er()` (otherwise you can just '?' the same error up all the way).
+
+Your errors should not be giant pyramids, they should be local to the things you are doing, related to what your consumer cares about and not which errors you got (the original errors are always stored automatically in the tree below).
+
+Think about what your caller wants to 'match on', or what is relevant for the flow/logic of your code. Don't make state that can't exist and instead make variants with exactly why/what happened so the consumer can print it or react on it.
+
+You can carry data up instead of runtime searching(`.er_find()`) by using `.er_with(|err|)` to inspect the previous error. You can also use `ErShared<DataType>` on your fields in your error types to avoid cloning the value.
 
 ### Don't use .map_err()
 
@@ -262,6 +279,8 @@ When you (as a library) want to give your consumer an error, don't give them an 
 
 Decide if you want to `error!("{report}")` before mapping your type (saying goodbye to it with `.map_err()`). But look at the [public error example](er/docs/examples.md#public-error)
 
+You should still print / show your error in your applications of course, and I'll even argue that as a library, if you at least give a string report to your consumer, you're gonna have great bug reports from users and a much easier time fixing bugs. Printing a report is often times more valuable than a friendly message you made up. Don't destroy your type. Include the message in the type itself next to the other data instead.
+
 ## Philosophy
 
 The distinction should not be app/lib error handling, it should be public consumer/internal consumer based, and `er` does both.
@@ -270,7 +289,7 @@ Worse errors/types lead to worse logic/flow because error states get grouped int
 
 The original inner error should not dictate your error type design or be given to your final consumer directly.
 
-It's not the user's fault when mistakes happen. There should be convenience and helpers to avoid footguns if possible (`.er_with(|e|)`, `.er_find::<SomeErr>()`, `ErTree` not having `Debug` / `Display`).
+It's not the user's fault when mistakes happen. There should be convenience and helpers to avoid footguns if possible (`.er_with(|err|)`, `.er_find::<SomeErr>()`, `ErTree` not having `Debug` / `Display`).
 
 ## Docs
 
@@ -284,7 +303,7 @@ It's not the user's fault when mistakes happen. There should be convenience and 
 
 [Macros](er/docs/macros.md)
 
-[Github Repo](https://github.com/Viterkim/er)
+[GitHub Repo](https://github.com/Viterkim/er)
 
 ### External links
 

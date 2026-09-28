@@ -22,11 +22,11 @@ impl<E: Error + 'static> ErTree<E> {
     }
 
     /// Add your error on the top, move everything else below it.
-    /// |e| is the typed top error.
+    /// |err| is the typed top error.
     /// Use this when the new error needs something from the old one.
     /// Otherwise use `.er()`.
     ///
-    /// `let error = error.er_with(|e| AnalyzeErr::new(e.code));`
+    /// `let error = error.er_with(|err| AnalyzeErr::new(err.code));`
     #[cfg_attr(feature = "src_locations", track_caller)]
     pub fn er_with<A>(self, top: impl FnOnce(&E) -> A) -> ErTree<A>
     where

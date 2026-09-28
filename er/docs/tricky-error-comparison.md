@@ -424,9 +424,9 @@ pub fn listen(input: &str) -> ErResult<TcpListener, ListenErr> {
 
     // Fourth error, we might want to match on what happened
     let address = SocketAddrV4::new(ip, port);
-    TcpListener::bind(address).er_with(|e| {
+    TcpListener::bind(address).er_with(|err| {
         let available_ports = find_available_ports(address);
-        ListenErr::bind_failed(address, e.kind(), available_ports)
+        ListenErr::bind_failed(address, err.kind(), available_ports)
     })
 }
 
@@ -1122,7 +1122,7 @@ We already made `ListenErr` with the cases and fields we want to give them. We c
 pub type ListenError = ListenErr;
 
 pub fn public_error_example(input: &str) -> Result<TcpListener, ListenError> {
-    listen(input).map_err(|error| error.top)
+    listen(input).map_err(|err| err.top)
 }
 ```
 
@@ -1132,11 +1132,11 @@ Eros's [public API guide](https://docs.rs/eros/0.8.0/eros/#public-apis) shows bo
 
 ```rust
 pub fn public_error_example(input: &str) -> Result<TcpListener, ApiError> {
-    listen(input).map_err(|error| {
-        let context = error.latest_context_error()
+    listen(input).map_err(|err| {
+        let context = err.latest_context_error()
             .and_then(|e| e.as_any().downcast_ref::<BindContext>());
 
-        match error.as_enum() {
+        match err.as_enum() {
             // We still have input as this function's argument, not from the union.
             E4::A(_) | E4::B(_) => ApiError::InvalidInput { input: input.to_owned() },
             E4::C(_) => ApiError::SacredPort,
@@ -1166,7 +1166,7 @@ The context is text now, so there aren't typed stuff to get out, can still give 
 
 ```rust
 pub fn public_error_example(input: &str) -> Result<TcpListener, ApiError> {
-    listen(input).map_err(|error| ApiError::Other(format!("{error:#}")))
+    listen(input).map_err(|err| ApiError::Other(format!("{err:#}")))
 }
 ```
 
@@ -1208,7 +1208,7 @@ Like error-stack, change the earlier derive to `#[derive(Debug, Clone, thiserror
 pub type ListenError = ListenErr;
 
 pub fn public_error_example(input: &str) -> Result<TcpListener, ListenError> {
-    listen(input).map_err(|error| (*error).clone())
+    listen(input).map_err(|err| (*err).clone())
 }
 ```
 
