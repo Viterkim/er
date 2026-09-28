@@ -1,3 +1,7 @@
+# 0.5.2
+
+Make docs more explicit++ (after feedback).
+
 # 0.5.1
 
 Make docs more explicit.
