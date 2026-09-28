@@ -236,6 +236,8 @@ Your errors should not be giant pyramids, they should be local to the things you
 
 Think about what your caller wants to 'match on', or what is relevant for the flow/logic of your code.
 
+You can carry data up instead of runtime searching(`.er_find()`) by using `.er_with(|e|)` to inspect the previous error. You can also use `ErShared<DataType>` on your fields in your error types to avoid cloning the value.
+
 ### Helpers / constructors
 
 Structs: Use `.er(())` for empty structs, `.er(|_| path)` for 1 field structs, and `.er(|_| (port, enabled))` for 2 or more fields.
