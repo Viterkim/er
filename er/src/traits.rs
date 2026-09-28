@@ -43,16 +43,16 @@ pub trait ErErrorContextExt<Mode>: Into<BoxError> + Sized {
 /// Build context using the old error.
 pub trait ErErrorExt: Into<BoxError> + Sized {
     /// Add your error on the top, move everything else below it.
-    /// |e| is the old error.
+    /// |err| is the old error.
     /// Use this when the new error needs something from the old one.
     ///
-    /// `er_bail!(device.er_with(|e| AnalyzeErr::new(e.code)));`
+    /// `er_bail!(device.er_with(|err| AnalyzeErr::new(err.code)));`
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_with<A>(self, error: impl FnOnce(&Self) -> A) -> ErTree<A>
+    fn er_with<A>(self, f: impl FnOnce(&Self) -> A) -> ErTree<A>
     where
         A: Error + 'static,
     {
-        let top = error(&self);
+        let top = f(&self);
         ErTree::new(top, [self])
     }
 }
@@ -91,28 +91,28 @@ pub trait ErResultExt {
 
     /// Add your error on the top, move everything else below it.
     /// Only happens on failures.
-    /// If the Err is already an Er tree, |e| is its typed top error.
+    /// If the Err is already an Er tree, |err| is its typed top error.
     /// Use this when the new error needs something from the old one.
     /// Otherwise use `.er()`.
     ///
-    /// `result.er_with(|e| AnalyzeErr::new(e.code))?;`
+    /// `result.er_with(|err| AnalyzeErr::new(err.code))?;`
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er_with<A>(
         self,
-        error: impl FnOnce(&<Self::Err as IntoErPart>::Error) -> A,
+        f: impl FnOnce(&<Self::Err as IntoErPart>::Error) -> A,
     ) -> ErResult<Self::Ok, A>
     where
         Self: Sized,
         A: Error + 'static,
         Self::Err: IntoErPart,
     {
-        self.er_with_tree(|source| error(IntoErPart::er_error(source)))
+        self.er_with_tree(|err| f(IntoErPart::er_error(err)))
     }
 
     /// Like `.er_with()`, but with tree.
     /// On an ErResult, |t| is the tree, so you can search its children too.
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_with_tree<A>(self, error: impl FnOnce(&Self::Err) -> A) -> ErResult<Self::Ok, A>
+    fn er_with_tree<A>(self, f: impl FnOnce(&Self::Err) -> A) -> ErResult<Self::Ok, A>
     where
         A: Error + 'static,
         Self::Err: IntoErPart;
@@ -127,7 +127,7 @@ pub trait ErResultExt {
     /// device_status().er_val(DeviceErr::new)?;
     /// ```
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_val<A, F>(self, error: F) -> ErResult<Self::Ok, A>
+    fn er_val<A, F>(self, f: F) -> ErResult<Self::Ok, A>
     where
         A: Error + 'static,
         F: FnOnce(Self::Err) -> A;

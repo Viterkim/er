@@ -10,10 +10,11 @@ Structs: Use `.er(())` for empty structs, `.er(|_| path)` for 1 field structs, a
 
 Enums: Need a variant specified like `.er(|| ModeErr::variant_name(arg1))`.
 
-Most functions that deal with errors, should have their own error type.
+Most functions that deal with errors should have their own error type.
 
 ```rust
-// Just put your error type directly above your function.
+// Put your error type directly above your function.
+// You don't have to do '#[er(format)]' and you don't have to 'hide' what's going on. In many cases, errors are for internal use.
 #[derive(Er)]
 pub struct MyFuncErr;
 
@@ -21,15 +22,28 @@ pub fn my_func() -> ErResult<(), MyFuncErr> {
   something_else().er(())?;
   // more real code
 }
-```
 
-This forces you to re add context with `.er()` (otherwise you can just '?' the same error up all the way).
+// Context which is relevant in your logs / to your consumer
+#[derive(Er)]
+pub struct MyOtherErr {
+  pub path: PathBuf, // What file didn't exist
+  pub msg: &'static str, // Bonus: even if it was an Option<>, Some(v)/.into() wouldn't be needed
+}
+
+pub fn other_func(path: &str) -> ErResult<(), MyOtherErr> {
+  // Usually pass values directly, no .as_ref()/.as_str()
+  if path.is_empty() {
+    er_bail!(MyOtherErr::new(path, "no file given"));
+  }
+  my_func().er(|_| (path, "some cool msg"))
+}
+```
 
 Your errors should not be giant pyramids, they should be local to the things you are doing, related to what your consumer cares about and not which errors you got (the original errors are always stored automatically in the tree below).
 
-Think about what your caller wants to 'match on', or what is relevant for the flow/logic of your code.
+Think about what your caller wants to 'match on', or what is relevant for the flow/logic of your code. Don't make state that can't exist and instead make variants with exactly why/what happened so the consumer can print it or react on it.
 
-You can carry data up instead of runtime searching(`.er_find()`) by using `.er_with(|e|)` to inspect the previous error. You can also use `ErShared<DataType>` on your fields in your error types to avoid cloning the value.
+You can carry data up instead of runtime searching(`.er_find()`) by using `.er_with(|err|)` to inspect the previous error. You can also use `ErShared<DataType>` on your fields in your error types to avoid cloning the value.
 
 ## Empty struct
 
@@ -143,7 +157,7 @@ pub struct AnalyzeErr {
 
 pub fn analyze() -> ErResult<(), AnalyzeErr> {
     // read_device returns ErResult<_, DeviceErr>
-    read_device().er_with(|e| AnalyzeErr::new(e.code))?;
+    read_device().er_with(|err| AnalyzeErr::new(err.code))?;
     Ok(())
 }
 ```
@@ -153,7 +167,7 @@ pub fn analyze() -> ErResult<(), AnalyzeErr> {
 Raw errors take the same `.er(())`, `.er(|_| fields)` and `.er(|| MyErr::new(...))` forms too. If you need something from that error, use `.er_with()`:
 
 ```rust
-er_bail!(device.er_with(|e| AnalyzeErr::new(e.code)));
+er_bail!(device.er_with(|err| AnalyzeErr::new(err.code)));
 ```
 
 The convenience with `|_|` for struct errs does not work with `er_with(|old|)`.
@@ -347,7 +361,7 @@ if let Err(error) = read_file(Path::new("missing85")) {
 
 ## Public error
 
-The consumer doesn't need Er. `#[derive(Er)]` also makes a normal Rust error. `.er()` is the part that makes a tree.
+When you (as a library) want to give your consumer an error, don't give them an `ErReport` or an `ErTree`, give them a boring normal error (with `#[derive(Er)]`).
 
 ```rust
 #[derive(Er)]
@@ -365,7 +379,7 @@ match error {
 }
 ```
 
-Or you want to keep the report as text too.
+Decide if you want to `error!("{report}")` before mapping your type (saying goodbye to it with `.map_err()`).
 
 ```rust
 #[derive(Er)]
@@ -377,8 +391,8 @@ pub struct ApiError {
 pub fn public_read_port(input: &str) -> Result<u16, ApiError> {
     // Remember to avoid using `.map_err()` in Er for most cases.
     // We're turning the tree into text (it gets dropped), so its what we actually want here.
-    read_port(input).map_err(|error| ApiError {
-        report: error.er_report().to_string(),
+    read_port(input).map_err(|err| ApiError {
+        report: err.er_report().to_string(),
         err_msg: "invalid port".to_string(),
     })
 }
@@ -389,6 +403,8 @@ if let Err(error) = public_read_port("fakenumber") {
     println!("{}", error.err_msg);
 }
 ```
+
+You should still print / show your error in your applications of course, and I'll even argue that as a library, if you at least give a string report to your consumer, you're gonna have great bug reports from users and a much easier time fixing bugs. Printing a report is often times more valuable than a friendly message you made up. Don't destroy your type. Include the message in the type itself next to the other data instead.
 
 ## Non errors (values)
 
@@ -468,9 +484,9 @@ pub fn listen(input: &str) -> ErResult<TcpListener, ListenErr> {
 
     // Fourth error, we might want to match on what happened
     let address = SocketAddrV4::new(ip, port);
-    TcpListener::bind(address).er_with(|e| {
+    TcpListener::bind(address).er_with(|err| {
         let available_ports = find_available_ports(address);
-        ListenErr::bind_failed(address, e.kind(), available_ports)
+        ListenErr::bind_failed(address, err.kind(), available_ports)
     })
 }
 
@@ -479,7 +495,7 @@ pub fn listen(input: &str) -> ErResult<TcpListener, ListenErr> {
 pub type ListenError = ListenErr;
 
 pub fn public_error_example(input: &str) -> Result<TcpListener, ListenError> {
-    listen(input).map_err(|error| error.top)
+    listen(input).map_err(|err| err.top)
 }
 
 // Using it ourselves (still with Er)

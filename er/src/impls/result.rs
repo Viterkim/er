@@ -28,7 +28,7 @@ impl<T, E> ErResultExt for Result<T, E> {
     type Err = E;
 
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_with_tree<A>(self, error: impl FnOnce(&E) -> A) -> ErResult<T, A>
+    fn er_with_tree<A>(self, f: impl FnOnce(&E) -> A) -> ErResult<T, A>
     where
         A: Error + 'static,
         E: IntoErPart,
@@ -36,14 +36,14 @@ impl<T, E> ErResultExt for Result<T, E> {
         match self {
             Ok(value) => Ok(value),
             Err(source) => {
-                let tree = ErTree::from(error(&source));
+                let tree = ErTree::from(f(&source));
                 Err(tree.er_add([source]))
             }
         }
     }
 
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_val<A, F>(self, error: F) -> ErResult<T, A>
+    fn er_val<A, F>(self, f: F) -> ErResult<T, A>
     where
         A: Error + 'static,
         F: FnOnce(E) -> A,
@@ -51,7 +51,7 @@ impl<T, E> ErResultExt for Result<T, E> {
         match self {
             Ok(value) => Ok(value),
             Err(failure) => {
-                let error = error(failure);
+                let error = f(failure);
                 Err(ErTree::from(error))
             }
         }

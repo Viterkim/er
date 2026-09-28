@@ -1,3 +1,7 @@
+# 0.5.2
+
+Make docs more explicit++ (after feedback).
+
 # 0.5.1
 
 Make docs more explicit.
@@ -20,7 +24,7 @@ New `.er_add([error])` instead of `with_part` and `push_part`.
 
 `er_add!(tree, [first, second])` added (mixed types and results behind the `macros` feature).
 
-`.er_with(|e|)` now gets the 'top' error instead of the tree. So `e.top.path` is now `e.path` (If you need the old one, you can use `.er_with_tree(|t|)`).
+`.er_with(|err|)` now gets the 'top' error instead of the tree. So `err.top.path` is now `err.path` (If you need the old one, you can use `.er_with_tree(|t|)`).
 
 Add `ErShared<T>` for sharing data between errors by passing `&old.field` (used with `.er_with(|old|)`).
 
@@ -80,7 +84,7 @@ Readme and docs changes.
 
 Optional serde for snapshots.
 
-Add `.er_with(|t|)` / `.er_with(|e|)` to copy fields off the previous error, without `map_err` accidentally destroying the tree.
+Add `.er_with(|t|)` / `.er_with(|err|)` to copy fields off the previous error, without `map_err` accidentally destroying the tree.
 
 # 0.1.2
 

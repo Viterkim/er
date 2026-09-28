@@ -490,7 +490,7 @@ If we also want the input from our `PortErr` in the next error:
 #[derive(Er)]
 pub struct ConfigErr(pub String);
 
-read_port(input).er_with(|e| ConfigErr::new(e.input.clone()))?;
+read_port(input).er_with(|err| ConfigErr::new(err.input.clone()))?;
 ```
 
 Still keeps the old error and everything below it. A `map_err` that makes a fresh tree loses that history, which is really easy to do by accident.
