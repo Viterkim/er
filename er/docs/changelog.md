@@ -1,12 +1,16 @@
+# 0.5.1
+
+Make docs more explicit.
+
 # 0.5.0
 
-Added `er_try!()` which is like `er_all!()` but gives you the Ok values back (if they all were Ok).
+Added `er_try!(top, [results])`, like `er_all!(top, [results])` but it gives you the Ok values back if they all succeed.
 
 Enabled the `test` feature by default.
 
-`ErTest` now does `?` without `.er()` (but another `ErTest` passes through without adding context, so use a specific type for your test helpers).
+`ErTest` now does `?` without `.er()` (but a failure from another `ErTest` passes through without adding context, so use a specific type for your test helpers).
 
-For `ErTest` renamed the `TestError` to `ErTestError` so `use er::*` doesn't take a potential user error name in tests.
+For `ErTest` renamed the `TestError` type to `ErTestError` so `use er::*` doesn't take a potential user error name in tests. It still prints as `TestError`.
 
 `.unwrap_report()` and `.expect_report(message)` added.
 

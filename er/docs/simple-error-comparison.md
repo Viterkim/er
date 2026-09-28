@@ -2,7 +2,7 @@
 
 Same bad port for every library. First the easy version, then one with the input added so we can actually see what went wrong.
 
-Links on this page: [thiserror](#thiserror-2020), [error-stack](#error-stack-080), [Er](#er-04), [Anyhow](#anyhow-10104), [SNAFU](#snafu-092), [rootcause](#rootcause-0130),
+Links on this page: [thiserror](#thiserror-2020), [error-stack](#error-stack-080), [Er](#er-05), [Anyhow](#anyhow-10104), [SNAFU](#snafu-092), [rootcause](#rootcause-0130),
 [exn](#exn-031), [Eros](#eros-080), [Problemo](#problemo-0013), [Nightly std::error::Report](#nightly-stderrorreport), [Others](#others)
 
 For the messy version with several errors and a public boundary, see the [tricky comparison](tricky-error-comparison.md).
@@ -172,7 +172,7 @@ You can also use 'Attachments' to add data.
 
 I love the typed context and keeping the original errors. But you still need to make the error types yourself or use another derive, and `.change_context_lazy()` is a lot to type.
 
-## Er (0.4)
+## Er (0.5)
 
 (hey that's this one)
 
