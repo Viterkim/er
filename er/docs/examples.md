@@ -4,6 +4,31 @@ All examples use `use er::*;`
 
 `#[derive(Er)]` implements `Error`, `Display`, `Debug` and helpers.
 
+## TLDR
+
+Structs: Use `.er(())` for empty structs, `.er(|_| path)` for 1 field structs, and `.er(|_| (port, enabled))` for 2 or more fields.
+
+Enums: Need a variant specified like `.er(|| ModeErr::variant_name(arg1))`.
+
+Most functions that deal with errors, should have their own error type.
+
+```rust
+// Just put your error type directly above your function.
+#[derive(Er)]
+pub struct MyFuncErr;
+
+pub fn my_func() -> ErResult<(), MyFuncErr> {
+  something_else().er(())?;
+  // more real code
+}
+```
+
+This forces you to re add context with `.er()` (otherwise you can just '?' the same error up all the way).
+
+Your errors should not be giant pyramids, they should be local to the things you are doing, related to what your consumer cares about and not which errors you got (the original errors are always stored automatically in the tree below).
+
+Think about what your caller wants to 'match on', or what is relevant for the flow/logic of your code.
+
 ## Empty struct
 
 If the name and location are enough:
@@ -490,7 +515,7 @@ fn main() {
 er = "0.5"
 ```
 
-Make the test return `ErTest` and use `?`. Ordinary errors and Er trees get TestError on top with the location of the `?`, and keep the original errors below it.
+Make the test return `ErTest` and use `?`. Ordinary errors and Er trees get `ErTestError` on top with the location of the `?`, and keep the original errors below it. It prints as `TestError`.
 
 ```rust,ignore
 use er::*;
