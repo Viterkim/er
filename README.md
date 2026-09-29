@@ -289,7 +289,7 @@ Worse errors/types lead to worse logic/flow because error states get grouped int
 
 The original inner error should not dictate your error type design or be given to your final consumer directly.
 
-It's not the user's fault when mistakes happen. There should be convenience and helpers to avoid footguns if possible (`.er_with(|err|)`, `.er_find::<SomeErr>()`, `ErTree` not having `Debug` / `Display`).
+It's not the user's fault when mistakes happen. There should be convenience and helpers to avoid footguns if possible (`.er_with(|err|)`, `.er_val()` for non errors, .er_find::<SomeErr>()`, `ErTree` not having `Debug` / `Display`).
 
 ## Docs
 
@@ -312,3 +312,5 @@ It's not the user's fault when mistakes happen. There should be convenience and 
 [Crates.io for the lib](https://crates.io/crates/er)
 
 [Crates.io for the macros](https://crates.io/crates/er-macros/)
+
+[Libs.rs](https://lib.rs/crates/er)
