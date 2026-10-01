@@ -11,6 +11,7 @@ pub enum FieldMode {
 pub struct FieldOptions {
     pub mode: FieldMode,
     pub exact: bool,
+    pub source: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -102,8 +103,9 @@ pub fn container(attributes: &[Attribute]) -> Result<ContainerOptions> {
             if meta.path.is_ident("skip")
                 || meta.path.is_ident("censor")
                 || meta.path.is_ident("exact")
+                || meta.path.is_ident("source")
             {
-                return Err(meta.error("put `skip`, `censor`, or `exact` on a field"));
+                return Err(meta.error("put `skip`, `censor`, `exact`, or `source` on a field"));
             }
 
             Err(meta.error(EXPECTED))
@@ -186,7 +188,7 @@ pub fn variant(attributes: &[Attribute]) -> Result<Option<LitStr>> {
             }
             if !meta.path.is_ident("format") {
                 return Err(meta.error(
-                    "expected `format = \"...\"`; put `skip`, `censor`, or `exact` on a field, \
+                    "expected `format = \"...\"`; put `skip`, `censor`, `exact`, or `source` on a field, \
                      or `wrap`/`crate` on the enum",
                 ));
             }
@@ -202,15 +204,28 @@ pub fn variant(attributes: &[Attribute]) -> Result<Option<LitStr>> {
 }
 
 pub fn field(attributes: &[Attribute]) -> Result<FieldOptions> {
-    const EXPECTED: &str = "expected `#[er(skip)]`, `#[er(censor)]`, or `#[er(exact)]`";
+    const EXPECTED: &str =
+        "expected `#[er(skip)]`, `#[er(censor)]`, `#[er(exact)]`, or `#[er(source)]`";
 
     let mut mode = FieldMode::Normal;
     let mut exact = false;
+    let mut source = false;
 
     for attribute in er_attributes(attributes) {
         require_list(attribute, EXPECTED)?;
 
         attribute.parse_nested_meta(|meta| {
+            if meta.path.is_ident("source") {
+                if source {
+                    return Err(meta.error("`source` is set more than once"));
+                }
+                if !meta.input.is_empty() && !meta.input.peek(syn::token::Comma) {
+                    return Err(meta.error("`source` takes no value"));
+                }
+                source = true;
+                return Ok(());
+            }
+
             if meta.path.is_ident("exact") {
                 if exact {
                     return Err(meta.error("`exact` is set more than once"));
@@ -252,5 +267,9 @@ pub fn field(attributes: &[Attribute]) -> Result<FieldOptions> {
         })?;
     }
 
-    Ok(FieldOptions { mode, exact })
+    Ok(FieldOptions {
+        mode,
+        exact,
+        source,
+    })
 }

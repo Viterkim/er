@@ -100,3 +100,23 @@ pub fn no_constructors_options() -> syn::Result<()> {
     }
     Ok(())
 }
+
+#[test]
+pub fn source_options() -> syn::Result<()> {
+    for code in [
+        "struct Data { #[er(source, source)] cause: u8 }",
+        "struct Data { #[er(source = true)] cause: u8 }",
+        "struct Data { #[er(source())] cause: u8 }",
+        "#[er(source)] struct Data;",
+        "enum Data { #[er(source)] Failed(u8) }",
+        "struct Data(#[er(source)] u8, #[er(source)] u8);",
+        "enum Data { Failed { #[er(source)] first: u8, #[er(source)] second: u8 } }",
+    ] {
+        let item = syn::parse_str(code)?;
+        assert!(crate::generate::expand(&item).is_err(), "{code}");
+    }
+
+    let item = syn::parse_str("struct Data(#[er(source)] std::io::Error);")?;
+    assert!(crate::format::expand(&item).is_err());
+    Ok(())
+}

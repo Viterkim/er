@@ -16,6 +16,12 @@ impl<'a> Case<'a> {
         let mut fields = Vec::with_capacity(shape.len());
         for item in shape {
             let options = attrs::field(&item.attrs)?;
+            if options.source && fields.iter().any(|field: &Field<'_>| field.options.source) {
+                return Err(syn::Error::new_spanned(
+                    item,
+                    "choose one source field per struct or enum variant",
+                ));
+            }
             fields.push(Field {
                 item,
                 options,

@@ -198,6 +198,18 @@ Want Display/Debug on the Wrap itself? Add `output = report` or `output = top`. 
 
 If the `er` crate has another name, give Wrap its path with `#[er(crate = other_name, wrap)]`.
 
+## Public boundary optional source
+
+If you make an error at the public boundary(after you've used your report), and you want that error to contain a source, put `#[er(source)]` on that field. One source per struct or enum variant. Box, Rc and Arc return the error inside, an Option returns no source when it's None, and `skip` still controls the top error's formatting.
+
+```rust
+#[derive(Er)]
+pub enum OpenError {
+    Missing,
+    Failed(#[er(source)] std::io::Error),
+}
+```
+
 ## Wrap with std_error
 
 ! WARNING ! Only add `std_error` with `output` if the foreign trait needs `Error` on the Wrap itself (Axum doesn't). When that Wrap comes back, use `.er_wrap()` instead of `.er()` or `.er_find()` won't see the errors inside it!
