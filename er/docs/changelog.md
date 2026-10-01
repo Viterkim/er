@@ -1,3 +1,7 @@
+# 0.5.3
+
+Add optional #[er(source)] for public boundary errors (not the reports/trees).
+
 # 0.5.2
 
 Make docs more explicit++ (after feedback).

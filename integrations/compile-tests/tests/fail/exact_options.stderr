@@ -10,13 +10,13 @@ error: `exact` takes no value
 11 |     #[er(exact = true)]
    |          ^^^^^
 
-error: put `skip`, `censor`, or `exact` on a field
+error: put `skip`, `censor`, `exact`, or `source` on a field
   --> tests/fail/exact_options.rs:16:6
    |
 16 | #[er(exact)]
    |      ^^^^^
 
-error: expected `format = "..."`; put `skip`, `censor`, or `exact` on a field, or `wrap`/`crate` on the enum
+error: expected `format = "..."`; put `skip`, `censor`, `exact`, or `source` on a field, or `wrap`/`crate` on the enum
   --> tests/fail/exact_options.rs:23:10
    |
 23 |     #[er(exact)]

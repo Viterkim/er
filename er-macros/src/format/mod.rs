@@ -10,6 +10,14 @@ pub mod censor;
 
 pub fn expand(item: &DeriveInput) -> Result<TokenStream> {
     let input = Input::parse(item)?;
+    for field in input.cases.iter().flat_map(|case| &case.fields) {
+        if field.options.source {
+            return Err(Error::new_spanned(
+                field.item,
+                "use derive(Er) for `source`, ErFormat does not implement Error",
+            ));
+        }
+    }
     if input.options.wrap.is_some() || input.options.er_path.is_some() {
         return Err(Error::new_spanned(
             &item.ident,

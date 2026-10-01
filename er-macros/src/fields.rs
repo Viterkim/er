@@ -9,8 +9,15 @@ pub fn with_fields(case: &Case<'_>, target: TokenStream, values: &[TokenStream])
         Fields::Unit => target,
         Fields::Unnamed(_) => quote!(#target(#(#values),*)),
         Fields::Named(_) => {
-            let names = case.fields.iter().map(|field| &field.item.ident);
-            quote!(#target { #(#names: #values),* })
+            let fields = case.fields.iter().zip(values).map(|(field, value)| {
+                let name = &field.item.ident;
+                if quote!(#name).to_string() == value.to_string() {
+                    quote!(#name)
+                } else {
+                    quote!(#name: #value)
+                }
+            });
+            quote!(#target { #(#fields),* })
         }
     }
 }
