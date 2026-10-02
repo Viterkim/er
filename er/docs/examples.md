@@ -33,7 +33,7 @@ pub struct MyOtherErr {
 pub fn other_func(path: &str) -> ErResult<(), MyOtherErr> {
   // Usually pass values directly, no .as_ref()/.as_str()
   if path.is_empty() {
-    er_bail!(MyOtherErr::new(path, "no file given"));
+    er_bail!(|_| (path, "no file given"));
   }
   my_func().er(|_| (path, "some cool msg"))
 }
@@ -425,6 +425,19 @@ pub fn check_device(result: Result<(), u8>) -> ErResult<(), DeviceErr> {
 }
 ```
 
+You can also add context as a chain with `.er()` afterwards (ReadDeviceErr has a DeviceErr below)
+
+```rust
+#[derive(Er)]
+pub struct ReadDeviceErr {
+    pub device: String,
+}
+
+pub fn read_device(device: &str, result: Result<(), u8>) -> ErResult<(), ReadDeviceErr> {
+    result.er_val(DeviceErr::new).er(|_| device)
+}
+```
+
 ## Snapshots
 
 Saves msgs and the tree structure for special occasions (as strings, not the error types).
@@ -634,8 +647,8 @@ If you need the error, you can use the index with `error.er_at_index(trace.error
 You can use `er_bail!(err)` if you don't want to type `return Err(ErTree::from(err))` (You can give it an existing tree too).
 
 ```rust
-if mode != "haandbold" {
-    er_bail!(ModeErr::unknown(mode));
+if path.is_empty() {
+    er_bail!(|_| (path, "no file given"));
 }
 ```
 

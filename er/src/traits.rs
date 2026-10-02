@@ -266,6 +266,13 @@ pub trait ErTraceExt: Sized {
 
 #[cfg(feature = "macros")]
 #[doc(hidden)]
+pub trait ErBail<T, Mode> {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_bail(self) -> T;
+}
+
+#[cfg(feature = "macros")]
+#[doc(hidden)]
 pub trait ErAllItem<Mode> {
     type Ok;
 

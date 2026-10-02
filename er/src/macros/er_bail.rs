@@ -2,6 +2,6 @@
 #[macro_export]
 macro_rules! er_bail {
     ($error:expr $(,)?) => {{
-        return ::core::result::Result::Err(::core::convert::Into::into($error));
+        return ::core::result::Result::Err($crate::ErBail::er_bail($error));
     }};
 }

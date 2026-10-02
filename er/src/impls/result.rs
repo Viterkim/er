@@ -3,7 +3,7 @@ use crate::{
     ErPresentationExt, ErReport, ErResult, ErResultExt, ErTop, ErTree, IntoErPart, IntoErTree,
 };
 #[cfg(feature = "macros")]
-use crate::{ErAllError, ErAllItem, ErAllResult, ErPart};
+use crate::{ErAllError, ErAllItem, ErAllResult, ErBail, ErBuilt, ErPart};
 use core::error::Error;
 
 impl<T: Into<BoxError>, Mode> ErErrorContextExt<Mode> for T {}
@@ -105,6 +105,26 @@ impl<T, Mode> ErContextExt<Mode> for Option<T> {
             Some(value) => Ok(value),
             None => Err(ErTree::from(error.er_make())),
         }
+    }
+}
+
+#[cfg(feature = "macros")]
+impl<T, F: Into<T>> ErBail<T, ErBuilt> for F {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_bail(self) -> T {
+        self.into()
+    }
+}
+#[cfg(feature = "macros")]
+impl<T, F, Mode> ErBail<T, (Mode,)> for F
+where
+    T: IntoErTree + From<ErTree<T::Error>>,
+    T::Error: Error + 'static,
+    F: ErMake<T::Error, Mode>,
+{
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_bail(self) -> T {
+        ErTree::from(self.er_make()).into()
     }
 }
 

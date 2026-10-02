@@ -1,3 +1,7 @@
+# 0.5.4
+
+Fix `er_all!()` not supporting the tuple/convenience constructors.
+
 # 0.5.3
 
 Add optional #[er(source)] for public boundary errors (not the reports/trees).

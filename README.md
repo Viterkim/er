@@ -249,7 +249,7 @@ pub struct MyOtherErr {
 pub fn other_func(path: &str) -> ErResult<(), MyOtherErr> {
     // Usually pass values directly, no .as_ref()/.as_str(), and Option<T> takes T without Some().
     if path.is_empty() {
-        er_bail!(MyOtherErr::new(path, "no file given"));
+        er_bail!(|_| (path, "no file given"));
     }
     my_func().er(|_| (path, "some cool msg"))
 }

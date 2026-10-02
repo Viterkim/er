@@ -129,6 +129,7 @@ pub mod composed {
         assert_eq!(&*traces[1].capture as *const Backtrace, left_captures[1]);
         assert_eq!(&*traces[2].capture as *const Backtrace, right_capture);
         assert_eq!(tree.er_find_all::<ReadErr>().count(), 2);
+
         assert_eq!(
             tree.er_at_index(traces[0].error_index)
                 .unwrap()
@@ -146,6 +147,7 @@ pub mod composed {
             PathBuf::from("manual")
         );
         assert!(tree.er_contains::<JobErr>());
+
         let printed = trace_section(&tree);
         assert!(printed.contains("ReadErr"));
         assert!(printed.contains("JobErr"));
@@ -170,6 +172,7 @@ pub mod composed {
                 ErErrorIndex(6)
             ]
         );
+
         for (trace, path) in [(0, "first"), (2, "second"), (4, "third")] {
             let error = tree
                 .er_at_index(tree.stack_traces[trace].error_index)
@@ -179,6 +182,7 @@ pub mod composed {
                 PathBuf::from(path)
             );
         }
+
         assert!(
             tree.er_at_index(tree.stack_traces[1].error_index)
                 .unwrap()
@@ -229,18 +233,22 @@ pub mod composed {
                     ReadErr::new(index.to_string()),
                     (0..index % 4).map(|_| std::fmt::Error),
                 );
+
                 if index % 3 == 2 {
                     tree.er_trace()
                 } else {
                     tree
                 }
             });
+
             let tree = if collect {
                 aggregate::collect(|| Batch, children.map(Err::<(), _>)).unwrap_err()
             } else {
                 ErTree::new(Batch, children)
             };
+
             assert_eq!(tree.stack_traces.len(), 4);
+
             for (trace, index) in tree.stack_traces.iter().zip([2, 5, 8, 11]) {
                 let error = tree.er_at_index(trace.error_index).unwrap();
                 assert_eq!(

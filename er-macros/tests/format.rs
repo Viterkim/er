@@ -46,6 +46,7 @@ impl fmt::Display for OnlyDisplay {
         write!(formatter, "{}", self.0)
     }
 }
+
 #[derive(ErFormat)]
 pub enum Choice<'a, T, U> {
     Empty,
@@ -81,6 +82,7 @@ pub fn variants() {
 
 #[derive(ErFormat)]
 pub struct Unit;
+
 #[derive(ErFormat)]
 #[er(format = "{0:?}")]
 pub struct Tuple(pub String);
