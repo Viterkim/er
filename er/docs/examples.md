@@ -461,7 +461,7 @@ Enable `serde` on Er, then add `serde_json` (or toml, or whatever).
 
 ```toml
 [dependencies]
-er = { version = "0.5", features = ["serde"] }
+er = { version = "0.6", features = ["serde"] }
 serde_json = "1"
 ```
 
@@ -543,7 +543,7 @@ fn main() {
 
 ```toml
 [dev-dependencies]
-er = "0.5"
+er = "0.6"
 ```
 
 Make the test return `ErTest` and use `?`. Ordinary errors and Er trees get `ErTestError` on top with the location of the `?`, and keep the original errors below it. It prints as `TestError`.

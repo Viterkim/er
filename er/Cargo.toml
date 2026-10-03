@@ -25,7 +25,7 @@ test = []
 serde = ["dep:serde"]
 
 [dependencies]
-er-macros = { version = "=0.5.3", path = "../er-macros", optional = true }
+er-macros = { version = "=0.6.0", path = "../er-macros", optional = true }
 serde = { workspace = true, optional = true }
 
 [dev-dependencies]

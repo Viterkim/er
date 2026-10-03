@@ -6,7 +6,7 @@ Design your error types around what your caller cares about, not what combinatio
 
 ```toml
 [dependencies]
-er = "0.5"
+er = "0.6"
 ```
 
 [Full examples / usage patterns](er/docs/examples.md)
