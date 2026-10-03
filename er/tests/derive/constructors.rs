@@ -1,5 +1,8 @@
 use er::*;
-use std::{cell::Cell, path::PathBuf};
+use std::{
+    cell::Cell,
+    path::{Path, PathBuf},
+};
 
 #[derive(Er)]
 pub struct EmptyUnitErr;
@@ -75,12 +78,10 @@ pub fn construct_from_fields() {
 
     assert_eq!(tuple_field().unwrap_err().top.0, (85, 86));
 
-    fn three(path: &std::path::Path, token: &Token) -> ErResult<(), FileErr> {
-        None::<()>.er(|_| (path, "bad", token))
-    }
-
     let token = Token("secret".into());
-    let error = three(std::path::Path::new("config.toml"), &token).unwrap_err();
+    let error: ErTree<FileErr> = None::<()>
+        .er(|_| (Path::new("config.toml"), "bad", &token))
+        .unwrap_err();
 
     assert_eq!(error.top.token.0, "secret");
 }
@@ -122,10 +123,13 @@ pub fn bail_from_fields() {
     assert_eq!(config.tree.top.machine, "ComputerKatten");
     assert_eq!(config.tree.top.token, "secret");
 
-    assert!(matches!(
-        job("config.toml").unwrap_err().tree.top,
-        JobErr::File { path, msg } if path == PathBuf::from("config.toml") && msg == "bad"
-    ));
+    match job("config.toml").unwrap_err().tree.top {
+        JobErr::File { path, msg } => {
+            assert_eq!(path, Path::new("config.toml"));
+            assert_eq!(msg, "bad");
+        }
+        _ => panic!("expected file error"),
+    }
 }
 #[test]
 pub fn boxed_error_can_be_used_or_wrapped() {

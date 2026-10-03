@@ -12,11 +12,11 @@ macro_rules! er_add {
         $crate::er_add!(__er_tree, __er_results)
     }};
     ($tree:expr, $results:expr $(,)?) => {{
-        $crate::ErTree::er_add(
+        $crate::IntoErTree::er_add(
             $tree,
             ::core::iter::Iterator::filter_map(
                 ::core::iter::IntoIterator::into_iter($results),
-                ::core::result::Result::err,
+                |__er_item| $crate::ErAllItem::er_all_item(__er_item).err(),
             ),
         )
     }};

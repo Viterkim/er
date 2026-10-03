@@ -1,20 +1,25 @@
 use crate::lines;
 use crate::render::report::write_entries;
 use crate::{
-    ErAsError, ErEntries, ErEntry, ErLineError, ErNodes, ErOpaqueErrorExt, ErReport, ErReportRef,
-    ErSources, ErTree, IntoErPart, IntoErTree, Layout,
+    ErAsError, ErEntries, ErEntry, ErLineError, ErMake, ErNodes, ErOpaqueErrorExt, ErReport,
+    ErReportRef, ErSnapshot, ErSources, ErTopRef, ErTree, ErTreeContextExt, IntoErPart, IntoErTree,
+    Layout,
 };
+use alloc::string::{String, ToString};
 use core::{error::Error, fmt};
 
 impl<'a, E> ErReportRef<'a, E> {
+    /// Pick how it gets printed.
     pub const fn layout(self, layout: Layout) -> Self {
         Self { layout, ..self }
     }
 
+    /// Print on one line.
     pub const fn single_line(self) -> Self {
         self.layout(Layout::SingleLine)
     }
 
+    /// Stored sub errors, skips the root and native sources.
     pub fn er_descendants(&self) -> ErNodes<'a> {
         self.tree.er_descendants()
     }
@@ -31,11 +36,31 @@ impl<E> Clone for ErReportRef<'_, E> {
     }
 }
 impl<'a, E: Error + 'static> ErReportRef<'a, E> {
+    /// The report as text, keeps this layout.
+    pub fn er_report_string(&self) -> String {
+        self.to_string()
+    }
+
+    /// Just the outer error as text, keeps this layout.
+    pub fn er_top_string(&self) -> String {
+        ErTopRef {
+            tree: self.tree,
+            layout: self.layout,
+        }
+        .to_string()
+    }
+
+    /// Save the whole tree as messages, keeps its structure.
+    pub fn er_snapshot(&self) -> ErSnapshot {
+        self.tree.er_snapshot()
+    }
+
     /// Only formats once, no line endings.
     pub fn for_each_line(&self, emit: impl FnMut(&str)) -> fmt::Result {
         lines::for_each_line(self, emit)
     }
 
+    /// Like `for_each_line()`, but the callback can fail.
     pub fn try_for_each_line<X>(
         &self,
         emit: impl FnMut(&str) -> Result<(), X>,
@@ -43,6 +68,7 @@ impl<'a, E: Error + 'static> ErReportRef<'a, E> {
         lines::try_for_each_line(self, emit)
     }
 
+    /// Every error, including native sources.
     pub fn er_entries(&self) -> ErEntries<'a> {
         self.tree.er_entries()
     }
@@ -52,6 +78,7 @@ impl<'a, E: Error + 'static> ErReportRef<'a, E> {
         self.tree.er_for_each_entry(visit);
     }
 
+    /// The top error's native `source()` chain.
     pub fn er_sources(&self) -> ErSources<'a> {
         self.tree.er_sources()
     }
@@ -66,6 +93,7 @@ impl<'a, E: Error + 'static> ErReportRef<'a, E> {
         self.tree.er_find_all::<T>()
     }
 
+    /// True if this type is anywhere in the tree or its native sources.
     pub fn er_contains<T: Error + 'static>(&self) -> bool {
         self.tree.er_contains::<T>()
     }
@@ -89,14 +117,17 @@ impl<E: Error + 'static> ErOpaqueErrorExt for ErReportRef<'_, E> {
 }
 
 impl<E> ErReport<E> {
+    /// Pick how it gets printed.
     pub fn layout(self, layout: Layout) -> Self {
         Self { layout, ..self }
     }
 
+    /// Print on one line.
     pub fn single_line(self) -> Self {
         self.layout(Layout::SingleLine)
     }
 
+    /// Borrow the same view, keeping its layout.
     pub const fn as_ref(&self) -> ErReportRef<'_, E> {
         ErReportRef {
             tree: &self.tree,
@@ -104,6 +135,7 @@ impl<E> ErReport<E> {
         }
     }
 
+    /// Stored sub errors, skips the root and native sources.
     pub fn er_descendants(&self) -> ErNodes<'_> {
         self.tree.er_descendants()
     }
@@ -125,13 +157,47 @@ impl<E> IntoErTree for ErReport<E> {
     fn into_er_tree(self) -> ErTree<E> {
         self.tree
     }
+
+    fn into_er_report(self) -> Self {
+        self
+    }
+}
+impl<E> AsMut<ErTree<E>> for ErReport<E> {
+    fn as_mut(&mut self) -> &mut ErTree<E> {
+        &mut self.tree
+    }
+}
+impl<E: Error + Send + Sync + 'static, Mode> ErTreeContextExt<Mode> for ErReport<E> {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er<A>(self, top: impl ErMake<A, Mode>) -> ErTree<A>
+    where
+        A: Error + 'static,
+    {
+        self.tree.er(top)
+    }
 }
 impl<E: Error + 'static> ErReport<E> {
+    /// The report as text, keeps this layout.
+    pub fn er_report_string(&self) -> String {
+        self.to_string()
+    }
+
+    /// Just the outer error as text, keeps this layout.
+    pub fn er_top_string(&self) -> String {
+        self.as_ref().er_top_string()
+    }
+
+    /// Save the whole tree as messages, keeps its structure.
+    pub fn er_snapshot(&self) -> ErSnapshot {
+        self.tree.er_snapshot()
+    }
+
     /// Only formats once, no line endings.
     pub fn for_each_line(&self, emit: impl FnMut(&str)) -> fmt::Result {
         lines::for_each_line(self, emit)
     }
 
+    /// Like `for_each_line()`, but the callback can fail.
     pub fn try_for_each_line<X>(
         &self,
         emit: impl FnMut(&str) -> Result<(), X>,
@@ -139,6 +205,7 @@ impl<E: Error + 'static> ErReport<E> {
         lines::try_for_each_line(self, emit)
     }
 
+    /// Every error, including native sources.
     pub fn er_entries(&self) -> ErEntries<'_> {
         self.tree.er_entries()
     }
@@ -148,6 +215,7 @@ impl<E: Error + 'static> ErReport<E> {
         self.tree.er_for_each_entry(visit);
     }
 
+    /// The top error's native `source()` chain.
     pub fn er_sources(&self) -> ErSources<'_> {
         self.tree.er_sources()
     }
@@ -162,6 +230,7 @@ impl<E: Error + 'static> ErReport<E> {
         self.tree.er_find_all::<T>()
     }
 
+    /// True if this type is anywhere in the tree or its native sources.
     pub fn er_contains<T: Error + 'static>(&self) -> bool {
         self.tree.er_contains::<T>()
     }

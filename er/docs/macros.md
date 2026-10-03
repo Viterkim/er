@@ -192,11 +192,21 @@ impl IntoResponse for BaseErrWrap {
 }
 ```
 
-Results using Wrap still work with `.er()`, `.er_report()` and `.er_top()`.
+Wrap and its Results still work with `.er()`, `.er_report()` and `.er_top()`.
 
 Want Display/Debug on the Wrap itself? Add `output = report` or `output = top`. Axum doesn't care.
 
 If the `er` crate has another name, give Wrap its path with `#[er(crate = other_name, wrap)]`.
+
+## Conversion / er_into
+
+`#[er(into_top)]` moves the typed top into that field. `#[er(into_report_string)]` saves the full report as a `String`, or `#[er(into_snapshot)]` saves an `ErSnapshot` (it gets printed as a report too).
+
+`.er_into(|tree| ...)` runs the closure on errors, then fills in those fields. Use `|_| {}` if you don't need to look at the tree.
+
+If Rust can't infer the destination (like before `?`), use `.er_into::<ApiError>(...)`.
+
+Converted structs and variants need a report or snapshot, and all their fields need an `into_*` option. Put your other data in the typed top. Enum variants can accept different top types, unmarked variants stay ordinary.
 
 ## Public boundary optional source
 

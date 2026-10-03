@@ -11,6 +11,7 @@ use syn::DeriveInput;
 
 pub mod construct;
 pub mod constructors;
+pub mod into;
 pub mod replace_self;
 pub mod source;
 pub mod wrap;
@@ -25,6 +26,7 @@ pub fn expand(item: &DeriveInput) -> syn::Result<TokenStream> {
 
     let construct = construct(&input);
     let error = source::implementation(&input, &generics);
+    let into = into::implementation(&input)?;
 
     let wrap = match &input.options.wrap {
         Some(options) => {
@@ -42,6 +44,7 @@ pub fn expand(item: &DeriveInput) -> syn::Result<TokenStream> {
         #error
         #constructors
         #construct
+        #into
         #wrap
     })
 }

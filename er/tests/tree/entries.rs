@@ -23,8 +23,10 @@ impl Error for Native {
 pub fn lookup() {
     let group = ErTree::new(Native(Leaf(99)), [Leaf(1), Leaf(2)]);
     let read: ErResult<(), Leaf> = Err("bad".parse::<u8>().unwrap_err()).er(|| Leaf(3));
+
     #[cfg(feature = "stack_traces")]
     let read = read.er_trace();
+
     let tree: ErTree<Leaf> =
         er_all!(|| Leaf(0), [Err::<(), _>(group), Ok::<u8, Leaf>(7), read]).unwrap_err();
 
@@ -63,6 +65,7 @@ pub fn lookup() {
             3
         );
     }
+
     let tree = tree.er(|| Leaf(8));
     assert_eq!(
         tree.er_at_index(ErErrorIndex(5))
@@ -72,6 +75,7 @@ pub fn lookup() {
             .0,
         3
     );
+
     #[cfg(feature = "stack_traces")]
     {
         assert_eq!(tree.stack_traces[0].error_index, ErErrorIndex(5));

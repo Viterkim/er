@@ -31,6 +31,7 @@ pub fn for_each_line(
     }
 }
 
+/// Like `for_each_line()`, but the callback can fail.
 pub fn try_for_each_line<E>(
     value: &(impl fmt::Display + ?Sized),
     emit: impl FnMut(&str) -> Result<(), E>,

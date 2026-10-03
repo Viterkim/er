@@ -1,6 +1,16 @@
-# 0.5.4
+# 0.6.0
 
-Fix `er_all!()` not supporting the tuple/convenience constructors.
+Add `.er_into(|tree| ...)` for converting to public errors with a report or snapshot.
+
+Add `.er_report_string()` / `.er_top_string()` and `.er_snapshot()` on Results.
+
+Add `.er_test()` for Options and Results.
+
+Make `er_bail!()` take the tuple/convenience constructors.
+
+Accept bare errors and trees in `er_all!()` / `er_add!()` collections.
+
+Fix helpers on Wrap and ErTest.
 
 # 0.5.3
 

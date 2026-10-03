@@ -16,8 +16,10 @@ pub struct Standard;
 #[test]
 pub fn append() {
     let child = ErTree::new(Item(1), [Item(2)]);
+
     #[cfg(feature = "src_locations")]
     let child_location = child.src_location;
+
     let tree = ErTree::from(Batch).er_add([child]);
     let _error_line = line!() + 1;
     let tree = tree.er_add([io::Error::other("rollback failed")]);
@@ -35,6 +37,7 @@ pub fn append() {
         tree.er_find::<io::Error>().unwrap().to_string(),
         "rollback failed"
     );
+
     #[cfg(feature = "src_locations")]
     {
         assert_eq!(tree.nodes[0].src_location, child_location);
@@ -49,8 +52,10 @@ pub fn append() {
 #[test]
 pub fn append_mixed() {
     let tree = ErTree::new(Item(0), [Item(1)]);
+
     #[cfg(feature = "src_locations")]
     let location = tree.src_location;
+
     let child = ErTree::new(Item(2), [Item(3)]);
     let visited = Cell::new(0);
 
@@ -81,6 +86,7 @@ pub fn append_mixed() {
         tree.er_find::<io::Error>().unwrap().to_string(),
         "cleanup failed"
     );
+
     #[cfg(feature = "src_locations")]
     {
         assert_eq!(tree.src_location, location);
@@ -94,6 +100,11 @@ pub fn append_mixed() {
     let tree = er_add!(tree, results);
     assert_eq!(tree.nodes.len(), 6);
     assert_eq!(tree.top.0, 0);
+
+    let errors = vec![ErTree::from(Item(7)), ErTree::from(Item(8))];
+    let tree = er_add!(ItemWrap::from(tree), errors);
+    assert_eq!(tree.nodes.len(), 8);
+    assert_eq!(tree.er_find_all::<Item>().last().unwrap().0, 8);
 }
 
 #[test]
@@ -170,6 +181,7 @@ pub fn batch() {
     for index in 0..3 {
         results.push(Err(ErTree::from(Item(index))));
     }
+
     #[cfg(feature = "src_locations")]
     let src = results[0].as_ref().unwrap_err().src_location;
 
@@ -184,8 +196,18 @@ pub fn batch() {
 
     let items: Vec<_> = tree.er_find_all::<Item>().map(|e| e.0).collect();
     assert_eq!(items, [0, 1, 2]);
+
     #[cfg(feature = "src_locations")]
     assert!(tree.nodes.iter().all(|node| node.src_location == src));
+
+    let errors = vec![ErTree::from(Item(3)), ErTree::from(Item(4))];
+    let tree: ErTree<Batch> = er_all!((), errors).unwrap_err();
+    assert_eq!(
+        tree.er_find_all::<Item>()
+            .map(|item| item.0)
+            .collect::<Vec<_>>(),
+        [3, 4]
+    );
 }
 
 #[test]
@@ -250,10 +272,13 @@ pub fn collect() {
     assert_eq!(parents.get(), 0);
 
     let error = ErTree::new(Item(1), [Item(2)]);
+
     #[cfg(feature = "src_locations")]
     let source = error.src_location;
+
     #[cfg(feature = "stack_traces")]
     let error = error.er_trace();
+
     let visited = Cell::new(0);
     let mut input = [Ok(7), Err(error), Ok(8)].into_iter().inspect(|_| {
         visited.set(visited.get() + 1);
@@ -271,11 +296,13 @@ pub fn collect() {
             .collect::<Vec<_>>(),
         [9, 1, 2]
     );
+
     #[cfg(feature = "src_locations")]
     {
         assert_eq!(tree.src_location.line(), _line);
         assert_eq!(tree.nodes[0].src_location, source);
     }
+
     #[cfg(feature = "stack_traces")]
     assert_eq!(tree.stack_traces[0].error_index, ErErrorIndex(1));
 }
@@ -301,11 +328,15 @@ pub fn collect_all() {
     assert_eq!(parents.get(), 0);
 
     let left = ErTree::new(Item(1), [Item(2)]);
+
     #[cfg(feature = "src_locations")]
     let source = left.src_location;
+
     #[cfg(feature = "stack_traces")]
     let left = left.er_trace();
+
     let right = ErTree::from(Item(3));
+
     #[cfg(feature = "stack_traces")]
     let right = right.er_trace();
 
@@ -345,11 +376,13 @@ pub fn collect_all() {
             .collect::<Vec<_>>(),
         [1, 2, 3]
     );
+
     #[cfg(feature = "src_locations")]
     {
         assert_eq!(tree.src_location.line(), _line);
         assert_eq!(tree.nodes[0].src_location, source);
     }
+
     #[cfg(feature = "stack_traces")]
     {
         assert_eq!(tree.stack_traces[0].error_index, ErErrorIndex(1));
@@ -452,10 +485,13 @@ pub fn try_results() {
 #[test]
 pub fn try_tree() {
     let child = ErTree::new(Item(1), [Item(2)]);
+
     #[cfg(feature = "stack_traces")]
     let child = child.er_trace();
+
     #[cfg(feature = "src_locations")]
     let location = child.src_location;
+
     let original = child.nodes[0].error.downcast_ref::<Item>().unwrap() as *const Item;
     let _line = line!() + 1;
     let result: ErResult<((), String, (), bool), Item> = er_try!(
@@ -474,12 +510,14 @@ pub fn try_tree() {
         original,
         tree.nodes[0].nodes[0].error.downcast_ref::<Item>().unwrap()
     ));
+
     #[cfg(feature = "src_locations")]
     {
         assert_eq!(tree.src_location.line(), _line);
         assert_eq!(tree.nodes[0].src_location, location);
         assert_eq!(tree.nodes[1].src_location.line(), _line + 5);
     }
+
     #[cfg(feature = "stack_traces")]
     {
         assert_eq!(tree.stack_traces.len(), 1);

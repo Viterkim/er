@@ -1,10 +1,11 @@
-use crate::{BoxError, ErFindAll, ErNode, ErNodes, ErPart, ErSources, IntoErPart};
+use crate::{BoxError, ErFindAll, ErInput, ErNode, ErNodes, ErPart, ErSources, IntoErPart};
 use alloc::vec::Vec;
 #[cfg(feature = "src_locations")]
 use core::panic::Location;
 use core::{error::Error, mem::take};
 
 impl ErNode {
+    /// This error's native `source()` chain.
     #[inline]
     pub fn er_sources(&self) -> ErSources<'_> {
         ErSources::new(self.error.source())
@@ -84,6 +85,19 @@ impl IntoErPart for ErPart {
 
     fn into_er_part(self) -> Self {
         self
+    }
+}
+
+impl<E: IntoErPart> ErInput for E {
+    type Error = E::Error;
+
+    fn er_input_error(&self) -> &Self::Error {
+        self.er_error()
+    }
+
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn into_er_input(self) -> ErPart {
+        self.into_er_part()
     }
 }
 

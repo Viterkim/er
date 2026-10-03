@@ -40,6 +40,7 @@ pub fn capture() {
             .iter()
             .all(|trace| trace.capture.status() == std::backtrace::BacktraceStatus::Captured)
     );
+
     #[cfg(feature = "src_locations")]
     assert_eq!(tree.src_location.line(), _source);
 
@@ -49,6 +50,16 @@ pub fn capture() {
     assert_eq!(tree.stack_traces[1].error_index, ErErrorIndex(1));
     assert_eq!(tree.stack_traces[2].error_index, ErErrorIndex(0));
     assert!(tree.into_er_node().er_find::<fmt::Error>().is_some());
+
+    let report = ErTree::from(fmt::Error).into_er_report().single_line();
+    let requested = line!() + 1;
+    let report = Err::<(), _>(report).er_trace().unwrap_err();
+    assert_eq!(report.layout, Layout::SingleLine);
+    assert_eq!(report.tree.stack_traces[0].trace_location.line(), requested);
+
+    let top = report.into_er_top().single_line().er_trace();
+    assert_eq!(top.layout, Layout::SingleLine);
+    assert_eq!(top.tree.stack_traces.len(), 2);
 }
 
 #[cfg(feature = "macros")]
@@ -197,6 +208,11 @@ pub mod composed {
 
     #[test]
     pub fn construction() {
+        let wrapped = ReadErrWrap::from(read("wrapped").unwrap_err()).er_trace();
+        assert_eq!(wrapped.tree.stack_traces.len(), 2);
+        let wrapped = Err::<(), _>(wrapped).er_trace().unwrap_err();
+        assert_eq!(wrapped.tree.stack_traces.len(), 3);
+
         let result: ErResult<(), ReadErr> = Err::<(), _>(std::fmt::Error).er(|_| "fields");
         assert!(result.as_ref().unwrap_err().stack_traces.is_empty());
         assert_eq!(result.er_trace().unwrap_err().stack_traces.len(), 1);
@@ -224,6 +240,7 @@ pub mod composed {
         assert_eq!(batch.stack_traces[0].error_index, ErErrorIndex(1));
         assert_eq!(batch.stack_traces[1].error_index, ErErrorIndex(0));
         assert_eq!(batch.stack_traces[1].trace_location.line(), requested);
+
         #[cfg(feature = "src_locations")]
         assert_eq!(batch.src_location.line(), _source);
 

@@ -4,8 +4,7 @@ use crate::ErTree;
 /// Another ErTest passes through without adding context. Failures print the whole report.
 pub type ErTest<T = ()> = Result<T, ErTestFailure>;
 
-/// A test failure and its original errors. Access them through `.tree`.
-/// No Error or IntoErPart impl, so the catchall From impl doesn't overlap `From<Self>`.
+/// A test failure, prints the whole report and borrows like its tree.
 pub struct ErTestFailure {
     pub tree: ErTree<ErTestError>,
 }
@@ -13,3 +12,7 @@ pub struct ErTestFailure {
 /// The label added when an error enters ErTest.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct ErTestError;
+
+/// The Option was None.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct ErTestOptionNone;

@@ -11,6 +11,8 @@ pub fn saved_tree() {
     let child = ErTree::from(Message::new("child")).er::<Message>(|| Message::new("parent"));
     let tree = ErTree::new(root, [child]);
     let snapshot = tree.er_snapshot();
+    assert_eq!(tree.er_report().er_snapshot(), snapshot);
+    assert_eq!(tree.er_top().er_snapshot(), snapshot);
 
     for (live, saved) in tree.er_entries().zip(snapshot.er_entries()) {
         assert_eq!(saved.message, live.error.to_string());
@@ -39,11 +41,16 @@ pub fn saved_tree() {
     }
 
     let expected = tree.er_report().to_string();
-    drop(tree);
+    let report = tree.into_er_report();
+    assert_eq!(report.er_snapshot(), snapshot);
+    let top = report.into_er_top();
+    assert_eq!(top.er_snapshot(), snapshot);
+    drop(top);
 
     assert_eq!(snapshot.er_report().to_string(), expected);
     assert_eq!(snapshot.er_descendants().count(), 2);
     assert_eq!(snapshot.entries[1].kind, ErEntryKind::Source);
+
     #[cfg(feature = "src_locations")]
     assert!(snapshot.entries[1].src_location.is_none());
 }

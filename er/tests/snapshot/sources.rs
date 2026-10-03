@@ -95,6 +95,21 @@ pub fn chain(sources: usize) -> Message {
 }
 
 #[test]
+pub fn native_errors() {
+    let error = chain(1);
+    assert_eq!(error.er_top_string(), "link");
+    assert_eq!(error.er_report_string(), "link\n`- cause");
+
+    let snapshot = error.er_snapshot();
+    assert_eq!(snapshot.er_report_string(), error.er_report_string());
+    assert_eq!(snapshot.entries[1].kind, ErEntryKind::Source);
+
+    let error: BoxError = Box::new(error);
+    assert_eq!(error.er_snapshot(), snapshot);
+    assert_eq!(error.er_report_string(), snapshot.er_report_string());
+}
+
+#[test]
 pub fn boundaries() {
     for count in [MAX_SOURCE_HOPS - 1, MAX_SOURCE_HOPS, MAX_SOURCE_HOPS + 1] {
         let tree = ErTree::from(chain(count));

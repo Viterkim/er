@@ -112,6 +112,14 @@ if let Err(error) = read_port("fakenumber") {
 let port = read_port("85").er_report().unwrap();
 ```
 
+If the caller just wants text:
+
+```rust
+let result: Result<u16, String> = read_port("85").er_report_string();
+```
+
+`.er_top_string()` does the same with just the outer error, Ok passes through in both. (for public boundaries / actual errors, look at the `Public errors` section).
+
 ## Print top error
 
 ```rust
@@ -265,6 +273,7 @@ pub struct ChecksErr {
 }
 
 pub fn check_inputs(port: &str, enabled: &str) -> ErResult<(), ChecksErr> {
+    // er_all returns (), so Ok(()) here
     er_all!(|_| (port, enabled), [port.parse::<u16>(), enabled.parse::<bool>()])
 }
 ```
@@ -365,59 +374,56 @@ When you (as a library) want to give your consumer an error, don't give them an 
 
 ```rust
 #[derive(Er)]
-pub enum ApiError {
+pub enum PortError {
     Missing,
     #[er(format = "Not a port: {input}")]
     InvalidPort { input: String },
 }
 
 // Consumer doesn't need to have er, it's just a normal error for them.
-let error = ApiError::invalid_port("fakenumber");
+let error = PortError::invalid_port("fakenumber");
 match error {
-    ApiError::Missing => println!("Where port?"),
-    ApiError::InvalidPort { input } => println!("Try 85, not {input}"),
+    PortError::Missing => println!("Where port?"),
+    PortError::InvalidPort { input } => println!("Try 85, not {input}"),
 }
 ```
 
-Decide if you want to `error!("{report}")` before mapping your type (saying goodbye to it with `.map_err()`).
+Use `.er_into()` to save the report on your type, you get the tree first if you want to print it:
 
 ```rust
 #[derive(Er)]
+#[er(format = "{report}")]
 pub struct ApiError {
+    #[er(into_top)]
+    pub kind: ReadPortErr,
+
+    #[er(into_report_string)]
     pub report: String,
-    pub err_msg: String,
 }
-
 pub fn public_read_port(input: &str) -> Result<u16, ApiError> {
-    // Remember to avoid using `.map_err()` in Er for most cases.
-    // We're turning the tree into text (it gets dropped), so its what we actually want here.
-    read_port(input).map_err(|err| ApiError {
-        report: err.er_report().to_string(),
-        err_msg: "invalid port".to_string(),
+    read_port(input).er_into(|tree| {
+        eprintln!("{}", tree.er_report());
     })
-}
-
-if let Err(error) = public_read_port("fakenumber") {
-    // !WARNING! Don't just print "{error:?}" you'll get `\n` instead of actual newlines
-    println!("{}", error.report);
-    println!("{}", error.err_msg);
 }
 ```
 
+The closure only runs on errors, if you want to print it later just use `.er_into(|_| {})`. You can swap the `String` for `ErSnapshot` with `#[er(into_snapshot)]` if you need the structure.
+
 You should still print / show your error in your applications of course, and I'll even argue that as a library, if you at least give a string report to your consumer, you're gonna have great bug reports from users and a much easier time fixing bugs. Printing a report is often times more valuable than a friendly message you made up. Don't destroy your type. Include the message in the type itself next to the other data instead.
+
+Yes this opts out from auto implementing stuff with `From<>`, this is on purpose so you have to go through `.er_into()` and decide what to do with the report.
 
 ## Non errors (values)
 
 Never do this on a tree, you nuke it! This makes a new `ErTree`.
 
-For values that don't implement `Error` like `Err(85)`.
+For values that don't implement `Error` like `Err(85)`, put the data in your own error:
 
 ```rust
 #[derive(Er)]
 pub struct DeviceErr {
     pub status: u8,
 }
-
 pub fn check_device(result: Result<(), u8>) -> ErResult<(), DeviceErr> {
     // Remember, in rust if the first value of a closure just gets passed to a function,
     // you can pass the function directly. So you could also do `result.er_val(DeviceErr::new)`
@@ -425,16 +431,59 @@ pub fn check_device(result: Result<(), u8>) -> ErResult<(), DeviceErr> {
 }
 ```
 
-You can also add context as a chain with `.er()` afterwards (ReadDeviceErr has a DeviceErr below)
+If you have some data, you want some logic to convert, i would NOT put it a layer beneath (by mapping it to an error, then putting it below).
+
+Use types and data, here's an example with `JsValue` where we just use it as data on our error. 
 
 ```rust
-#[derive(Er)]
-pub struct ReadDeviceErr {
-    pub device: String,
+use js_sys::Reflect;
+use wasm_bindgen::JsValue;
+
+// First we make our own type, remember this is NOT an error
+#[derive(ErFormat)]
+pub struct JsData {
+    pub message: String,
+    pub stack: Option<String>,
+}
+impl From<JsValue> for JsData {
+    fn from(value: JsValue) -> Self {
+        let text = |field: &str| {
+            Reflect::get(&value, &field.into())
+                .ok()
+                .and_then(|value| value.as_string())
+        };
+
+        Self {
+            message: value
+                .as_string()
+                .or_else(|| text("message"))
+                .unwrap_or_else(|| format!("{value:?}")),
+            stack: text("stack"),
+        }
+    }
 }
 
-pub fn read_device(device: &str, result: Result<(), u8>) -> ErResult<(), ReadDeviceErr> {
-    result.er_val(DeviceErr::new).er(|_| device)
+// Now we make the error and just include the data
+#[derive(Er)]
+pub struct ConnectErr {
+    pub server: String,
+    pub details: JsData,
+}
+pub fn connect(server: &str, result: Result<(), JsValue>) -> ErResult<(), ConnectErr> {
+    let e = |value| ConnectErr::new(server, value);
+    result.er_val(e)
+}
+```
+
+The constructor does the `.into()` for us. And if we had variants that did not have the data, i would make an enum and only have the data on the some of the variants.
+
+## Bail
+
+You can use `er_bail!(err)` if you don't want to type `return Err(ErTree::from(err))` (You can give it an existing tree too).
+
+```rust
+if path.is_empty() {
+    er_bail!(|_| (path, "no file given"));
 }
 ```
 
@@ -457,6 +506,12 @@ if let Err(error) = read_port("fakenumber") {
 
 Can still print `.er_top()` or `.er_report()`. Each entry has its depth and the index of the error above it.
 
+On a Result, `.er_snapshot()` saves Err and leaves Ok alone (for public boundaries / actual errors, look at the `Public errors` section).
+
+```rust
+let result: Result<u16, ErSnapshot> = read_port("fakenumber").er_snapshot();
+```
+
 Enable `serde` on Er, then add `serde_json` (or toml, or whatever).
 
 ```toml
@@ -470,72 +525,6 @@ let snapshot = read_port("fakenumber").unwrap_err().er_snapshot();
 let json = serde_json::to_string_pretty(&snapshot).unwrap();
 std::fs::write("/tmp/error.json", &json).unwrap();
 ```
-
-## Tricky example (combination)
-
-Foreign errors, own errors, the original error, string context, typed context, using / consuming, public boundary
-
-```rust
-#[derive(Er)]
-pub enum ListenErr {
-    InvalidInput { input: String },
-    SacredPort,
-    BindFailed { address: SocketAddrV4, kind: io::ErrorKind, available_ports: Vec<u16> },
-}
-
-pub fn listen(input: &str) -> ErResult<TcpListener, ListenErr> {
-    let (ip, port) = input.split_once(':').unwrap_or((input, ""));
-
-    // First 2 errors, to us they're both just bad input
-    let ip = ip.parse::<Ipv4Addr>().er(|| ListenErr::invalid_input(input))?;
-    let port = port.parse::<u16>().er(|| ListenErr::invalid_input(input))?;
-
-    // Third error, our own rule that port 85 is sacred
-    if port == 85 {
-        er_bail!(ListenErr::sacred_port());
-    }
-
-    // Fourth error, we might want to match on what happened
-    let address = SocketAddrV4::new(ip, port);
-    TcpListener::bind(address).er_with(|err| {
-        let available_ports = find_available_ports(address);
-        ListenErr::bind_failed(address, err.kind(), available_ports)
-    })
-}
-
-// Someone using our public API doesn't need Er.
-// I use 'Err' for internal errors, and 'Error' for public facing ones.
-pub type ListenError = ListenErr;
-
-pub fn public_error_example(input: &str) -> Result<TcpListener, ListenError> {
-    listen(input).map_err(|err| err.top)
-}
-
-// Using it ourselves (still with Er)
-fn main() {
-    match listen("127.0.0.1:8080") {
-        Ok(listener) => start_server(listener),
-        Err(error) => {
-            match &error.top {
-                ListenErr::InvalidInput { input } => eprintln!("bad input: {input}"),
-                ListenErr::SacredPort => eprintln!("port 85 is sacred"),
-                ListenErr::BindFailed { address, kind: io::ErrorKind::AddrInUse, available_ports } => {
-                    eprintln!("{address} is already in use");
-                    show_available_ports(available_ports);
-                },
-                ListenErr::BindFailed { address, .. } => eprintln!("couldn't bind {address}"),
-            }
-
-            // Below .top we have to search for the original error.
-            if let Some(source) = error.er_find::<io::Error>() {
-                eprintln!("raw error code: {:?}", source.raw_os_error());
-            }
-        }
-    }
-}
-```
-
-[The full tricky comparison](tricky-error-comparison.md) does this with the other libraries as a comparison.
 
 ## Tests
 
@@ -573,6 +562,10 @@ test the_best_test ... FAILED
 
 Make your test helper functions return other types since `?` would fall through without adding context.
 
+For Options, use `option.er_test()?`.
+
+The macros work too, but you do need to use `er_all!(|| ErTestError, results)?` so Rust knows which error to build.
+
 ## Other traits
 
 If you need to implement another crate's trait on the whole tree, use Wrap.
@@ -603,11 +596,49 @@ pub fn request(input: &str) -> ErResult<u16, RequestErr> {
 
 If the foreign trait needs the Wrap itself to implement `Error`, use [std_error](macros.md#wrap-with-std_error) and `.er_wrap()` when adding context, so you can still find the errors inside.
 
+## Sharing a result multiple times
+
+If several callers need the same result, give them a type which has what they need: 
+
+```rust
+#[derive(Er)]
+pub enum SessionErrKind {
+    Failed { context: String },
+    CleanupFailed,
+}
+
+#[derive(Er)]
+// Since debug gives us literal '\n'
+#[er(format = "{report}")]
+pub struct SessionError {
+    #[er(into_top)]
+    pub kind: SessionErrKind,
+
+    #[er(into_report_string)]
+    pub report: String,
+}
+
+let completion: Result<(), Arc<SessionError>> = run_session().er_into(|tree| {
+    // It automatically does the .into() for the Arc too (also works without it).
+    eprintln!("{}", tree.er_report());
+});
+
+let reader = completion.clone();
+
+// Somewhere else
+if let Err(error) = reader {
+    match error.kind {
+        SessionErrKind::Failed { .. } => eprintln!("session said nope: {error}"),
+        SessionErrKind::CleanupFailed => eprintln!("cleanup gave up: {error}"),
+    }
+}
+```
+
 ## Opaque (edge case)
 
-You can make your own public type and attach a string report, or a snapshot, check the `Public error` example above.
+Look at the `Sharing a result`(right above) and the `Public error`(further up) examples first. That's for when you want to make a public type (attaching a string report, or a snapshot).
 
-But if you want to force the real report, into an Error for like anyhow, then you can.
+But if you want to force the real report, into an Error, there is the escape hatch: 
 
 ```rust
 pub fn run() -> anyhow::Result<()> {
@@ -642,16 +673,6 @@ They follow the tree as you add context or aggregate it. You print them separate
 
 If you need the error, you can use the index with `error.er_at_index(trace.error_index)`.
 
-## Bail
-
-You can use `er_bail!(err)` if you don't want to type `return Err(ErTree::from(err))` (You can give it an existing tree too).
-
-```rust
-if path.is_empty() {
-    er_bail!(|_| (path, "no file given"));
-}
-```
-
 ## Macros
 
 Custom text does both Display and Debug. `exact` takes the field type directly instead of `impl Into<T>`:
@@ -678,3 +699,78 @@ println!("{error}");
 `#[er(no_constructors)]` on the struct/enum skips `new` and all variant constructors, for either derive.
 
 [More about the macros](macros.md), including the generated constructors.
+
+## Tricky example (combination)
+
+Foreign errors, own errors, the original error, string context, typed context, using / consuming, public boundary
+
+```rust
+#[derive(Er)]
+pub enum ListenErr {
+    InvalidInput { input: String },
+    SacredPort,
+    BindFailed { address: SocketAddrV4, kind: io::ErrorKind, available_ports: Vec<u16> },
+}
+
+pub fn listen(input: &str) -> ErResult<TcpListener, ListenErr> {
+    let (ip, port) = input.split_once(':').unwrap_or((input, ""));
+
+    // First 2 errors, to us they're both just bad input
+    let ip = ip.parse::<Ipv4Addr>().er(|| ListenErr::invalid_input(input))?;
+    let port = port.parse::<u16>().er(|| ListenErr::invalid_input(input))?;
+
+    // Third error, our own rule that port 85 is sacred
+    if port == 85 {
+        er_bail!(ListenErr::sacred_port());
+    }
+
+    // Fourth error, we might want to match on what happened
+    let address = SocketAddrV4::new(ip, port);
+    TcpListener::bind(address).er_with(|err| {
+        let available_ports = find_available_ports(address);
+        ListenErr::bind_failed(address, err.kind(), available_ports)
+    })
+}
+
+// Someone using our public API doesn't need Er.
+// I use 'Err' for internal errors, and 'Error' for public facing ones.
+#[derive(Er)]
+#[er(format = "{report}")]
+pub struct ListenError {
+    #[er(into_top)]
+    pub kind: ListenErr,
+
+    #[er(into_report_string)]
+    pub report: String,
+}
+pub fn public_error_example(input: &str) -> Result<TcpListener, ListenError> {
+    listen(input).er_into(|tree| {
+        eprintln!("{}", tree.er_report());
+    })
+}
+
+// Using it ourselves (still with Er)
+fn main() {
+    match listen("127.0.0.1:8080") {
+        Ok(listener) => start_server(listener),
+        Err(error) => {
+            match &error.top {
+                ListenErr::InvalidInput { input } => eprintln!("bad input: {input}"),
+                ListenErr::SacredPort => eprintln!("port 85 is sacred"),
+                ListenErr::BindFailed { address, kind: io::ErrorKind::AddrInUse, available_ports } => {
+                    eprintln!("{address} is already in use");
+                    show_available_ports(available_ports);
+                },
+                ListenErr::BindFailed { address, .. } => eprintln!("couldn't bind {address}"),
+            }
+
+            // Below .top we have to search for the original error.
+            if let Some(source) = error.er_find::<io::Error>() {
+                eprintln!("raw error code: {:?}", source.raw_os_error());
+            }
+        }
+    }
+}
+```
+
+[The full tricky comparison](tricky-error-comparison.md) does this with the other libraries as a comparison.

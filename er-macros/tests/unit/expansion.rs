@@ -120,3 +120,24 @@ pub fn source_options() -> syn::Result<()> {
     assert!(crate::format::expand(&item).is_err());
     Ok(())
 }
+
+#[test]
+pub fn into_options() -> syn::Result<()> {
+    for code in [
+        "struct Data { #[er(into_top)] kind: E }",
+        "struct Data { #[er(into_top)] kind: E, #[er(into_top)] other: E, #[er(into_snapshot)] diagnostics: S }",
+        "struct Data { context: String, #[er(into_report_string)] report: String }",
+        "struct Data { #[er(into_snapshot, into_report_string)] report: S }",
+        "struct Data { #[er(into_snapshot = true)] report: S }",
+        "#[er(into_snapshot)] struct Data;",
+        "enum Data { First(#[er(into_top)] E, #[er(into_snapshot)] S), Second(#[er(into_top)] E, #[er(into_snapshot)] S) }",
+        "enum Data { First(#[er(into_snapshot)] S), Second(#[er(into_snapshot)] S) }",
+    ] {
+        let item = syn::parse_str(code)?;
+        assert!(crate::generate::expand(&item).is_err(), "{code}");
+    }
+
+    let item = syn::parse_str("struct Data { #[er(into_snapshot)] diagnostics: S }")?;
+    assert!(crate::format::expand(&item).is_err());
+    Ok(())
+}

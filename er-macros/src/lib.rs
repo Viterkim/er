@@ -34,7 +34,7 @@ pub fn __er_try_results(input: TokenStream) -> TokenStream {
 /// Impls error, generates Display/Debug(as the same), makes constructor funcs.
 /// Structs also work with `.er(|_| path)`, so you don't have to name the err type.
 ///
-/// Options: `format`, `skip`, `censor`, `exact`, `no_constructors`, `wrap`, `crate` and `source`(you don't need this usually).
+/// Options: `format`, `skip`, `censor`, `exact`, `no_constructors`, `wrap`, `crate`, `into_*` and `source`(you don't need this usually).
 ///
 /// Just use `.er` on anything you see.
 /// If you need to implement a trait on your error type, you can use `wrap` [but you usually don't](https://github.com/Viterkim/er/blob/main/er/docs/macros.md#wrap).

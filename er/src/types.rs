@@ -53,6 +53,7 @@ pub struct ErPart {
     pub stack_traces: Vec<ErStackTrace>,
 }
 
+/// A captured stack, linked to its error by `error_index`.
 #[cfg(feature = "stack_traces")]
 pub struct ErStackTrace {
     pub error_name: &'static str,

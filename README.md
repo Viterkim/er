@@ -265,7 +265,9 @@ You can carry data up instead of runtime searching(`.er_find()`) by using `.er_w
 
 ### Don't use .map_err()
 
-Do NOT use `map_err`. It's easy to accidentally nuke the tree/report. It should only ever be used at the final boundary when you are 'done' with your tree/report.
+Do NOT use `map_err` with Er. It's easy to accidentally nuke the tree/report, and there's `.er_into()` for the final boundary.
+
+If the caller just wants text you can use `.er_report_string()` (for public boundaries / actual errors, look at the `Public errors` section in `examples.md`).
 
 ### Picking between `Report` and `Top` (or unwrapping)
 
@@ -277,7 +279,7 @@ For main you can write: `pub fn main() -> Result<(), ErReport<AppErr>>`, and for
 
 When you (as a library) want to give your consumer an error, don't give them an `ErReport` or an `ErTree`, give them a boring normal error (with `#[derive(Er)]`).
 
-Decide if you want to `error!("{report}")` before mapping your type (saying goodbye to it with `.map_err()`). But look at the [public error example](er/docs/examples.md#public-error)
+Use `.er_into(|tree| ...)`, you can print the report in that closure before it gets saved on your type. Look at the [public error example](er/docs/examples.md#public-error).
 
 You should still print / show your error in your applications of course, and I'll even argue that as a library, if you at least give a string report to your consumer, you're gonna have great bug reports from users and a much easier time fixing bugs. Printing a report is often times more valuable than a friendly message you made up. Don't destroy your type. Include the message in the type itself next to the other data instead.
 

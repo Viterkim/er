@@ -40,6 +40,7 @@ pub fn native_source() {
         source,
         &error.er_find::<LegacyErr>().unwrap().cause
     ));
+
     #[cfg(feature = "src_locations")]
     assert_eq!(error.nodes[0].src_location, error.src_location);
 
@@ -50,10 +51,12 @@ pub fn native_source() {
 #[test]
 pub fn owned_context() {
     let grandchild = ErTree::from(fmt::Error);
+
     #[cfg(feature = "src_locations")]
     let grandchild_src_location = grandchild.src_location;
 
     let child = ErTree::new(StageErr, [grandchild]);
+
     #[cfg(feature = "src_locations")]
     let child_src_location = child.src_location;
 
@@ -67,6 +70,7 @@ pub fn owned_context() {
             .collect::<Vec<_>>(),
         ["timeout"]
     );
+
     #[cfg(feature = "src_locations")]
     let inner_src_location = inner.src_location;
 
@@ -83,6 +87,7 @@ pub fn owned_context() {
         children,
         ["legacy", "StageErr", fmt::Error.to_string().as_str()]
     );
+
     #[cfg(feature = "src_locations")]
     {
         let child = &outer.nodes[0].nodes[0];

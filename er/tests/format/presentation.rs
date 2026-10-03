@@ -40,6 +40,16 @@ pub fn views() -> fmt::Result {
     assert!(ptr::eq(from_tree.tree, top.tree));
 
     let expected = report.to_string();
+    assert_eq!(error.er_report_string(), expected);
+    assert_eq!(error.er_top_string(), "AppErr");
+    assert_eq!(
+        report.single_line().er_report_string(),
+        report.single_line().to_string()
+    );
+    assert_eq!(
+        top.single_line().er_report_string(),
+        report.single_line().to_string()
+    );
 
     let owned = error.into_er_report();
 
@@ -82,6 +92,23 @@ pub fn reentry() {
     assert!(outer.er_contains::<AppErr>());
     assert!(outer.er_contains::<InnerErr>());
     assert_eq!(outer.into_er_report().layout, Layout::Multiline);
+
+    for outer in [
+        failing()
+            .er_report()
+            .unwrap_err()
+            .single_line()
+            .er::<OuterErr>(()),
+        failing()
+            .er_top()
+            .unwrap_err()
+            .single_line()
+            .er::<OuterErr>(()),
+    ] {
+        assert!(outer.er_contains::<AppErr>());
+        assert!(outer.er_contains::<InnerErr>());
+        assert_eq!(outer.into_er_report().layout, Layout::Multiline);
+    }
 }
 
 #[test]
@@ -100,6 +127,37 @@ pub fn results() -> Result<(), ErReport<AppErr>> {
 
     let success: ErResult<u32, AppErr> = Ok(7);
     assert_eq!(success.er_report()?, 7);
+
+    assert_eq!(
+        Ok::<_, ErTree<AppErr>>(String::from("kept")).er_report_string(),
+        Ok(String::from("kept"))
+    );
+    assert_eq!(Ok::<_, ErTree<AppErr>>(7).er_top_string(), Ok(7));
+    assert_eq!(Ok::<_, ErTree<AppErr>>(7).er_snapshot().unwrap(), 7);
+
+    let expected = failing().unwrap_err().er_report_string();
+    assert_eq!(failing().er_report_string().unwrap_err(), expected);
+    assert_eq!(failing().er_top_string().unwrap_err(), "AppErr");
+    assert_eq!(
+        failing().er_snapshot().unwrap_err().er_report_string(),
+        expected
+    );
+
+    let report = failing().er_report().unwrap_err().single_line();
+    let expected = report.er_report_string();
+    assert_eq!(
+        Err::<(), _>(report).er_report_string().unwrap_err(),
+        expected
+    );
+
+    let report = failing().er_report().unwrap_err().single_line();
+    let top = Err::<(), _>(report).er_top().unwrap_err();
+    assert_eq!(top.er_report_string(), expected);
+    assert_eq!(Err::<(), _>(top).er_report_string().unwrap_err(), expected);
+
+    let top = failing().er_top().unwrap_err().single_line();
+    let report = Err::<(), _>(top).er_report().unwrap_err();
+    assert_eq!(report.er_report_string(), expected);
 
     Ok(())
 }
@@ -148,6 +206,10 @@ pub fn display_only() -> fmt::Result {
         owned.try_for_each_line(|_| Err(8)),
         Err(ErLineError::Callback(8))
     );
+
+    let top = owned.single_line();
+    let expected = top.er_top_string();
+    assert_eq!(Err::<(), _>(top).er_top_string().unwrap_err(), expected);
 
     Ok(())
 }
