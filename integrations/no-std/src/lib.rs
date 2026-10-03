@@ -25,6 +25,20 @@ pub fn diagnostic() -> FirmwareErrWrap {
     FirmwareErr::new(device).er_wrap()
 }
 
+#[derive(Er)]
+#[er(format = "{report}")]
+pub struct FirmwareError {
+    #[er(into_top)]
+    pub kind: FirmwareErr,
+    #[er(into_report_string)]
+    pub report: alloc::string::String,
+    #[er(into_snapshot)]
+    pub snapshot: ErSnapshot,
+}
+pub fn saved_diagnostic() -> Result<(), FirmwareError> {
+    Err::<(), _>(diagnostic()).er_into(|_| {})
+}
+
 #[cfg(target_has_atomic = "ptr")]
 #[derive(Er)]
 pub struct SharedErr {
@@ -64,6 +78,10 @@ pub mod tests {
         )
         .unwrap_report();
         assert_eq!(values, (85, true));
+
+        let saved = saved_diagnostic().unwrap_err();
+        assert_eq!(saved.report, saved.snapshot.er_report().to_string());
+        assert_eq!(saved.kind.device.bus, 85);
 
         #[cfg(target_has_atomic = "ptr")]
         {

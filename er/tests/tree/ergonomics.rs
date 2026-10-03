@@ -32,6 +32,7 @@ pub fn conversion() {
     let tree: ErTree<AppErr> = AppErr.into();
 
     assert!(tree.nodes.is_empty());
+
     #[cfg(feature = "src_locations")]
     assert_eq!(tree.src_location.line(), _line);
 }
@@ -43,6 +44,7 @@ pub fn question_mark() {
 
     assert!(error.nodes.is_empty());
     assert_eq!(error.top.to_string(), "AppErr");
+
     #[cfg(feature = "src_locations")]
     assert_eq!(error.src_location.line(), expected_line);
 }
@@ -55,6 +57,7 @@ pub fn early_return() {
     let error = reject_if_missing(true, &mut expected_line).unwrap_err();
     assert!(error.nodes.is_empty());
     assert_eq!(error.top.to_string(), "AppErr");
+
     #[cfg(feature = "src_locations")]
     assert_eq!(error.src_location.line(), expected_line);
 }
@@ -67,7 +70,20 @@ pub fn bail() {
         er_bail!(AppErr,);
     })();
     let tree = result.unwrap_err();
+
     assert!(tree.nodes.is_empty());
+
+    #[cfg(feature = "src_locations")]
+    assert_eq!(tree.src_location.line(), expected_line);
+
+    let result = (|| -> ErResult<(), AppErr> {
+        expected_line = line!() + 1;
+        er_bail!(());
+    })();
+    let tree = result.unwrap_err();
+
+    assert!(tree.nodes.is_empty());
+
     #[cfg(feature = "src_locations")]
     assert_eq!(tree.src_location.line(), expected_line);
 
@@ -76,7 +92,9 @@ pub fn bail() {
         er_bail!(AppErr);
     })();
     let report = result.unwrap_err();
+
     assert_eq!(report.tree.top.to_string(), "AppErr");
+
     #[cfg(feature = "src_locations")]
     assert_eq!(report.tree.src_location.line(), expected_line);
 
@@ -85,20 +103,28 @@ pub fn bail() {
         er_bail!(AppErr);
     })();
     let top = result.unwrap_err();
+
     assert_eq!(top.to_string(), "AppErr");
+
     #[cfg(feature = "src_locations")]
     assert_eq!(top.tree.src_location.line(), expected_line);
 
     let tree = ErTree::new(AppErr, [ChildErr(7)]);
+
     #[cfg(feature = "stack_traces")]
     let tree = tree.er_trace();
+
     let nodes = tree.nodes.as_ptr();
+
     #[cfg(feature = "stack_traces")]
     let traces = tree.stack_traces.as_ptr();
+
     let result = (|| -> ErResult<(), AppErr> { er_bail!(tree.into_er_report()) })();
     let tree = result.unwrap_err();
+
     assert_eq!(tree.nodes.as_ptr(), nodes);
     assert_eq!(tree.er_find::<ChildErr>().unwrap().0, 7);
+
     #[cfg(feature = "stack_traces")]
     assert_eq!(tree.stack_traces.as_ptr(), traces);
 }
@@ -123,8 +149,10 @@ pub fn er_val() -> Result<(), ErReport<ChildErr>> {
 
     assert_eq!(error.top.0, 7);
     assert!(error.nodes.is_empty());
+
     #[cfg(feature = "src_locations")]
     assert_eq!(error.src_location.file(), file!());
+
     #[cfg(feature = "src_locations")]
     assert_eq!(error.src_location.line(), _expected_line);
 
@@ -262,6 +290,7 @@ pub fn raw_context() {
     let _line = line!() + 1;
     let error = ChildErr(1).er::<AppErr>(());
     assert_eq!(error.er_find::<ChildErr>().unwrap().0, 1);
+
     #[cfg(feature = "src_locations")]
     {
         assert_eq!(error.src_location.line(), _line);
@@ -329,12 +358,15 @@ pub fn er_with_tree() {
     assert_eq!(calls.get(), 0);
 
     let tree = ChildErr(3).er::<ParentErr>(|_| 7u8);
+
     #[cfg(feature = "src_locations")]
     let location = tree.src_location;
+
     let tree =
         tree.er_with_tree(|tree| ParentErr(tree.top.0 + tree.er_find::<ChildErr>().unwrap().0));
     assert_eq!(tree.top.0, 10);
     assert_eq!(tree.er_find::<ChildErr>().unwrap().0, 3);
+
     #[cfg(feature = "src_locations")]
     assert_eq!(tree.nodes[0].src_location, location);
 

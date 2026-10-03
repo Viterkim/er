@@ -1,6 +1,6 @@
 #[cfg(feature = "stack_traces")]
 use crate::impls::stack_trace::append_traces;
-use crate::{ErNode, ErResult, ErTree, IntoErPart};
+use crate::{ErInput, ErNode, ErResult, ErTree};
 use alloc::vec::Vec;
 use core::error::Error;
 
@@ -12,7 +12,7 @@ pub fn collect<A, E, T>(
 ) -> ErResult<(), A>
 where
     A: Error + 'static,
-    E: IntoErPart,
+    E: ErInput,
 {
     let mut nodes: Vec<ErNode> = Vec::new();
     #[cfg(feature = "stack_traces")]
@@ -24,7 +24,7 @@ where
         match result {
             Ok(value) => drop(value),
             Err(error) => {
-                let part = IntoErPart::into_er_part(error);
+                let part = ErInput::into_er_input(error);
                 #[cfg(feature = "stack_traces")]
                 {
                     let mut incoming = part.stack_traces;

@@ -1,5 +1,8 @@
 use crate::fields::with_fields;
-use crate::input::{Case, Input, attrs::FieldMode};
+use crate::input::{
+    Case, Input,
+    attrs::{FieldMode, IntoField},
+};
 use crate::names::{binding, plain};
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
@@ -112,15 +115,20 @@ pub fn field_value(input: &Input<'_>, case: &Case<'_>, index: usize) -> TokenStr
         return quote!(__ErCensored);
     }
 
-    if case.variant.is_some() {
+    let value = if case.variant.is_some() {
         let local = binding(&input.const_names, &format!("__er_{index}"));
-        return quote_spanned!(field.item.ty.span()=> *#local);
-    }
-
-    let member = match &field.item.ident {
-        Some(name) => Member::Named(name.clone()),
-        None => Member::Unnamed(Index::from(index)),
+        quote_spanned!(field.item.ty.span()=> *#local)
+    } else {
+        let member = match &field.item.ident {
+            Some(name) => Member::Named(name.clone()),
+            None => Member::Unnamed(Index::from(index)),
+        };
+        quote_spanned!(field.item.ty.span()=> self.#member)
     };
 
-    quote_spanned!(field.item.ty.span()=> self.#member)
+    if field.options.into == Some(IntoField::Snapshot) {
+        quote_spanned!(field.item.ty.span()=> (#value).er_report())
+    } else {
+        value
+    }
 }

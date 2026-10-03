@@ -1,15 +1,17 @@
 use crate::{
-    BoxError, ErContextExt, ErErrorContextExt, ErErrorExt, ErMake, ErOpaqueErrorExt,
-    ErPresentationExt, ErReport, ErResult, ErResultExt, ErTop, ErTree, IntoErPart, IntoErTree,
+    BoxError, ErContextExt, ErErrorContextExt, ErErrorExt, ErFromTree, ErInput, ErMake,
+    ErOpaqueErrorExt, ErPresentationExt, ErReport, ErResult, ErResultExt, ErSnapshot, ErTop,
+    ErTree, IntoErTree,
 };
 #[cfg(feature = "macros")]
-use crate::{ErAllError, ErAllItem, ErAllResult, ErPart};
-use core::error::Error;
+use crate::{ErAllError, ErAllItem, ErAllResult, ErBail, ErBuilt, ErFields, ErPart};
+use alloc::string::String;
+use core::{error::Error, fmt};
 
 impl<T: Into<BoxError>, Mode> ErErrorContextExt<Mode> for T {}
 impl<T: Into<BoxError>> ErErrorExt for T {}
 
-impl<T, E: IntoErPart, Mode> ErContextExt<Mode> for Result<T, E> {
+impl<T, E: ErInput, Mode> ErContextExt<Mode> for Result<T, E> {
     type Ok = T;
 
     #[cfg_attr(feature = "src_locations", track_caller)]
@@ -31,7 +33,7 @@ impl<T, E> ErResultExt for Result<T, E> {
     fn er_with_tree<A>(self, f: impl FnOnce(&E) -> A) -> ErResult<T, A>
     where
         A: Error + 'static,
-        E: IntoErPart,
+        E: ErInput,
     {
         match self {
             Ok(value) => Ok(value),
@@ -71,14 +73,54 @@ impl<T, E: IntoErTree> ErPresentationExt for Result<T, E> {
     fn er_top(self) -> Result<T, ErTop<E::Error>> {
         match self {
             Ok(value) => Ok(value),
-            Err(error) => Err(error.into_er_tree().into_er_top()),
+            Err(error) => Err(error.into_er_top()),
         }
     }
 
     fn er_report(self) -> Result<T, ErReport<E::Error>> {
         match self {
             Ok(value) => Ok(value),
-            Err(error) => Err(error.into_er_tree().into_er_report()),
+            Err(error) => Err(error.into_er_report()),
+        }
+    }
+
+    fn er_report_string(self) -> Result<T, String>
+    where
+        E::Error: Error + 'static,
+    {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_er_report().er_report_string()),
+        }
+    }
+
+    fn er_top_string(self) -> Result<T, String>
+    where
+        E::Error: fmt::Display,
+    {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_er_top().er_top_string()),
+        }
+    }
+
+    fn er_snapshot(self) -> Result<T, ErSnapshot>
+    where
+        E::Error: Error + 'static,
+    {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_er_tree().er_snapshot()),
+        }
+    }
+
+    fn er_into<A>(self, hook: impl FnOnce(&ErTree<E::Error>)) -> Result<T, A>
+    where
+        A: ErFromTree<E::Error>,
+    {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.er_into(hook)),
         }
     }
 }
@@ -109,23 +151,50 @@ impl<T, Mode> ErContextExt<Mode> for Option<T> {
 }
 
 #[cfg(feature = "macros")]
-impl<T, E: IntoErPart> ErAllItem<ErAllResult> for Result<T, E> {
+impl<T, F: Into<T>> ErBail<T, ErBuilt> for F {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_bail(self) -> T {
+        self.into()
+    }
+}
+#[cfg(feature = "macros")]
+impl<T, F: FnOnce() -> E, E: Into<T>> ErBail<T, (ErBuilt,)> for F {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_bail(self) -> T {
+        self().into()
+    }
+}
+#[cfg(feature = "macros")]
+impl<T, F> ErBail<T, (ErFields,)> for F
+where
+    T: IntoErTree + From<ErTree<T::Error>>,
+    T::Error: Error + 'static,
+    F: ErMake<T::Error, ErFields>,
+{
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_bail(self) -> T {
+        ErTree::from(self.er_make()).into()
+    }
+}
+
+#[cfg(feature = "macros")]
+impl<T, E: ErInput> ErAllItem<ErAllResult> for Result<T, E> {
     type Ok = T;
 
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er_all_item(self) -> Result<T, ErPart> {
         match self {
             Ok(value) => Ok(value),
-            Err(error) => Err(error.into_er_part()),
+            Err(error) => Err(error.into_er_input()),
         }
     }
 }
 #[cfg(feature = "macros")]
-impl<E: IntoErPart> ErAllItem<ErAllError> for E {
+impl<E: ErInput> ErAllItem<ErAllError> for E {
     type Ok = ();
 
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er_all_item(self) -> Result<(), ErPart> {
-        Err(self.into_er_part())
+        Err(self.into_er_input())
     }
 }

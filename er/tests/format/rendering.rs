@@ -24,6 +24,7 @@ pub fn causal_chain() {
         "LoadConfigErr @ {}\n`- ParsePortErr(\"aint_even_a_number_cmon_man\") @ {}\n   `- invalid digit found in string",
         error.src_location, error.nodes[0].src_location,
     );
+
     #[cfg(not(feature = "src_locations"))]
     let expected = "LoadConfigErr\n`- ParsePortErr(\"aint_even_a_number_cmon_man\")\n   `- invalid digit found in string";
 
@@ -86,8 +87,10 @@ pub fn multiline() {
         ("alpha\nbeta\n", "alpha\n   beta"),
     ] {
         let tree = ErTree::new(WrapErr, [Message(message)]);
+
         #[cfg(feature = "src_locations")]
         let expected = format!("WrapErr @ {}\n`- {expected}", tree.src_location,);
+
         #[cfg(not(feature = "src_locations"))]
         let expected = format!("WrapErr\n`- {expected}");
 
@@ -98,11 +101,13 @@ pub fn multiline() {
         Message("root one\nroot two"),
         [ErTree::from(Message("child"))],
     );
+
     #[cfg(feature = "src_locations")]
     let expected = format!(
         "root one\nroot two @ {}\n`- child @ {}",
         tree.src_location, tree.nodes[0].src_location,
     );
+
     #[cfg(not(feature = "src_locations"))]
     let expected = "root one\nroot two\n`- child";
 
@@ -121,11 +126,13 @@ pub fn branches() {
             ErTree::from(Message("gamma")).into_er_part(),
         ],
     );
+
     #[cfg(feature = "src_locations")]
     let expected = format!(
         "WrapErr @ {}\n|- MidErr @ {}\n|  `- alpha\n|     beta\n`- gamma @ {}",
         tree.src_location, tree.nodes[0].src_location, tree.nodes[1].src_location,
     );
+
     #[cfg(not(feature = "src_locations"))]
     let expected = "WrapErr\n|- MidErr\n|  `- alpha\n|     beta\n`- gamma";
 
@@ -136,6 +143,7 @@ pub fn branches() {
         "WrapErr @ {} [MidErr @ {} [alpha beta] | gamma @ {}]",
         tree.src_location, tree.nodes[0].src_location, tree.nodes[1].src_location,
     );
+
     #[cfg(not(feature = "src_locations"))]
     let expected = "WrapErr [MidErr [alpha beta] | gamma]";
 
@@ -157,8 +165,10 @@ pub fn message_text() {
         ),
     ] {
         let tree = ErTree::new(Message(message), [Message(message)]);
+
         #[cfg(feature = "src_locations")]
         let expected = format!("{message} @ {}\n`- {indented}", tree.src_location,);
+
         #[cfg(not(feature = "src_locations"))]
         let expected = format!("{message}\n`- {indented}");
 
@@ -166,6 +176,7 @@ pub fn message_text() {
 
         #[cfg(feature = "src_locations")]
         let expected = format!("{flat} @ {} [{flat}]", tree.src_location,);
+
         #[cfg(not(feature = "src_locations"))]
         let expected = format!("{flat} [{flat}]");
 
@@ -197,8 +208,10 @@ pub fn chunks() {
         &["alpha\r", "\nbeta"],
     ] {
         let tree = ErTree::from(Chunked(chunks));
+
         #[cfg(feature = "src_locations")]
         let expected = format!("alpha\nbeta @ {}", tree.src_location);
+
         #[cfg(not(feature = "src_locations"))]
         let expected = "alpha\nbeta";
 
@@ -284,8 +297,10 @@ pub fn single_line() {
         assert_eq!(tree.er_top().single_line().to_string(), expected);
 
         let report = tree.into_er_report().single_line();
+
         #[cfg(feature = "src_locations")]
         let expected_report = format!("{expected} @ {}", report.tree.src_location);
+
         #[cfg(not(feature = "src_locations"))]
         let expected_report = expected;
 

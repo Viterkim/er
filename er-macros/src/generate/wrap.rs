@@ -44,37 +44,44 @@ pub fn expand(
         .push(root_bound);
     let (root_impl, _, root_where) = root_generics.split_for_impl();
 
+    // Don't shadow names from the user's bounds, including trait names.
+    let mut node_names = HashSet::new();
+    let mut tokens: Vec<_> = quote!(#declaration #where_clause #stored #wrap #er_path)
+        .into_iter()
+        .collect();
+    while let Some(token) = tokens.pop() {
+        match token {
+            TokenTree::Ident(ident) => {
+                node_names.insert(crate::names::plain(&ident));
+            }
+            TokenTree::Group(group) => tokens.extend(group.stream()),
+            _ => {}
+        }
+    }
+    let node_root = binding(&node_names, "__ErNodeRoot");
+    let mode = binding(&node_names, "__ErContextMode");
+    let new_top = binding(&node_names, "__ErNewTop");
+    let alloc = binding(&node_names, "__er_alloc");
+    let mut node_generics = declaration.clone();
+    node_generics.params.push(syn::parse2(quote!(#node_root))?);
+    // A Wrap containing Rc must still compile. Turning its top into a node needs Send/Sync.
+    let predicates = &mut node_generics.make_where_clause().predicates;
+    predicates.push(syn::parse2(quote!(
+        #wrap #type_generics: #er_path::IntoErTree<Error = #node_root>
+    ))?);
+    predicates.push(syn::parse2(quote!(
+        #node_root: ::core::error::Error + ::core::marker::Send + ::core::marker::Sync + 'static
+    ))?);
+    let (node_impl, _, node_where) = node_generics.split_for_impl();
+
     let conversion = if options.std_error {
         quote! {
             impl #root_impl ::core::error::Error for #wrap #type_generics #root_where {}
         }
     } else {
-        // Don't shadow names from the user's bounds, including trait names.
-        let mut node_names = HashSet::new();
-        let mut tokens: Vec<_> = quote!(#declaration #where_clause #stored #wrap #er_path)
-            .into_iter()
-            .collect();
-        while let Some(token) = tokens.pop() {
-            match token {
-                TokenTree::Ident(ident) => {
-                    node_names.insert(crate::names::plain(&ident));
-                }
-                TokenTree::Group(group) => tokens.extend(group.stream()),
-                _ => {}
-            }
-        }
-        let node_root = binding(&node_names, "__ErNodeRoot");
-        let mut node_generics = declaration.clone();
-        node_generics.params.push(syn::parse2(quote!(#node_root))?);
-        // A Wrap containing Rc must still compile. Only turning it into a node needs Send/Sync.
-        let predicates = &mut node_generics.make_where_clause().predicates;
-        predicates.push(syn::parse2(quote!(
-            #wrap #type_generics: #er_path::IntoErTree<Error = #node_root>
-        ))?);
-        predicates.push(syn::parse2(quote!(
-            #node_root: ::core::error::Error + ::core::marker::Send + ::core::marker::Sync + 'static
-        ))?);
-        let (node_impl, _, node_where) = node_generics.split_for_impl();
+        let mut context_generics = node_generics.clone();
+        context_generics.params.push(syn::parse2(quote!(#mode))?);
+        let (context_impl, _, context_where) = context_generics.split_for_impl();
 
         quote! {
             impl #node_impl #er_path::IntoErPart for #wrap #type_generics #node_where {
@@ -88,6 +95,15 @@ pub fn expand(
                     let #tree: #er_path::ErTree<#node_root> =
                         #er_path::IntoErTree::into_er_tree(self);
                     #er_path::IntoErPart::into_er_part(#tree)
+                }
+            }
+            impl #context_impl #er_path::ErTreeContextExt<#mode> for #wrap #type_generics #context_where {
+                #[track_caller]
+                fn er<#new_top>(self, #top: impl #er_path::ErMake<#new_top, #mode>) -> #er_path::ErTree<#new_top>
+                where
+                    #new_top: ::core::error::Error + 'static,
+                {
+                    #er_path::IntoErTree::er_wrap(self, #top)
                 }
             }
         }
@@ -113,7 +129,33 @@ pub fn expand(
         }
     });
 
+    let presentation = options.std_error.then(|| {
+        quote! {
+            const _: () = {
+                extern crate alloc as #alloc;
+
+                impl #root_impl #wrap #type_generics #root_where {
+                    /// The whole report as text.
+                    pub fn er_report_string(&self) -> #alloc::string::String {
+                        self.tree.er_report_string()
+                    }
+
+                    /// Just the outer error as text.
+                    pub fn er_top_string(&self) -> #alloc::string::String {
+                        self.tree.er_top_string()
+                    }
+
+                    /// Save the messages and tree structure.
+                    pub fn er_snapshot(&self) -> #er_path::ErSnapshot {
+                        self.tree.er_snapshot()
+                    }
+                }
+            };
+        }
+    });
+
     Ok(quote! {
+        /// Your tree, in a type you can implement foreign traits on.
         #std_error_docs
         #[must_use]
         #visibility struct #wrap #declaration #where_clause {
@@ -124,6 +166,11 @@ pub fn expand(
 
             fn deref(&self) -> &Self::Target {
                 &self.tree
+            }
+        }
+        impl #impl_generics ::core::convert::AsMut<#inner> for #wrap #type_generics #where_clause {
+            fn as_mut(&mut self) -> &mut #inner {
+                &mut self.tree
             }
         }
         impl #impl_generics ::core::convert::From<#inner> for #wrap #type_generics #where_clause {
@@ -164,6 +211,16 @@ pub fn expand(
             }
         }
         #conversion
+        impl #node_impl #wrap #type_generics #node_where {
+            /// Use the old top to make a new one, keeping this tree below it.
+            #[track_caller]
+            pub fn er_with<#new_top>(self, #top: impl ::core::ops::FnOnce(&#node_root) -> #new_top) -> #er_path::ErTree<#new_top>
+            where
+                #new_top: ::core::error::Error + 'static,
+            {
+                #er_path::IntoErTree::er_with(self, #top)
+            }
+        }
         impl #root_impl ::core::convert::From<#stored> for #wrap #type_generics #root_where {
             #[track_caller]
             fn from(#value: #stored) -> Self {
@@ -171,7 +228,9 @@ pub fn expand(
                 Self { tree: #tree }
             }
         }
+        #presentation
         impl #root_impl #stored #root_where {
+            /// Put this error in its Wrap.
             #[track_caller]
             pub fn er_wrap(self) -> #wrap #type_generics {
                 ::core::convert::From::from(self)

@@ -1,4 +1,7 @@
-use super::{Input, attrs::FieldMode};
+use super::{
+    Input,
+    attrs::{FieldMode, IntoField},
+};
 use crate::names::plain;
 use quote::{ToTokens as _, quote};
 use std::collections::HashSet;
@@ -39,7 +42,10 @@ pub fn format_generics(input: &Input<'_>) -> syn::Result<Generics> {
     for case in &input.cases {
         for field in &case.fields {
             let formats = &field.formats;
-            if field.options.mode != FieldMode::Normal || formats.is_empty() {
+            if field.options.mode != FieldMode::Normal
+                || formats.is_empty()
+                || field.options.into == Some(IntoField::Snapshot)
+            {
                 continue;
             }
 

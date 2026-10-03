@@ -104,9 +104,12 @@ pub fn ingestion() {
 #[test]
 pub fn erased_nodes() {
     let inner = ErTree::from(StageErr);
+
     #[cfg(feature = "src_locations")]
     let src = inner.src_location;
+
     let node = inner.into_er_part();
+
     #[cfg(feature = "src_locations")]
     assert_eq!(node.node.src_location, src);
 
@@ -117,6 +120,7 @@ pub fn erased_nodes() {
     assert!(tree.er_contains::<StageErr>());
     assert!(tree.er_contains::<DriverErr>());
     assert_eq!(tree.er_descendants().count(), 2);
+
     #[cfg(feature = "src_locations")]
     assert_eq!(tree.nodes[0].src_location, src);
 }

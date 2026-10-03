@@ -1,5 +1,8 @@
 use er::*;
-use std::{cell::Cell, path::PathBuf};
+use std::{
+    cell::Cell,
+    path::{Path, PathBuf},
+};
 
 #[derive(Er)]
 pub struct EmptyUnitErr;
@@ -72,16 +75,62 @@ pub fn construct_from_fields() {
     fn tuple_field() -> ErResult<(), PairTupleErr> {
         None::<()>.er(|_| (85, 86))
     }
+
     assert_eq!(tuple_field().unwrap_err().top.0, (85, 86));
 
-    fn three(path: &std::path::Path, token: &Token) -> ErResult<(), FileErr> {
-        None::<()>.er(|_| (path, "bad", token))
-    }
     let token = Token("secret".into());
-    let error = three(std::path::Path::new("config.toml"), &token).unwrap_err();
+    let error: ErTree<FileErr> = None::<()>
+        .er(|_| (Path::new("config.toml"), "bad", &token))
+        .unwrap_err();
+
     assert_eq!(error.top.token.0, "secret");
 }
 
+#[test]
+pub fn bail_from_fields() {
+    fn empty() -> ErResult<(), EmptyUnitErr> {
+        er_bail!(());
+    }
+
+    fn file(path: &std::path::Path, calls: &Cell<u8>) -> ErResult<(), FileConstructErr> {
+        let make = |_| {
+            calls.set(calls.get() + 1);
+            path
+        };
+
+        er_bail!(make);
+    }
+
+    fn config(machine: &str, token: &str) -> Result<(), ErReport<ConfigConstructErr>> {
+        er_bail!(|_| (machine, token));
+    }
+
+    fn job(path: &str) -> Result<(), ErTop<JobErr>> {
+        er_bail!(|| JobErr::file(path, "bad"));
+    }
+
+    assert!(empty().unwrap_err().nodes.is_empty());
+
+    let calls = Cell::new(0);
+    let file = file(std::path::Path::new("config.toml"), &calls).unwrap_err();
+
+    assert_eq!(file.top.path, PathBuf::from("config.toml"));
+    assert!(file.nodes.is_empty());
+    assert_eq!(calls.get(), 1);
+
+    let config = config("ComputerKatten", "secret").unwrap_err();
+
+    assert_eq!(config.tree.top.machine, "ComputerKatten");
+    assert_eq!(config.tree.top.token, "secret");
+
+    match job("config.toml").unwrap_err().tree.top {
+        JobErr::File { path, msg } => {
+            assert_eq!(path, Path::new("config.toml"));
+            assert_eq!(msg, "bad");
+        }
+        _ => panic!("expected file error"),
+    }
+}
 #[test]
 pub fn boxed_error_can_be_used_or_wrapped() {
     let original = BoxConstructErr::new(std::io::Error::other("original"));
@@ -102,6 +151,7 @@ pub struct OptionalErr<T> {
     #[er(exact)]
     pub value: Option<T>,
 }
+
 #[derive(ErFormat)]
 pub struct OptionalData<T> {
     #[er(exact)]
@@ -111,6 +161,7 @@ pub struct OptionalData<T> {
 pub fn exact() {
     let error = OptionalErr::new(Some(7u8));
     assert_eq!(error.to_string(), "OptionalErr { value: Some(7) }");
+
     let data = OptionalData::new(Some(7u8));
     assert_eq!(data.to_string(), "OptionalData { value: Some(7) }");
 }
@@ -236,6 +287,7 @@ pub fn previous_error_fields_and_aggregation() {
         er_all!((), [Err::<(), _>(std::fmt::Error)])?;
         Ok(())
     }
+
     assert!(gather_unit().unwrap_err().er_contains::<std::fmt::Error>());
 }
 

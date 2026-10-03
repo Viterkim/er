@@ -24,9 +24,15 @@ pub fn layouts() {
                 tree.er_report().layout(layout).to_string()
             );
             assert_eq!(top.to_string(), tree.er_top().layout(layout).to_string());
+            assert_eq!(report.er_report_string(), report.to_string());
+            assert_eq!(top.er_top_string(), top.to_string());
+            assert_eq!(top.er_report_string(), report.to_string());
+            assert_eq!(report.er_top_string(), top.to_string());
             assert_eq!(format!("{report:?}"), report.to_string());
             assert_eq!(format!("{top:?}"), top.to_string());
         }
+        assert_eq!(snapshot.er_report_string(), tree.er_report_string());
+        assert_eq!(snapshot.er_top_string(), tree.er_top_string());
     }
 }
 

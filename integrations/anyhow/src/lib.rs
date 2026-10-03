@@ -35,7 +35,6 @@ pub mod tests {
 
     // If you thought i sucked at coming up with names check this out.
     // Gets the original type back, but drops Anyhow's backtrace.
-    // `map_err` is fine here because we are converting Anyhow, not throwing away an `ErTree`.
     #[test]
     pub fn original_downcast() {
         let result: anyhow::Result<()> = Err(anyhow::Error::new(NativeErr(85)));

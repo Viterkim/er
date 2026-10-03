@@ -114,7 +114,7 @@ pub fn manual_wrap() {
 pub fn test_helpers() -> ErTest {
     let port = read_port("85")?;
     assert_eq!(port, 85);
-    assert_eq!("85".parse::<u16>()?, port);
+    assert_eq!("85".parse::<u16>().er_test()?, port);
     assert_eq!(Some(port).ok_or("expected a port")?, port);
 
     Ok(())

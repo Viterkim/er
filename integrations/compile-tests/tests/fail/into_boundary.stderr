@@ -1,0 +1,24 @@
+error[E0277]: `?` couldn't convert the error to `PublicError`
+  --> tests/fail/into_boundary.rs:14:39
+   |
+13 | pub fn skip_hook() -> Result<(), PublicError> {
+   |                       ----------------------- expected `PublicError` because of this
+14 |     Err::<(), _>(ErTree::from(RunErr))?;
+   |     ----------------------------------^ the trait `From<er::ErTree<RunErr>>` is not implemented for `PublicError`
+   |     |
+   |     this can't be annotated with `?` because it has type `Result<_, er::ErTree<RunErr>>`
+   |
+note: `PublicError` needs to implement `From<er::ErTree<RunErr>>`
+  --> tests/fail/into_boundary.rs:7:1
+   |
+ 7 | pub struct PublicError {
+   | ^^^^^^^^^^^^^^^^^^^^^^
+   = note: the question mark operation (`?`) implicitly performs a conversion on the error value using the `From` trait
+help: the trait `From<er::ErTree<RunErr>>` is not implemented for `PublicError`
+      but trait `From<((_, _),)>` is implemented for it
+  --> tests/fail/into_boundary.rs:6:10
+   |
+ 6 | #[derive(Er)]
+   |          ^^
+   = help: for that trait implementation, expected `((_, _),)`, found `er::ErTree<RunErr>`
+   = note: this error originates in the derive macro `Er` (in Nightly builds, run with -Z macro-backtrace for more info)

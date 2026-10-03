@@ -16,7 +16,7 @@ This is a made up `listen()` case to hit the pain points of different error libr
 
 [error-stack](#error-stack-080--thiserror-1)
 
-[Er](#er-05-1)
+[Er](#er-06-1)
 
 [thiserror, lazy style](#thiserror-lazy-style-2020-1)
 
@@ -52,7 +52,7 @@ Now we make the cases around what our caller cares about and keep the original e
 
 We get a typed current error with the old errors in a report. The lazy context callback can't see the failed error, so bind needs `map_err`. Lookup finds the error we gave it but not its real nested io source in that copied text frame.
 
-### Er (0.5)
+### Er (0.6)
 
 We get a typed top error with the stuff our caller cares about. `.er_with()` can read the failed error and keep it underneath. Everything below `.top` needs a search. And the old error can't also sit in a typed source field on the top variant, because the tree owns it.
 
@@ -394,7 +394,7 @@ fn main() {
 }
 ```
 
-## Er (0.5)
+## Er (0.6)
 
 ```rust
 use er::*;
@@ -1116,13 +1116,23 @@ I chose to give the public caller the address and ports, but not the io kind. `O
 
 ## Er
 
-We already made `ListenErr` with the cases and fields we want to give them. We can hand out that type directly.
+We already made `ListenErr` with the cases and fields we want to give them, so we keep that and save the report next to it:
 
 ```rust
-pub type ListenError = ListenErr;
+#[derive(Er)]
+#[er(format = "{report}")]
+pub struct ListenError {
+    #[er(into_top)]
+    pub kind: ListenErr,
+
+    #[er(into_report_string)]
+    pub report: String,
+}
 
 pub fn public_error_example(input: &str) -> Result<TcpListener, ListenError> {
-    listen(input).map_err(|err| err.top)
+    listen(input).er_into(|tree| {
+        eprintln!("{}", tree.er_report());
+    })
 }
 ```
 

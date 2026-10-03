@@ -8,10 +8,18 @@ pub enum FieldMode {
     Censor,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum IntoField {
+    Top,
+    ReportString,
+    Snapshot,
+}
+
 pub struct FieldOptions {
     pub mode: FieldMode,
     pub exact: bool,
     pub source: bool,
+    pub into: Option<IntoField>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -106,6 +114,14 @@ pub fn container(attributes: &[Attribute]) -> Result<ContainerOptions> {
                 || meta.path.is_ident("source")
             {
                 return Err(meta.error("put `skip`, `censor`, `exact`, or `source` on a field"));
+            }
+
+            if meta.path.is_ident("into_top")
+                || meta.path.is_ident("into_report_string")
+                || meta.path.is_ident("into_snapshot")
+            {
+                return Err(meta
+                    .error("put `into_top`, `into_report_string`, or `into_snapshot` on a field"));
             }
 
             Err(meta.error(EXPECTED))
@@ -204,17 +220,38 @@ pub fn variant(attributes: &[Attribute]) -> Result<Option<LitStr>> {
 }
 
 pub fn field(attributes: &[Attribute]) -> Result<FieldOptions> {
-    const EXPECTED: &str =
-        "expected `#[er(skip)]`, `#[er(censor)]`, `#[er(exact)]`, or `#[er(source)]`";
+    const EXPECTED: &str = "expected a field option: `skip`, `censor`, `exact`, `source`, \
+        `into_top`, `into_report_string`, or `into_snapshot`";
 
     let mut mode = FieldMode::Normal;
     let mut exact = false;
     let mut source = false;
+    let mut into = None;
 
     for attribute in er_attributes(attributes) {
         require_list(attribute, EXPECTED)?;
 
         attribute.parse_nested_meta(|meta| {
+            let conversion = if meta.path.is_ident("into_top") {
+                Some(IntoField::Top)
+            } else if meta.path.is_ident("into_report_string") {
+                Some(IntoField::ReportString)
+            } else if meta.path.is_ident("into_snapshot") {
+                Some(IntoField::Snapshot)
+            } else {
+                None
+            };
+            if let Some(conversion) = conversion {
+                if into.is_some() {
+                    return Err(meta.error("choose one `into_*` option per field"));
+                }
+                if !meta.input.is_empty() && !meta.input.peek(syn::token::Comma) {
+                    return Err(meta.error("this option takes no value"));
+                }
+                into = Some(conversion);
+                return Ok(());
+            }
+
             if meta.path.is_ident("source") {
                 if source {
                     return Err(meta.error("`source` is set more than once"));
@@ -271,5 +308,6 @@ pub fn field(attributes: &[Attribute]) -> Result<FieldOptions> {
         mode,
         exact,
         source,
+        into,
     })
 }

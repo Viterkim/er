@@ -40,6 +40,7 @@ pub fn capture() {
             .iter()
             .all(|trace| trace.capture.status() == std::backtrace::BacktraceStatus::Captured)
     );
+
     #[cfg(feature = "src_locations")]
     assert_eq!(tree.src_location.line(), _source);
 
@@ -49,6 +50,16 @@ pub fn capture() {
     assert_eq!(tree.stack_traces[1].error_index, ErErrorIndex(1));
     assert_eq!(tree.stack_traces[2].error_index, ErErrorIndex(0));
     assert!(tree.into_er_node().er_find::<fmt::Error>().is_some());
+
+    let report = ErTree::from(fmt::Error).into_er_report().single_line();
+    let requested = line!() + 1;
+    let report = Err::<(), _>(report).er_trace().unwrap_err();
+    assert_eq!(report.layout, Layout::SingleLine);
+    assert_eq!(report.tree.stack_traces[0].trace_location.line(), requested);
+
+    let top = report.into_er_top().single_line().er_trace();
+    assert_eq!(top.layout, Layout::SingleLine);
+    assert_eq!(top.tree.stack_traces.len(), 2);
 }
 
 #[cfg(feature = "macros")]
@@ -129,6 +140,7 @@ pub mod composed {
         assert_eq!(&*traces[1].capture as *const Backtrace, left_captures[1]);
         assert_eq!(&*traces[2].capture as *const Backtrace, right_capture);
         assert_eq!(tree.er_find_all::<ReadErr>().count(), 2);
+
         assert_eq!(
             tree.er_at_index(traces[0].error_index)
                 .unwrap()
@@ -146,6 +158,7 @@ pub mod composed {
             PathBuf::from("manual")
         );
         assert!(tree.er_contains::<JobErr>());
+
         let printed = trace_section(&tree);
         assert!(printed.contains("ReadErr"));
         assert!(printed.contains("JobErr"));
@@ -170,6 +183,7 @@ pub mod composed {
                 ErErrorIndex(6)
             ]
         );
+
         for (trace, path) in [(0, "first"), (2, "second"), (4, "third")] {
             let error = tree
                 .er_at_index(tree.stack_traces[trace].error_index)
@@ -179,6 +193,7 @@ pub mod composed {
                 PathBuf::from(path)
             );
         }
+
         assert!(
             tree.er_at_index(tree.stack_traces[1].error_index)
                 .unwrap()
@@ -193,6 +208,11 @@ pub mod composed {
 
     #[test]
     pub fn construction() {
+        let wrapped = ReadErrWrap::from(read("wrapped").unwrap_err()).er_trace();
+        assert_eq!(wrapped.tree.stack_traces.len(), 2);
+        let wrapped = Err::<(), _>(wrapped).er_trace().unwrap_err();
+        assert_eq!(wrapped.tree.stack_traces.len(), 3);
+
         let result: ErResult<(), ReadErr> = Err::<(), _>(std::fmt::Error).er(|_| "fields");
         assert!(result.as_ref().unwrap_err().stack_traces.is_empty());
         assert_eq!(result.er_trace().unwrap_err().stack_traces.len(), 1);
@@ -220,6 +240,7 @@ pub mod composed {
         assert_eq!(batch.stack_traces[0].error_index, ErErrorIndex(1));
         assert_eq!(batch.stack_traces[1].error_index, ErErrorIndex(0));
         assert_eq!(batch.stack_traces[1].trace_location.line(), requested);
+
         #[cfg(feature = "src_locations")]
         assert_eq!(batch.src_location.line(), _source);
 
@@ -229,18 +250,22 @@ pub mod composed {
                     ReadErr::new(index.to_string()),
                     (0..index % 4).map(|_| std::fmt::Error),
                 );
+
                 if index % 3 == 2 {
                     tree.er_trace()
                 } else {
                     tree
                 }
             });
+
             let tree = if collect {
                 aggregate::collect(|| Batch, children.map(Err::<(), _>)).unwrap_err()
             } else {
                 ErTree::new(Batch, children)
             };
+
             assert_eq!(tree.stack_traces.len(), 4);
+
             for (trace, index) in tree.stack_traces.iter().zip([2, 5, 8, 11]) {
                 let error = tree.er_at_index(trace.error_index).unwrap();
                 assert_eq!(

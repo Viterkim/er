@@ -4,6 +4,7 @@ use alloc::{vec, vec::Vec};
 use core::error::Error;
 
 impl<'a> ErEntries<'a> {
+    /// Walk this root and the errors below it, including native sources.
     #[inline]
     pub fn new(
         error: &'a (dyn Error + 'static),
@@ -99,6 +100,7 @@ impl<'a> Iterator for ErEntries<'a> {
 }
 
 impl<'a> ErNodes<'a> {
+    /// Walk these nodes and their children.
     #[inline]
     pub fn new(roots: &'a [ErNode]) -> Self {
         let pending = roots.iter().rev().collect();
@@ -117,6 +119,7 @@ impl<'a> Iterator for ErNodes<'a> {
 }
 
 impl<'a> ErSources<'a> {
+    /// Follow the native source chain, starting here.
     pub const fn new(next: Option<&'a (dyn Error + 'static)>) -> Self {
         Self {
             next,
@@ -143,6 +146,7 @@ impl<'a> Iterator for ErSources<'a> {
 }
 
 impl<'a, T> ErFindAll<'a, T> {
+    /// Find this type in the root and below, including native sources.
     pub fn new(error: &'a (dyn Error + 'static), nodes: &'a [ErNode]) -> Self {
         Self {
             error: Some(error),

@@ -1,8 +1,9 @@
-use crate::ErShared;
+use crate::{ErFromTree, ErShared, ErTree};
 use alloc::sync::Arc;
 use core::{fmt, ops::Deref};
 
 impl<T> ErShared<T> {
+    /// Put the value in an Arc.
     pub fn new(value: T) -> Self {
         Self {
             value: Arc::new(value),
@@ -67,5 +68,11 @@ impl<T: fmt::Debug + ?Sized> fmt::Debug for ErShared<T> {
 impl<T: fmt::Display + ?Sized> fmt::Display for ErShared<T> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&**self, formatter)
+    }
+}
+
+impl<E, A: ErFromTree<E>> ErFromTree<E> for Arc<A> {
+    fn er_from_tree(tree: ErTree<E>) -> Self {
+        Self::new(A::er_from_tree(tree))
     }
 }

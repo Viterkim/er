@@ -1,11 +1,11 @@
-use crate::{ErContextExt, ErIteratorExt, ErMake, ErResult, IntoErPart, aggregate};
+use crate::{ErContextExt, ErInput, ErIteratorExt, ErMake, ErResult, aggregate};
 use alloc::vec::Vec;
 use core::error::Error;
 
 impl<I, T, E, Mode> ErIteratorExt<Mode> for I
 where
     I: Iterator<Item = Result<T, E>>,
-    E: IntoErPart,
+    E: ErInput,
 {
     type Ok = T;
 
