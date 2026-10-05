@@ -63,10 +63,6 @@ Needs `std`. [Capturing and printing traces](examples.md#stack-traces).
 
 `ErTest` lets tests use `?` to keep the original error and add the location, just return `-> ErTest`.
 
-## Extras
-
-`ErShared` is only on targets with pointer atomics.
-
 ## Examples
 
 ```toml
@@ -77,4 +73,12 @@ er = { version = "0.6", features = ["small_path_src"] }
 ```toml
 [dependencies]
 er = { version = "0.6", default-features = false, features = ["src_locations"] }
+```
+
+## Unsync / Single threaded platform
+
+If you've got a platform that uses Rc/RefCell you can use the `er-unsync` version of the crate.
+
+```toml
+er = { package = "er-unsync", version = "0.6" }
 ```

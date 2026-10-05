@@ -2,7 +2,7 @@
 
 Same bad port for every library. First the easy version, then one with the input added so we can actually see what went wrong.
 
-Links on this page: [thiserror](#thiserror-2020), [error-stack](#error-stack-080), [Er](#er-06), [Anyhow](#anyhow-10104), [SNAFU](#snafu-092), [rootcause](#rootcause-0130),
+Links on this page: [thiserror](#thiserror-2020), [error-stack](#error-stack-080), [Er](#er-061), [Anyhow](#anyhow-10104), [SNAFU](#snafu-092), [rootcause](#rootcause-0130),
 [exn](#exn-031), [Eros](#eros-080), [Problemo](#problemo-0013), [Nightly std::error::Report](#nightly-stderrorreport), [Others](#others)
 
 For the messy version with several errors and a public boundary, see the [tricky comparison](tricky-error-comparison.md).
@@ -172,7 +172,9 @@ You can also use 'Attachments' to add data.
 
 I love the typed context and keeping the original errors. But you still need to make the error types yourself or use another derive, and `.change_context_lazy()` is a lot to type.
 
-## Er (0.6)
+Error-stack needs Send + Sync so no Rc/RefCell errors (`er-unsync` can).
+
+## Er (0.6.1)
 
 (hey that's this one)
 
@@ -219,6 +221,8 @@ println!("{}", error.er_report());
 PortErr { input: "aint_even_a_number_cmon_man" } @ examples/er_context.rs:8:35
 `- invalid digit found in string
 ```
+
+For Rc/RefCell stuff there's `er-unsync` same api with Rc.
 
 ## Anyhow (1.0.104)
 
@@ -419,6 +423,8 @@ println!("{}", another.current_context().input);
 
 Same errors shared, not string copies. The shared report can't be mutated directly.
 
+Rootcause can do Rc/RefCell errors with Local but needs Arc.
+
 ## exn (0.3.1)
 
 Personal bias: i love exn
@@ -516,6 +522,8 @@ println!("{}", saved.er_report());
 There's `.single_line()` and `for_each_line()` for printing too, mostly because logging multiline errors can be [complete shit](extra/systemd.md).
 
 You don't HAVE to make an error type per function with Exn or Er. But i like distinct types because then the caller can't just `?` the error up unchanged.
+
+Exn needs Send + Sync so no Rc/RefCell errors (`er-unsync` can).
 
 ## Eros (0.8.0)
 

@@ -1,3 +1,7 @@
+# 0.6.1
+
+Add the `er-unsync`crate which is the same api with Rc sharing and stored errors without Send/Sync requirements.
+
 # 0.6.0
 
 Add `.er_into(|tree| ...)` for converting to public errors with a report or snapshot.

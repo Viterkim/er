@@ -1,17 +1,18 @@
 [package]
 license.workspace = true
-readme.workspace = true
+readme = "README.md"
 repository.workspace = true
-name = "er"
+name = "er-unsync"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "Er, errors with less r"
+description = "Er with Rc sharing and errors without Send/Sync requirements"
 keywords = ["error", "error-handling", "context", "report", "no_std"]
 categories = ["rust-patterns", "no-std"]
 
 [lib]
+path = "../er/src/lib.rs"
 doctest = false
 
 [features]
@@ -28,18 +29,5 @@ serde = ["dep:serde"]
 er-macros = { version = "=0.6.1", path = "../er-macros", optional = true }
 serde = { workspace = true, optional = true }
 
-[dev-dependencies]
-serde_json.workspace = true
-
 [lints]
 workspace = true
-
-[[example]]
-name = "context"
-path = "runnable_examples/context.rs"
-required-features = ["macros"]
-
-[[example]]
-name = "stack_traces"
-path = "runnable_examples/stack_traces.rs"
-required-features = ["macros", "stack_traces"]

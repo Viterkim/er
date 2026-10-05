@@ -64,13 +64,13 @@ pub fn expand(
     let alloc = binding(&node_names, "__er_alloc");
     let mut node_generics = declaration.clone();
     node_generics.params.push(syn::parse2(quote!(#node_root))?);
-    // A Wrap containing Rc must still compile. Turning its top into a node needs Send/Sync.
+    // The runtime decides which errors can become stored nodes.
     let predicates = &mut node_generics.make_where_clause().predicates;
     predicates.push(syn::parse2(quote!(
         #wrap #type_generics: #er_path::IntoErTree<Error = #node_root>
     ))?);
     predicates.push(syn::parse2(quote!(
-        #node_root: ::core::error::Error + ::core::marker::Send + ::core::marker::Sync + 'static
+        #node_root: ::core::error::Error + ::core::convert::Into<#er_path::BoxError> + 'static
     ))?);
     let (node_impl, _, node_where) = node_generics.split_for_impl();
 

@@ -47,6 +47,17 @@ pub fn derive_er(input: TokenStream) -> TokenStream {
     }
 }
 
+#[proc_macro_derive(ErUnsync, attributes(er))]
+/// Er's derive, exported by er-unsync as Er.
+pub fn derive_er_unsync(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    match generate::expand_for(&input, "er-unsync") {
+        Ok(tokens) => tokens.into(),
+        Err(error) => error.to_compile_error().into(),
+    }
+}
+
 /// Does NOT impl error, Generates Display/Debug(as the same), makes constructor funcs.
 ///
 /// Options: `format`, `skip`, `censor`, `exact`, and `no_constructors`.

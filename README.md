@@ -293,6 +293,14 @@ The original inner error should not dictate your error type design or be given t
 
 It's not the user's fault when mistakes happen. There should be convenience and helpers to avoid footguns if possible (`.er_with(|err|)`, `.er_val()` for non errors, .er_find::<SomeErr>()`, `ErTree` not having `Debug` / `Display`).
 
+## Unsync / Single threaded platform
+
+If you've got a platform that uses Rc/RefCell you can use the `er-unsync` version of the crate.
+
+```toml
+er = { package = "er-unsync", version = "0.6" }
+```
+
 ## Docs
 
 ### Repo links (from `./er/docs/`)
@@ -309,10 +317,12 @@ It's not the user's fault when mistakes happen. There should be convenience and 
 
 ### External links
 
-[Docs.rs](https://docs.rs/er/latest/er/)
+[Docs.rs](https://docs.rs/er/0.6.1/er/)
 
 [Crates.io for the lib](https://crates.io/crates/er)
 
 [Crates.io for the macros](https://crates.io/crates/er-macros/)
+
+[Crates.io for the unsync lib](https://crates.io/crates/er-unsync)
 
 [Libs.rs](https://lib.rs/crates/er)

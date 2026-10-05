@@ -10,6 +10,10 @@ pub struct ErBuilt;
 /// Build the new top error from the fields returned by the closure.
 pub struct ErFields;
 
+#[cfg(er_unsync)]
+#[doc(hidden)]
+pub struct ErBoxedInput;
+
 /// How `.er()` makes its new top error.
 pub trait ErMake<A, Mode> {
     fn er_make(self) -> A;
@@ -33,7 +37,7 @@ impl<A: From<()>> ErMake<A, ErFields> for () {
 }
 
 /// Add a new top error above a raw error.
-pub trait ErErrorContextExt<Mode>: Into<BoxError> + Sized {
+pub trait ErErrorContextExt<Mode, Input = ()>: IntoErPart<Input> + Sized {
     /// Put your error above this one, keeping the original below.
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er<A>(self, error: impl ErMake<A, Mode>) -> ErTree<A>
@@ -45,7 +49,7 @@ pub trait ErErrorContextExt<Mode>: Into<BoxError> + Sized {
 }
 
 /// Build context using the old error.
-pub trait ErErrorExt: Into<BoxError> + Sized {
+pub trait ErErrorExt<Input = ()>: IntoErPart<Input> + Sized {
     /// Add your error on the top, move everything else below it.
     /// |err| is the old error.
     /// Use this when the new error needs something from the old one.
@@ -78,7 +82,7 @@ pub trait ErErrorPresentationExt {
 }
 
 /// Add context to a Result or turn None into an error.
-pub trait ErContextExt<Mode> {
+pub trait ErContextExt<Mode, Input = ()> {
     type Ok;
 
     /// Add your error on the top, move everything else below it.
@@ -106,7 +110,7 @@ pub trait ErTreeContextExt<Mode> {
 }
 
 /// Other ways to work with a Result's error.
-pub trait ErResultExt {
+pub trait ErResultExt<Input = ()> {
     type Ok;
     type Err;
 
@@ -120,12 +124,12 @@ pub trait ErResultExt {
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er_with<A>(
         self,
-        f: impl FnOnce(&<Self::Err as ErInput>::Error) -> A,
+        f: impl FnOnce(&<Self::Err as ErInput<Input>>::Error) -> A,
     ) -> ErResult<Self::Ok, A>
     where
         Self: Sized,
         A: Error + 'static,
-        Self::Err: ErInput,
+        Self::Err: ErInput<Input>,
     {
         self.er_with_tree(|err| f(ErInput::er_input_error(err)))
     }
@@ -136,9 +140,15 @@ pub trait ErResultExt {
     fn er_with_tree<A>(self, f: impl FnOnce(&Self::Err) -> A) -> ErResult<Self::Ok, A>
     where
         A: Error + 'static,
-        Self::Err: ErInput;
+        Self::Err: ErInput<Input>;
+}
 
-    /// For values that can't go in the tree, like `Err(85)` or errors without `Send + Sync`.
+/// Replace a Result's error with a value of your own.
+pub trait ErValueExt {
+    type Ok;
+    type Err;
+
+    /// For values that can't go in the tree, like `Err(85)`.
     ///
     /// ! WARNING ! Don't use this to add context to an existing tree, you'll nuke it. Use `.er()` for that.
     ///
@@ -155,7 +165,7 @@ pub trait ErResultExt {
 }
 
 /// Collect successful values and add context to failures.
-pub trait ErIteratorExt<Mode>: Sized {
+pub trait ErIteratorExt<Mode, Input = ()>: Sized {
     type Ok;
 
     /// Stop at the first error.
@@ -249,7 +259,7 @@ pub trait ErPresentationExt {
     fn er_wrap<A, Mode>(self, error: impl ErMake<A, Mode>) -> ErResult<Self::Ok, A>
     where
         Self: Sized,
-        Self::Err: Error + Send + Sync + 'static,
+        Self::Err: Error + Into<BoxError> + 'static,
         A: Error + 'static,
     {
         self.er_tree().er(error)
@@ -267,7 +277,7 @@ pub trait ErFromTree<E>: Sized {
 
 /// Turn an Option or Result into ErTest. Existing test failures pass through.
 #[cfg(feature = "test")]
-pub trait ErTestExt {
+pub trait ErTestExt<Input = ()> {
     type Ok;
 
     /// None reports "Option was None" with this call's location.
@@ -284,7 +294,7 @@ pub trait ErOpaqueErrorExt {
 }
 
 /// Turns an error or tree into a node and its metadata.
-pub trait IntoErPart {
+pub trait IntoErPart<Input = ()> {
     type Error: ?Sized;
 
     /// Borrow the error, or the top if this is a tree.
@@ -297,7 +307,7 @@ pub trait IntoErPart {
 
 // Test failures are inputs too, but IntoErPart would overlap their From<Self>.
 #[doc(hidden)]
-pub trait ErInput {
+pub trait ErInput<Input = ()> {
     type Error: ?Sized;
 
     fn er_input_error(&self) -> &Self::Error;
@@ -318,7 +328,7 @@ pub trait IntoErTree {
     fn er_wrap<A, Mode>(self, error: impl ErMake<A, Mode>) -> ErTree<A>
     where
         Self: Sized,
-        Self::Error: Error + Send + Sync + 'static,
+        Self::Error: Error + Into<BoxError> + 'static,
         A: Error + 'static,
     {
         self.into_er_tree().er(error)
@@ -329,7 +339,7 @@ pub trait IntoErTree {
     fn er_with<A>(self, top: impl FnOnce(&Self::Error) -> A) -> ErTree<A>
     where
         Self: Sized,
-        Self::Error: Error + Send + Sync + 'static,
+        Self::Error: Error + Into<BoxError> + 'static,
         A: Error + 'static,
     {
         self.into_er_tree().er_with(top)
@@ -340,7 +350,7 @@ pub trait IntoErTree {
     fn er_with_tree<A>(self, top: impl FnOnce(&ErTree<Self::Error>) -> A) -> ErTree<A>
     where
         Self: Sized,
-        Self::Error: Error + Send + Sync + 'static,
+        Self::Error: Error + Into<BoxError> + 'static,
         A: Error + 'static,
     {
         self.into_er_tree().er_with_tree(top)
@@ -348,7 +358,10 @@ pub trait IntoErTree {
 
     /// Add errors below the current top.
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_add(self, nodes: impl IntoIterator<Item = impl ErInput>) -> ErTree<Self::Error>
+    fn er_add<Input>(
+        self,
+        nodes: impl IntoIterator<Item = impl ErInput<Input>>,
+    ) -> ErTree<Self::Error>
     where
         Self: Sized,
     {
@@ -359,7 +372,7 @@ pub trait IntoErTree {
     fn into_er_node(self) -> ErNode
     where
         Self: Sized,
-        Self::Error: Error + Send + Sync + 'static,
+        Self::Error: Error + Into<BoxError> + 'static,
     {
         self.into_er_tree().into_er_node()
     }

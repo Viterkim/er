@@ -1,12 +1,12 @@
 #[cfg(feature = "stack_traces")]
 use crate::impls::stack_trace::append_traces;
 use crate::{
-    ErEntries, ErEntry, ErErrorIndex, ErFindAll, ErInput, ErMake, ErNode, ErNodes, ErPart,
-    ErReport, ErReportRef, ErSnapshot, ErSources, ErTop, ErTopRef, ErTree, ErTreeContextExt,
-    IntoErPart, IntoErTree, Layout,
+    BoxError, ErEntries, ErEntry, ErErrorIndex, ErFindAll, ErInput, ErMake, ErNode, ErNodes,
+    ErPart, ErReport, ErReportRef, ErSnapshot, ErSources, ErTop, ErTopRef, ErTree,
+    ErTreeContextExt, IntoErPart, IntoErTree, Layout,
 };
 use alloc::string::ToString;
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{string::String, vec::Vec};
 #[cfg(feature = "src_locations")]
 use core::panic::Location;
 use core::{error::Error, fmt};
@@ -14,7 +14,7 @@ use core::{error::Error, fmt};
 impl<E: Error + 'static> ErTree<E> {
     /// Put existing errors below this one, even if the list is empty.
     #[cfg_attr(feature = "src_locations", track_caller)]
-    pub fn new(error: E, nodes: impl IntoIterator<Item = impl ErInput>) -> Self {
+    pub fn new<Input>(error: E, nodes: impl IntoIterator<Item = impl ErInput<Input>>) -> Self {
         Self::from(error).er_add(nodes)
     }
 
@@ -27,7 +27,7 @@ impl<E: Error + 'static> ErTree<E> {
     #[cfg_attr(feature = "src_locations", track_caller)]
     pub fn er_with<A>(self, top: impl FnOnce(&E) -> A) -> ErTree<A>
     where
-        E: Send + Sync,
+        E: Into<BoxError>,
         A: Error + 'static,
     {
         ErTree::from(top(&self.top)).er_add([self])
@@ -37,7 +37,7 @@ impl<E: Error + 'static> ErTree<E> {
     #[cfg_attr(feature = "src_locations", track_caller)]
     pub fn er_with_tree<A>(self, top: impl FnOnce(&Self) -> A) -> ErTree<A>
     where
-        E: Send + Sync,
+        E: Into<BoxError>,
         A: Error + 'static,
     {
         ErTree::from(top(&self)).er_add([self])
@@ -46,7 +46,7 @@ impl<E: Error + 'static> ErTree<E> {
     /// Erase the top error. This drops its stack traces, use `into_er_part()` to keep them.
     pub fn into_er_node(self) -> ErNode
     where
-        E: Send + Sync,
+        E: Into<BoxError>,
     {
         self.into_er_part().node
     }
@@ -54,9 +54,9 @@ impl<E: Error + 'static> ErTree<E> {
     /// Erase the top, keeping its children and stack traces.
     pub fn into_er_part(self) -> ErPart
     where
-        E: Send + Sync,
+        E: Into<BoxError>,
     {
-        let error = Box::new(self.top);
+        let error = self.top.into();
 
         ErPart {
             node: ErNode {
@@ -151,7 +151,7 @@ impl<E: Error + 'static> ErTree<E> {
         self.er_report().to_string()
     }
 }
-impl<E: Error + Send + Sync + 'static, Mode> ErTreeContextExt<Mode> for ErTree<E> {
+impl<E: Error + Into<BoxError> + 'static, Mode> ErTreeContextExt<Mode> for ErTree<E> {
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er<A>(self, top: impl ErMake<A, Mode>) -> ErTree<A>
     where
@@ -164,7 +164,7 @@ impl<E> ErTree<E> {
     /// Add errors or subtrees below the current top.
     /// Use `er_add!(tree, [first, second])` for different types.
     #[cfg_attr(feature = "src_locations", track_caller)]
-    pub fn er_add(mut self, nodes: impl IntoIterator<Item = impl ErInput>) -> Self {
+    pub fn er_add<Input>(mut self, nodes: impl IntoIterator<Item = impl ErInput<Input>>) -> Self {
         let nodes = nodes.into_iter();
         if self.nodes.capacity() == 0 {
             self.nodes.reserve_exact(nodes.size_hint().0);
@@ -278,7 +278,7 @@ impl<E: Error + 'static> From<E> for ErTree<E> {
         }
     }
 }
-impl<E: Error + Send + Sync + 'static> IntoErPart for ErTree<E> {
+impl<E: Error + Into<BoxError> + 'static> IntoErPart for ErTree<E> {
     type Error = E;
 
     fn er_error(&self) -> &E {

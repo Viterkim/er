@@ -5,9 +5,10 @@ use crate::{
 };
 use construct::construct;
 use constructors::constructors;
+use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::DeriveInput;
+use syn::{DeriveInput, Path, parse_quote};
 
 pub mod construct;
 pub mod constructors;
@@ -17,8 +18,16 @@ pub mod source;
 pub mod wrap;
 
 pub fn expand(item: &DeriveInput) -> syn::Result<TokenStream> {
+    expand_for(item, "er")
+}
+
+pub fn expand_for(item: &DeriveInput, package: &str) -> syn::Result<TokenStream> {
     let input = Input::parse(item)?;
     let generics = format_generics(&input)?;
+    let path = match &input.options.er_path {
+        Some(path) => path.clone(),
+        None => runtime_path(package)?,
+    };
 
     let formatter = binding(&input.const_names, "__er_f");
     let formatting = format::implementations(&input, &generics, &formatter);
@@ -26,16 +35,10 @@ pub fn expand(item: &DeriveInput) -> syn::Result<TokenStream> {
 
     let construct = construct(&input);
     let error = source::implementation(&input, &generics);
-    let into = into::implementation(&input)?;
+    let into = into::implementation(&input, &path)?;
 
     let wrap = match &input.options.wrap {
-        Some(options) => {
-            let path = match &input.options.er_path {
-                Some(path) => path.clone(),
-                None => syn::parse_str("::er")?,
-            };
-            wrap::expand(item, &path, options, &input.const_names, &formatter)?
-        }
+        Some(options) => wrap::expand(item, &path, options, &input.const_names, &formatter)?,
         None => TokenStream::new(),
     };
 
@@ -47,4 +50,12 @@ pub fn expand(item: &DeriveInput) -> syn::Result<TokenStream> {
         #into
         #wrap
     })
+}
+
+pub fn runtime_path(package: &str) -> syn::Result<Path> {
+    match crate_name(package) {
+        Ok(FoundCrate::Itself) => Ok(parse_quote!(crate)),
+        Ok(FoundCrate::Name(name)) => syn::parse_str(&format!("::{name}")),
+        Err(_) => syn::parse_str(&format!("::{}", package.replace('-', "_"))),
+    }
 }

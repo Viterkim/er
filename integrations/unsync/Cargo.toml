@@ -1,0 +1,12 @@
+[package]
+license.workspace = true
+name = "unsync"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+er = { package = "er-unsync", path = "../../er-unsync" }
+
+[dev-dependencies]
+threaded = { package = "er", path = "../../er", features = ["stack_traces"] }

@@ -5,6 +5,7 @@ members = [
     "axum",
     "no-std",
     "compile-tests",
+    "unsync",
 ]
 exclude = ["no-src-locations"]
 

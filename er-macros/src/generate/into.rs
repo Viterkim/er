@@ -6,9 +6,9 @@ use crate::{
 use proc_macro2::{TokenStream, TokenTree};
 use quote::{ToTokens as _, quote};
 use std::collections::HashSet;
-use syn::{Error, Type, parse_quote};
+use syn::{Error, Path, Type, parse_quote};
 
-pub fn implementation(input: &Input<'_>) -> syn::Result<TokenStream> {
+pub fn implementation(input: &Input<'_>, path: &Path) -> syn::Result<TokenStream> {
     let cases: Vec<_> = input
         .cases
         .iter()
@@ -36,11 +36,6 @@ pub fn implementation(input: &Input<'_>) -> syn::Result<TokenStream> {
     let report = binding(&reserved, "__er_report");
     let snapshot = binding(&reserved, "__er_snapshot");
     let alloc = binding(&reserved, "__er_alloc");
-    let path = input
-        .options
-        .er_path
-        .clone()
-        .unwrap_or_else(|| parse_quote!(::er));
     let name = &item.ident;
     let (_, type_generics, _) = item.generics.split_for_impl();
     let mut sources = HashSet::new();

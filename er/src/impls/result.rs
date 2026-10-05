@@ -1,17 +1,34 @@
+#[cfg(er_unsync)]
+use crate::ErBoxedInput;
 use crate::{
     BoxError, ErContextExt, ErErrorContextExt, ErErrorExt, ErFromTree, ErInput, ErMake,
     ErOpaqueErrorExt, ErPresentationExt, ErReport, ErResult, ErResultExt, ErSnapshot, ErTop,
-    ErTree, IntoErTree,
+    ErTree, ErValueExt, IntoErTree,
 };
 #[cfg(feature = "macros")]
 use crate::{ErAllError, ErAllItem, ErAllResult, ErBail, ErBuilt, ErFields, ErPart};
+#[cfg(er_unsync)]
+use alloc::boxed::Box;
 use alloc::string::String;
 use core::{error::Error, fmt};
 
 impl<T: Into<BoxError>, Mode> ErErrorContextExt<Mode> for T {}
 impl<T: Into<BoxError>> ErErrorExt for T {}
 
-impl<T, E: ErInput, Mode> ErContextExt<Mode> for Result<T, E> {
+#[cfg(er_unsync)]
+impl<Mode> ErErrorContextExt<Mode, ErBoxedInput> for Box<dyn Error + Send + Sync> {}
+#[cfg(er_unsync)]
+impl<Mode> ErErrorContextExt<Mode, ErBoxedInput> for Box<dyn Error + Send> {}
+#[cfg(er_unsync)]
+impl<Mode> ErErrorContextExt<Mode, ErBoxedInput> for Box<dyn Error + Sync> {}
+#[cfg(er_unsync)]
+impl ErErrorExt<ErBoxedInput> for Box<dyn Error + Send + Sync> {}
+#[cfg(er_unsync)]
+impl ErErrorExt<ErBoxedInput> for Box<dyn Error + Send> {}
+#[cfg(er_unsync)]
+impl ErErrorExt<ErBoxedInput> for Box<dyn Error + Sync> {}
+
+impl<T, E: ErInput<Input>, Mode, Input> ErContextExt<Mode, Input> for Result<T, E> {
     type Ok = T;
 
     #[cfg_attr(feature = "src_locations", track_caller)]
@@ -25,7 +42,7 @@ impl<T, E: ErInput, Mode> ErContextExt<Mode> for Result<T, E> {
         }
     }
 }
-impl<T, E> ErResultExt for Result<T, E> {
+impl<T, E: ErInput<Input>, Input> ErResultExt<Input> for Result<T, E> {
     type Ok = T;
     type Err = E;
 
@@ -33,7 +50,7 @@ impl<T, E> ErResultExt for Result<T, E> {
     fn er_with_tree<A>(self, f: impl FnOnce(&E) -> A) -> ErResult<T, A>
     where
         A: Error + 'static,
-        E: ErInput,
+        E: ErInput<Input>,
     {
         match self {
             Ok(value) => Ok(value),
@@ -43,6 +60,10 @@ impl<T, E> ErResultExt for Result<T, E> {
             }
         }
     }
+}
+impl<T, E> ErValueExt for Result<T, E> {
+    type Ok = T;
+    type Err = E;
 
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er_val<A, F>(self, f: F) -> ErResult<T, A>
@@ -178,7 +199,7 @@ where
 }
 
 #[cfg(feature = "macros")]
-impl<T, E: ErInput> ErAllItem<ErAllResult> for Result<T, E> {
+impl<T, E: ErInput<Input>, Input> ErAllItem<(ErAllResult, Input)> for Result<T, E> {
     type Ok = T;
 
     #[cfg_attr(feature = "src_locations", track_caller)]
@@ -190,7 +211,7 @@ impl<T, E: ErInput> ErAllItem<ErAllResult> for Result<T, E> {
     }
 }
 #[cfg(feature = "macros")]
-impl<E: ErInput> ErAllItem<ErAllError> for E {
+impl<E: ErInput<Input>, Input> ErAllItem<(ErAllError, Input)> for E {
     type Ok = ();
 
     #[cfg_attr(feature = "src_locations", track_caller)]

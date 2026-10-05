@@ -1,6 +1,6 @@
 # er-macros
 
-Derives for [Er](https://docs.rs/er/latest/er/).
+Derives for [Er](https://docs.rs/er/0.6.1/er/).
 
 If you want `.er()` and the tree, then use `er`.
 

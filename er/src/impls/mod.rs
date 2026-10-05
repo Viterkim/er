@@ -5,7 +5,7 @@ pub mod node;
 pub mod presentation;
 pub mod render;
 pub mod result;
-#[cfg(target_has_atomic = "ptr")]
+#[cfg(any(er_unsync, target_has_atomic = "ptr"))]
 pub mod shared;
 pub mod snapshot;
 #[cfg(feature = "stack_traces")]

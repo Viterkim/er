@@ -1,5 +1,7 @@
-#[cfg(target_has_atomic = "ptr")]
-use alloc::sync::Arc;
+#[cfg(er_unsync)]
+use alloc::rc::Rc as Shared;
+#[cfg(all(not(er_unsync), target_has_atomic = "ptr"))]
+use alloc::sync::Arc as Shared;
 use alloc::{boxed::Box, vec::Vec};
 use core::{error::Error, panic::Location};
 
@@ -7,10 +9,11 @@ use core::{error::Error, panic::Location};
 pub type ErResult<T, E> = Result<T, ErTree<E>>;
 
 /// Share data between errors by passing `&old.field` to the next constructor.
-/// Uses Arc, so the target needs pointer atomics.
-#[cfg(target_has_atomic = "ptr")]
+#[cfg_attr(not(er_unsync), doc = "Uses Arc, so the target needs pointer atomics.")]
+#[cfg_attr(er_unsync, doc = "Uses Rc.")]
+#[cfg(any(er_unsync, target_has_atomic = "ptr"))]
 pub struct ErShared<T: ?Sized> {
-    pub value: Arc<T>,
+    pub value: Shared<T>,
 }
 
 /// Where an error entered the tree.
@@ -34,7 +37,12 @@ pub struct ErTree<E> {
 }
 
 /// A boxed error that can go in the tree.
+#[cfg(not(er_unsync))]
 pub type BoxError = Box<dyn Error + Send + Sync + 'static>;
+
+/// A boxed error that can go in the tree.
+#[cfg(er_unsync)]
+pub type BoxError = Box<dyn Error + 'static>;
 
 /// One stored error and the sub errors below it.
 #[must_use]

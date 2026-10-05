@@ -1,8 +1,9 @@
 use crate::lines;
 use crate::render::write_top;
 use crate::{
-    ErAsError, ErLineError, ErMake, ErNodes, ErOpaqueErrorExt, ErReport, ErReportRef, ErSnapshot,
-    ErSources, ErTop, ErTopRef, ErTree, ErTreeContextExt, IntoErPart, IntoErTree, Layout,
+    BoxError, ErAsError, ErLineError, ErMake, ErNodes, ErOpaqueErrorExt, ErReport, ErReportRef,
+    ErSnapshot, ErSources, ErTop, ErTopRef, ErTree, ErTreeContextExt, IntoErPart, IntoErTree,
+    Layout,
 };
 use alloc::string::{String, ToString};
 use core::{error::Error, fmt};
@@ -160,7 +161,7 @@ impl<E> AsMut<ErTree<E>> for ErTop<E> {
         &mut self.tree
     }
 }
-impl<E: Error + Send + Sync + 'static, Mode> ErTreeContextExt<Mode> for ErTop<E> {
+impl<E: Error + Into<BoxError> + 'static, Mode> ErTreeContextExt<Mode> for ErTop<E> {
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er<A>(self, top: impl ErMake<A, Mode>) -> ErTree<A>
     where
@@ -229,7 +230,7 @@ impl<E: fmt::Display> fmt::Debug for ErTop<E> {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl<E: Error + Send + Sync + 'static> IntoErPart for ErTop<E> {
+impl<E: Error + Into<BoxError> + 'static> IntoErPart for ErTop<E> {
     type Error = E;
 
     fn er_error(&self) -> &E {
