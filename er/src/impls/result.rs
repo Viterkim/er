@@ -2,12 +2,12 @@
 use crate::ErBoxedInput;
 use crate::impls::tree::with_source;
 use crate::{
-    BoxError, ErContextExt, ErErrorContextExt, ErErrorExt, ErFromTree, ErInput, ErMake,
-    ErOpaqueErrorExt, ErPresentationExt, ErReport, ErResult, ErResultExt, ErSnapshot, ErTop,
-    ErTree, ErValueExt, IntoErTree,
+    BoxError, ErContextExt, ErErrorContextExt, ErErrorExt, ErInput, ErMake, ErOpaqueErrorExt,
+    ErPresentationExt, ErReport, ErResult, ErResultExt, ErSnapshot, ErTop, ErTree, ErValueExt,
+    IntoErTree,
 };
 #[cfg(feature = "macros")]
-use crate::{ErAllError, ErAllItem, ErAllResult, ErBail, ErBuilt, ErFields, ErPart};
+use crate::{ErAllError, ErAllItem, ErAllResult, ErBail, ErFields, ErPart, ErReady};
 #[cfg(er_unsync)]
 use alloc::boxed::Box;
 use alloc::string::String;
@@ -48,7 +48,7 @@ impl<T, E: ErInput<Input>, Input> ErResultExt<Input> for Result<T, E> {
     type Err = E;
 
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_with_tree<A>(self, f: impl FnOnce(&E) -> A) -> ErResult<T, A>
+    fn er_build_tree<A>(self, f: impl FnOnce(&E) -> A) -> ErResult<T, A>
     where
         A: Error + 'static,
         E: ErInput<Input>,
@@ -135,16 +135,6 @@ impl<T, E: IntoErTree> ErPresentationExt for Result<T, E> {
             Err(error) => Err(error.into_er_tree().er_snapshot()),
         }
     }
-
-    fn er_into<A>(self, hook: impl FnOnce(&ErTree<E::Error>)) -> Result<T, A>
-    where
-        A: ErFromTree<E::Error>,
-    {
-        match self {
-            Ok(value) => Ok(value),
-            Err(error) => Err(error.er_into(hook)),
-        }
-    }
 }
 impl<T, E: ErOpaqueErrorExt> ErOpaqueErrorExt for Result<T, E> {
     type Output = Result<T, E::Output>;
@@ -173,14 +163,14 @@ impl<T, Mode> ErContextExt<Mode> for Option<T> {
 }
 
 #[cfg(feature = "macros")]
-impl<T, F: Into<T>> ErBail<T, ErBuilt> for F {
+impl<T, F: Into<T>> ErBail<T, ErReady> for F {
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er_bail(self) -> T {
         self.into()
     }
 }
 #[cfg(feature = "macros")]
-impl<T, F: FnOnce() -> E, E: Into<T>> ErBail<T, (ErBuilt,)> for F {
+impl<T, F: FnOnce() -> E, E: Into<T>> ErBail<T, (ErReady,)> for F {
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er_bail(self) -> T {
         self().into()

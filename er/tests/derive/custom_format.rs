@@ -25,7 +25,7 @@ pub fn nested_data() {
 
     assert_eq!(tree.er_top().to_string(), expected);
 
-    let tree = tree.er::<LoginErr>(LoginErr::new);
+    let tree = tree.er(LoginErr::new);
     for layout in [Layout::Multiline, Layout::SingleLine] {
         let report = tree.er_report().layout(layout).to_string();
         assert!(report.contains(expected), "{report}");

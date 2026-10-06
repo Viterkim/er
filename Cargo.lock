@@ -10,7 +10,7 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "er"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "er-macros",
  "serde",
@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "er-macros"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -29,7 +29,7 @@ dependencies = [
 
 [[package]]
 name = "er-unsync"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "er-macros",
  "serde",

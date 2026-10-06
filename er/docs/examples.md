@@ -142,7 +142,7 @@ The `#[derive(Er)]` gives you `new()` and tuple convenience constructors on stru
 
 `.er(())` for empty structs, `.er(|_| path)` for 1 field structs, and `.er(|_| (port, enabled))` for 2 or more fields.
 
-Enums need a variant specified like `.er(|| ModeErr::variant_name(arg1))`.
+Enums need a variant specified like `.er(|| ModeErr::variant_name(arg1))`, or `.er_with(|old| ModeErr::variant_name(old.code))` if you need the old error.
 
 You can still do `.er(|| MyTypeErr { a, b })` but the helpers take care of stuff like not having to call `.into()` or type the error name.
 
@@ -165,24 +165,24 @@ pub struct AnalyzeErr {
 
 pub fn analyze() -> ErResult<(), AnalyzeErr> {
     // read_device returns ErResult<_, DeviceErr>
-    read_device().er_with(|err| AnalyzeErr::new(err.code))?;
+    read_device().er_with(|err| err.code)?;
     Ok(())
 }
 ```
 
-`.er_with_tree(|t| ...)` exists to get the tree instead of the top error, if you need to search further down.
+If you want to assemble it yourself, use `.er_with(|err| er_built(AnalyzeErr { code: err.code }))`. (This is an annoying case, .er() can do both but .er_with() needs the er_built to help, but just use .er_with() and the constructor helpers).
 
-Raw errors take the same `.er(())`, `.er(|_| fields)` and `.er(|| MyErr::new(...))` forms too. If you need something from that error, use `.er_with()`:
+`.er_with_tree(|t| ...)` gives you the tree if you need to search further down.
+
+Raw errors take the same helpers:
 
 ```rust
-er_bail!(device.er_with(|err| AnalyzeErr::new(err.code)));
+er_bail!(device.er_with(|err| err.code));
 ```
-
-The convenience with `|_|` for struct errs does not work with `er_with(|old|)`.
 
 ## Don't destroy the tree (lose sub errors)
 
-The `.er_with()` above adds to the old tree. Both of these copy the code into a fresh one and throw the old tree away. ALWAYS use `.er_with()` for those cases. NEVER EVER do stuff like this:
+The `.er_with()` above adds to the old tree. Both of these copy the code into a fresh one and throw the old tree away. ALWAYS use `.er()` or `.er_with()` for those cases. NEVER EVER do stuff like this:
 
 ```rust
 // ! BAD DO NOT DO THIS !
@@ -218,7 +218,7 @@ pub struct TwoErr {
 }
 
 pub fn read_config(path: PathBuf, machine: &str) -> ErResult<String, TwoErr> {
-    read_file(path).er_with(|old| TwoErr::new(&old.path, machine))
+    read_file(path).er_with(|old| (old.path.clone(), machine))
 }
 ```
 
@@ -399,15 +399,19 @@ pub struct ApiError {
 
     #[er(into_report_string)]
     pub report: String,
+
+    pub request_id: u32,
 }
-pub fn public_read_port(input: &str) -> Result<u16, ApiError> {
+pub fn public_read_port(input: &str, request_id: u32) -> Result<u16, ApiError> {
     read_port(input).er_into(|tree| {
         eprintln!("{}", tree.er_report());
+
+        request_id
     })
 }
 ```
 
-The closure only runs on errors, if you want to print it later just use `.er_into(|_| {})`. You can swap the `String` for `ErSnapshot` with `#[er(into_snapshot)]` if you need the structure.
+The closure only runs on errors and returns your other fields, one value or a tuple in field order. With no other fields you can use `.er_into(|_| {})`. You can swap the `String` for `ErSnapshot` with `#[er(into_snapshot)]` if you need the structure.
 
 You should still print / show your error in your applications of course, and I'll even argue that as a library, if you at least give a string report to your consumer, you're gonna have great bug reports from users and a much easier time fixing bugs. Printing a report is often times more valuable than a friendly message you made up. Don't destroy your type. Include the message in the type itself next to the other data instead.
 
@@ -516,7 +520,7 @@ Enable `serde` on Er, then add `serde_json` (or toml, or whatever).
 
 ```toml
 [dependencies]
-er = { version = "0.6", features = ["serde"] }
+er = { version = "0.7", features = ["serde"] }
 serde_json = "1"
 ```
 
@@ -532,7 +536,7 @@ std::fs::write("/tmp/error.json", &json).unwrap();
 
 ```toml
 [dev-dependencies]
-er = "0.6"
+er = "0.7"
 ```
 
 Make the test return `ErTest` and use `?`. Ordinary errors and Er trees get `ErTestError` on top with the location of the `?`, and keep the original errors below it. It prints as `TestError`.

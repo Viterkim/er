@@ -41,6 +41,7 @@ pub struct SavedErr {
     pub kind: AppErr,
     #[er(into_report_string)]
     pub report: String,
+    pub device: Rc<RefCell<Device>>,
 }
 
 pub fn save(device: &Rc<RefCell<Device>>) -> ErResult<(), SaveErr> {
@@ -49,10 +50,10 @@ pub fn save(device: &Rc<RefCell<Device>>) -> ErResult<(), SaveErr> {
 
 pub fn diagnostic(device: &Rc<RefCell<Device>>) -> ErResult<(), AppErr> {
     let result = save(device).map_err(SaveErrWrap::from);
-    let result = result.er_with(|old| BoundaryErr::new(&old.device));
+    let result = result.er_with::<BoundaryErr, _>(|old| old.device.clone());
     let result = result.map_err(BoundaryErrWrap::from);
 
-    result.er_wrap(|_| device)
+    result.er_with_wrap(|old| old.device.clone())
 }
 
 #[cfg(test)]
@@ -77,27 +78,39 @@ pub mod tests {
         assert_eq!(tree.top.device.borrow().port, 9);
 
         let expected = tree.er_report_string();
-        let saved: Rc<SavedErr> = tree.er_into(|_| {});
+        let saved: Rc<SavedErr> = tree.er_into(|_| Rc::clone(&device));
         assert_eq!(saved.report, expected);
         assert_eq!(saved.kind.device.borrow().port, 9);
+        assert!(Rc::ptr_eq(&device, &saved.device));
+
+        let wrapped = BoundaryErrWrap::from(ErTree::new(
+            BoundaryErr::new(&device),
+            [DeviceErr::new(&device, 86)],
+        ));
+        let tree: ErTree<AppErr> = Err::<(), _>(wrapped)
+            .er_with_wrap(|old| {
+                er_built(AppErr {
+                    device: old.device.clone(),
+                })
+            })
+            .unwrap_err();
+        assert!(ErShared::ptr_eq(
+            &tree.top.device,
+            &tree.er_find::<DeviceErr>().unwrap().device
+        ));
     }
 
     #[test]
     pub fn collect() {
         let device = Rc::new(RefCell::new(Device { port: 8 }));
-        let tree: ErTree<AppErr> = er_all!(
-            || AppErr::new(&device),
-            [save(&device), diagnostic(&device)]
-        )
-        .unwrap_err();
+        let tree: ErTree<AppErr> =
+            er_all!(|_| &device, [save(&device), diagnostic(&device)]).unwrap_err();
 
         assert_eq!(tree.er_find_all::<DeviceErr>().count(), 2);
-        let tree = tree
+        let tree: ErTree<AppErr> = tree
             .into_er_top()
-            .er_with_tree(|old| AppErr::new(&old.er_find::<DeviceErr>().unwrap().device));
-        let tree = tree
-            .into_er_report()
-            .er_with(|old| AppErr::new(&old.device));
+            .er_with_tree::<AppErr, _>(|old| old.er_find::<DeviceErr>().unwrap().device.clone());
+        let tree: ErTree<AppErr> = tree.into_er_report().er_with(|old| old.device.clone());
         let node = tree.into_er_part();
         assert!(node.er_error().is::<AppErr>());
 
@@ -164,15 +177,18 @@ pub mod tests {
                 + fmt::Display,
         {
             let result = Err::<(), _>(make());
-            let tree = result.er_with(|old| {
+            let tree: ErResult<(), AppErr> = result.er_with(|old| {
                 assert_eq!(old.to_string(), fmt::Error.to_string());
-                AppErr::new(device)
+                device
             });
             assert!(tree.unwrap_err().er_contains::<fmt::Error>());
 
             let tree: ErTree<AppErr> = make().er(|_| device);
             assert!(tree.er_contains::<fmt::Error>());
-            let tree = make().er_with(|_| AppErr::new(device));
+            let tree: ErTree<AppErr> = make().er_with(|old| {
+                assert_eq!(old.to_string(), fmt::Error.to_string());
+                device
+            });
             assert!(tree.er_contains::<fmt::Error>());
             assert!(make().into_er_part().node.er_find::<fmt::Error>().is_some());
 

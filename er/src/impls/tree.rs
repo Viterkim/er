@@ -3,9 +3,8 @@ use crate::impls::stack_trace::append_traces;
 use crate::{
     BoxError, ErEntries, ErEntry, ErErrorIndex, ErFindAll, ErInput, ErMake, ErNode, ErNodes,
     ErPart, ErReport, ErReportRef, ErSnapshot, ErSources, ErTop, ErTopRef, ErTree,
-    ErTreeContextExt, IntoErPart, IntoErTree, Layout,
+    ErTreeContextExt, ErWithFields, IntoErPart, IntoErTree, Layout,
 };
-use alloc::string::ToString;
 use alloc::{string::String, vec, vec::Vec};
 #[cfg(feature = "src_locations")]
 use core::panic::Location;
@@ -18,30 +17,27 @@ impl<E: Error + 'static> ErTree<E> {
         Self::from(error).er_add(nodes)
     }
 
-    /// Add your error on the top, move everything else below it.
-    /// |err| is the typed top error.
-    /// Use this when the new error needs something from the old one.
-    /// Otherwise use `.er()`.
+    /// Build the new top from fields taken from the old top.
     ///
-    /// `let error = error.er_with(|err| AnalyzeErr::new(err.code));`
+    /// `let error = error.er_with(|err| err.code);`
     #[cfg_attr(feature = "src_locations", track_caller)]
-    pub fn er_with<A>(self, top: impl FnOnce(&E) -> A) -> ErTree<A>
+    pub fn er_with<A, Mode>(self, fields: impl ErWithFields<E, A, Mode>) -> ErTree<A>
     where
         E: Into<BoxError>,
         A: Error + 'static,
     {
-        let error = top(&self.top);
+        let error = fields.er_with_fields(&self.top);
         with_source(error, self)
     }
 
-    /// Like `.er_with()`, but borrows the whole tree so you can search its children too.
+    /// Like `.er_with()`, but the closure gets the whole tree.
     #[cfg_attr(feature = "src_locations", track_caller)]
-    pub fn er_with_tree<A>(self, top: impl FnOnce(&Self) -> A) -> ErTree<A>
+    pub fn er_with_tree<A, Mode>(self, fields: impl ErWithFields<Self, A, Mode>) -> ErTree<A>
     where
         E: Into<BoxError>,
         A: Error + 'static,
     {
-        let error = top(&self);
+        let error = fields.er_with_fields(&self);
         with_source(error, self)
     }
 
@@ -150,7 +146,7 @@ impl<E: Error + 'static> ErTree<E> {
 
     /// The whole report as text, borrows the tree.
     pub fn er_report_string(&self) -> String {
-        self.er_report().to_string()
+        self.er_report().er_report_string()
     }
 }
 impl<E: Error + Into<BoxError> + 'static, Mode> ErTreeContextExt<Mode> for ErTree<E> {
@@ -242,7 +238,7 @@ impl<E> ErTree<E> {
 impl<E: fmt::Display> ErTree<E> {
     /// Just the outer error as text, borrows the tree.
     pub fn er_top_string(&self) -> String {
-        self.er_top().to_string()
+        self.er_top().er_top_string()
     }
 }
 impl<E> IntoErTree for ErTree<E> {

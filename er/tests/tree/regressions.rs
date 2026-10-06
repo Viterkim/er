@@ -23,9 +23,8 @@ pub fn success_drop() {
         failure
     };
     let result: ErResult<(), Parent> = er_all!(
-        || {
+        |_| {
             assert_eq!(drops.get(), 1);
-            Parent
         },
         [success, next()]
     );
@@ -46,7 +45,7 @@ impl Collision {
 #[test]
 pub fn method_collision() {
     let result: Result<(), Collision> = Err(Collision);
-    let tree: ErTree<Parent> = er_all!(|| Parent, [result]).unwrap_err();
+    let tree: ErTree<Parent> = er_all!((), [result]).unwrap_err();
 
     assert!(tree.er_contains::<Collision>());
 
@@ -62,7 +61,7 @@ pub fn method_collision() {
         };
     }
 
-    let tree: ErTree<Parent> = er_all!(|| Parent, [make_result!()]).unwrap_err();
+    let tree: ErTree<Parent> = er_all!((), [make_result!()]).unwrap_err();
     assert!(tree.er_contains::<Collision>());
 }
 

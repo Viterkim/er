@@ -1,3 +1,4 @@
+use alloc::string::String;
 use core::fmt;
 
 pub mod report;
@@ -5,6 +6,18 @@ pub mod top;
 
 pub use report::{write_head, write_report};
 pub use top::write_top;
+
+/// Format as text, replacing a failed formatter's output with ER_FMT_FAILED.
+pub fn format_string(value: &(impl fmt::Display + ?Sized)) -> String {
+    let mut text = String::new();
+
+    if fmt::write(&mut text, format_args!("{value}")).is_err() {
+        text.clear();
+        text.push_str("ER_FMT_FAILED");
+    }
+
+    text
+}
 
 #[derive(Clone, Copy)]
 pub enum Wrap<'a> {

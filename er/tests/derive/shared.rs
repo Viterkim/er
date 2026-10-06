@@ -35,8 +35,8 @@ pub fn shared_context() {
 
     let result: ErResult<(), ReadErr> = Err(io::Error::other("failed to read")).er(context);
     assert_eq!(calls.get(), 1);
-    let tree = result
-        .er_with(|old| ConfigErr::new(&old.context, "ComputerKatten"))
+    let tree: ErTree<ConfigErr> = result
+        .er_with(|old| (old.context.clone(), "ComputerKatten"))
         .unwrap_err();
     let old = tree.er_find::<ReadErr>().unwrap();
 
@@ -51,7 +51,7 @@ pub fn shared_context() {
         "ReadErr { context: Context { path: \"config.toml\" } }"
     );
 
-    let tree = tree.er::<StartupErr>(());
+    let tree = tree.er(StartupErr::new);
     let report = tree.er_report().to_string();
     assert_eq!(report.matches("config.toml").count(), 2);
     assert_eq!(tree.er_report().to_string(), report);

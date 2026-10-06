@@ -1,6 +1,6 @@
-use crate::render::write_report;
+use crate::render::{format_string, write_report};
 use crate::{ErEntries, ErErrorPresentationExt, ErSnapshot, Layout};
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use core::error::Error;
 
 /// Print an error and its native sources.
@@ -22,7 +22,7 @@ impl<E: Error> ErErrorPresentationExt for E {
     }
 
     fn er_top_string(&self) -> String {
-        self.to_string()
+        format_string(self)
     }
 
     fn er_snapshot(&self) -> ErSnapshot
@@ -38,7 +38,7 @@ impl ErErrorPresentationExt for dyn Error + 'static {
     }
 
     fn er_top_string(&self) -> String {
-        self.to_string()
+        format_string(self)
     }
 
     fn er_snapshot(&self) -> ErSnapshot {
@@ -51,7 +51,7 @@ impl ErErrorPresentationExt for dyn Error + Send + Sync + 'static {
     }
 
     fn er_top_string(&self) -> String {
-        self.to_string()
+        format_string(self)
     }
 
     fn er_snapshot(&self) -> ErSnapshot {
@@ -64,7 +64,7 @@ impl ErErrorPresentationExt for dyn Error + Send + 'static {
     }
 
     fn er_top_string(&self) -> String {
-        self.to_string()
+        format_string(self)
     }
 
     fn er_snapshot(&self) -> ErSnapshot {
@@ -77,7 +77,7 @@ impl ErErrorPresentationExt for dyn Error + Sync + 'static {
     }
 
     fn er_top_string(&self) -> String {
-        self.to_string()
+        format_string(self)
     }
 
     fn er_snapshot(&self) -> ErSnapshot {

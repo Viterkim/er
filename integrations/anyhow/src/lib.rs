@@ -40,7 +40,7 @@ pub mod tests {
         let result: anyhow::Result<()> = Err(anyhow::Error::new(NativeErr(85)));
         let tree = result
             .map_err(anyhow::Error::reallocate_into_boxed_dyn_error_without_backtrace)
-            .er::<BackendErr>(())
+            .er(BackendErr::new)
             .unwrap_err();
         assert_eq!(tree.er_find::<NativeErr>().unwrap().0, 85);
     }

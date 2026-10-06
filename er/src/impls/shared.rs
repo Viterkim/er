@@ -76,15 +76,15 @@ impl<T: fmt::Display + ?Sized> fmt::Display for ErShared<T> {
     }
 }
 
-impl<E, A: ErFromTree<E>> ErFromTree<E> for Shared<A> {
-    fn er_from_tree(tree: ErTree<E>) -> Self {
-        Self::new(A::er_from_tree(tree))
+impl<E, A: ErFromTree<E, Input>, Input> ErFromTree<E, Input> for Shared<A> {
+    fn er_from_tree(tree: ErTree<E>, input: Input) -> Self {
+        Self::new(A::er_from_tree(tree, input))
     }
 }
 
 #[cfg(all(er_unsync, target_has_atomic = "ptr"))]
-impl<E, A: ErFromTree<E>> ErFromTree<E> for Arc<A> {
-    fn er_from_tree(tree: ErTree<E>) -> Self {
-        Self::new(A::er_from_tree(tree))
+impl<E, A: ErFromTree<E, Input>, Input> ErFromTree<E, Input> for Arc<A> {
+    fn er_from_tree(tree: ErTree<E>, input: Input) -> Self {
+        Self::new(A::er_from_tree(tree, input))
     }
 }

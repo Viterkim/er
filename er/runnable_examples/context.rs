@@ -38,7 +38,7 @@ pub fn authenticate(machine: &str, token: &str) -> ErResult<(), AuthErr> {
     if token == format!("{machine}_token") {
         Ok(())
     } else {
-        er_bail!(AuthErr::new(machine));
+        er_bail!(|_| machine);
     }
 }
 

@@ -1,11 +1,11 @@
 use crate::lines;
-use crate::render::report::write_entries;
+use crate::render::{format_string, report::write_entries};
 use crate::{
     BoxError, ErAsError, ErEntries, ErEntry, ErLineError, ErMake, ErNodes, ErOpaqueErrorExt,
     ErReport, ErReportRef, ErSnapshot, ErSources, ErTopRef, ErTree, ErTreeContextExt, IntoErPart,
     IntoErTree, Layout,
 };
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use core::{error::Error, fmt};
 
 impl<'a, E> ErReportRef<'a, E> {
@@ -38,7 +38,7 @@ impl<E> Clone for ErReportRef<'_, E> {
 impl<'a, E: Error + 'static> ErReportRef<'a, E> {
     /// The report as text, keeps this layout.
     pub fn er_report_string(&self) -> String {
-        self.to_string()
+        format_string(self)
     }
 
     /// Just the outer error as text, keeps this layout.
@@ -47,7 +47,7 @@ impl<'a, E: Error + 'static> ErReportRef<'a, E> {
             tree: self.tree,
             layout: self.layout,
         }
-        .to_string()
+        .er_top_string()
     }
 
     /// Save the whole tree as messages, keeps its structure.
@@ -179,7 +179,7 @@ impl<E: Error + Into<BoxError> + 'static, Mode> ErTreeContextExt<Mode> for ErRep
 impl<E: Error + 'static> ErReport<E> {
     /// The report as text, keeps this layout.
     pub fn er_report_string(&self) -> String {
-        self.to_string()
+        self.as_ref().er_report_string()
     }
 
     /// Just the outer error as text, keeps this layout.

@@ -44,7 +44,7 @@ pub fn capture() {
     #[cfg(feature = "src_locations")]
     assert_eq!(tree.src_location.line(), _source);
 
-    let tree = tree.er_with::<fmt::Error>(|_| fmt::Error).er_trace();
+    let tree = tree.er(|| fmt::Error).er_trace();
     assert_eq!(tree.stack_traces.len(), 3);
     assert_eq!(tree.stack_traces[0].error_index, ErErrorIndex(1));
     assert_eq!(tree.stack_traces[1].error_index, ErErrorIndex(1));
@@ -118,7 +118,7 @@ pub mod composed {
             (),
             [
                 left.into_er_report(),
-                right.er_wrap::<Layer, _>(()),
+                right.er_wrap(Layer::new),
                 "bad".parse::<bool>(),
             ]
         )
@@ -128,7 +128,7 @@ pub mod composed {
         assert_eq!(outer.stack_traces.as_ptr(), records);
         let wrapped: LayerWrap = outer.into();
         let result: Result<(), LayerWrap> = Err(wrapped);
-        let tree = result.er_tree().er_with::<Batch>(|_| Batch).unwrap_err();
+        let tree = result.er_tree().er(Batch::new).unwrap_err();
         assert_eq!(tree.stack_traces.as_ptr(), records);
 
         let traces = &tree.stack_traces;
@@ -218,7 +218,7 @@ pub mod composed {
         assert_eq!(result.er_trace().unwrap_err().stack_traces.len(), 1);
 
         let tree = read("bad")
-            .er_with::<JobErr>(|old| JobErr::failed(old.path.to_str().unwrap()))
+            .er_with::<JobErr, _>(|old| JobErr::failed(old.path.to_str().unwrap()))
             .er_trace()
             .unwrap_err();
         assert_eq!(tree.stack_traces.len(), 2);

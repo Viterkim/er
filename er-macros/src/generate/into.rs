@@ -1,5 +1,6 @@
 use crate::{
     fields::with_fields,
+    generate::constructors::exact_type,
     input::{Input, attrs::IntoField},
     names::{binding, plain},
 };
@@ -35,7 +36,7 @@ pub fn implementation(input: &Input<'_>, path: &Path) -> syn::Result<TokenStream
     let tree = binding(&reserved, "__er_tree");
     let report = binding(&reserved, "__er_report");
     let snapshot = binding(&reserved, "__er_snapshot");
-    let alloc = binding(&reserved, "__er_alloc");
+    let extra = binding(&reserved, "__er_extra");
     let name = &item.ident;
     let (_, type_generics, _) = item.generics.split_for_impl();
     let mut sources = HashSet::new();
@@ -45,7 +46,8 @@ pub fn implementation(input: &Input<'_>, path: &Path) -> syn::Result<TokenStream
         let mut top = None;
         let mut reports = 0;
         let mut snapshots = 0;
-        for field in &case.fields {
+        let mut extra_fields = Vec::new();
+        for (index, field) in case.fields.iter().enumerate() {
             match field.options.into {
                 Some(IntoField::Top) => {
                     if top.is_some() {
@@ -58,12 +60,7 @@ pub fn implementation(input: &Input<'_>, path: &Path) -> syn::Result<TokenStream
                 }
                 Some(IntoField::ReportString) => reports += 1,
                 Some(IntoField::Snapshot) => snapshots += 1,
-                None => {
-                    return Err(Error::new_spanned(
-                        field.item,
-                        "this field needs a value for `.er_into()`. Keep its data in the typed top",
-                    ));
-                }
+                None => extra_fields.push((index, field)),
             }
         }
 
@@ -100,12 +97,42 @@ pub fn implementation(input: &Input<'_>, path: &Path) -> syn::Result<TokenStream
         generics.make_where_clause().predicates.push(parse_quote!(
             #ty: ::core::error::Error + 'static
         ));
+
+        let mut extra_types = Vec::new();
+        let mut extra_bindings = Vec::new();
+        for (index, field) in &extra_fields {
+            let field_type = &field.item.ty;
+            let argument = binding(&reserved, &format!("__ErIntoInput{index}"));
+            let value = binding(&reserved, &format!("__er_into_value{index}"));
+
+            if field.options.exact || exact_type(field_type, &input.type_names) {
+                extra_types.push(quote!(#field_type));
+            } else {
+                generics.params.push(parse_quote!(#argument));
+                generics.make_where_clause().predicates.push(parse_quote!(
+                    #argument: ::core::convert::Into<#field_type>
+                ));
+                extra_types.push(quote!(#argument));
+            }
+
+            extra_bindings.push(value);
+        }
+
+        let payload = match extra_types.as_slice() {
+            [] => quote!(()),
+            [ty] => quote!(#ty),
+            _ => quote!((#(#extra_types),*)),
+        };
+        let pattern = match extra_bindings.as_slice() {
+            [] => quote!(()),
+            [value] => quote!(#value),
+            _ => quote!((#(#extra_bindings),*)),
+        };
         let (impl_generics, _, where_clause) = generics.split_for_impl();
 
         let save_report = (reports > 0).then(|| {
             quote! {
-                extern crate alloc as #alloc;
-                let #report = #alloc::string::ToString::to_string(&#tree.er_report());
+                let #report = #tree.er_report_string();
             }
         });
         let save_snapshot = (snapshots > 0).then(|| {
@@ -114,7 +141,7 @@ pub fn implementation(input: &Input<'_>, path: &Path) -> syn::Result<TokenStream
             }
         });
         let mut values = Vec::with_capacity(case.fields.len());
-        for field in &case.fields {
+        for (index, field) in case.fields.iter().enumerate() {
             let value = match field.options.into {
                 Some(IntoField::Top) => quote!(#tree.top),
                 Some(IntoField::ReportString) => {
@@ -133,7 +160,14 @@ pub fn implementation(input: &Input<'_>, path: &Path) -> syn::Result<TokenStream
                         quote!(::core::clone::Clone::clone(&#snapshot))
                     }
                 }
-                None => continue,
+                None => {
+                    let value = binding(&reserved, &format!("__er_into_value{index}"));
+                    if field.options.exact || exact_type(&field.item.ty, &input.type_names) {
+                        quote!(#value)
+                    } else {
+                        quote!(::core::convert::Into::into(#value))
+                    }
+                }
             };
             values.push(value);
         }
@@ -143,8 +177,9 @@ pub fn implementation(input: &Input<'_>, path: &Path) -> syn::Result<TokenStream
         };
         let body = with_fields(case, target, &values);
         implementations.push(quote! {
-            impl #impl_generics #path::ErFromTree<#ty> for #name #type_generics #where_clause {
-                fn er_from_tree(#tree: #path::ErTree<#ty>) -> Self {
+            impl #impl_generics #path::ErFromTree<#ty, #payload> for #name #type_generics #where_clause {
+                fn er_from_tree(#tree: #path::ErTree<#ty>, #extra: #payload) -> Self {
+                    let #pattern = #extra;
                     #save_report
                     #save_snapshot
                     #body
