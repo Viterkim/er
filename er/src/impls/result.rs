@@ -1,5 +1,6 @@
 #[cfg(er_unsync)]
 use crate::ErBoxedInput;
+use crate::impls::tree::with_source;
 use crate::{
     BoxError, ErContextExt, ErErrorContextExt, ErErrorExt, ErFromTree, ErInput, ErMake,
     ErOpaqueErrorExt, ErPresentationExt, ErReport, ErResult, ErResultExt, ErSnapshot, ErTop,
@@ -38,7 +39,7 @@ impl<T, E: ErInput<Input>, Mode, Input> ErContextExt<Mode, Input> for Result<T, 
     {
         match self {
             Ok(value) => Ok(value),
-            Err(source) => Err(ErTree::from(error.er_make()).er_add([source])),
+            Err(source) => Err(with_source(error.er_make(), source)),
         }
     }
 }
@@ -55,8 +56,8 @@ impl<T, E: ErInput<Input>, Input> ErResultExt<Input> for Result<T, E> {
         match self {
             Ok(value) => Ok(value),
             Err(source) => {
-                let tree = ErTree::from(f(&source));
-                Err(tree.er_add([source]))
+                let error = f(&source);
+                Err(with_source(error, source))
             }
         }
     }

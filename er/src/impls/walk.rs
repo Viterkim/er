@@ -40,7 +40,7 @@ impl<'a> ErEntries<'a> {
 impl<'a> Iterator for ErEntries<'a> {
     type Item = ErEntry<'a>;
 
-    #[inline]
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         let Pending {
             mut entry,
@@ -49,6 +49,11 @@ impl<'a> Iterator for ErEntries<'a> {
         } = self.pending.pop()?;
         entry.index = self.next_index;
         self.next_index += 1;
+
+        if nodes.len() > 1 {
+            // Leave room for its native source too.
+            self.pending.reserve(nodes.len() + 1);
+        }
 
         for (index, node) in nodes.iter().enumerate().rev() {
             let sub_entry = ErEntry {

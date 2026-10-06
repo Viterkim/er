@@ -6,7 +6,7 @@ use crate::{
     ErTreeContextExt, IntoErPart, IntoErTree, Layout,
 };
 use alloc::string::ToString;
-use alloc::{string::String, vec::Vec};
+use alloc::{string::String, vec, vec::Vec};
 #[cfg(feature = "src_locations")]
 use core::panic::Location;
 use core::{error::Error, fmt};
@@ -30,7 +30,8 @@ impl<E: Error + 'static> ErTree<E> {
         E: Into<BoxError>,
         A: Error + 'static,
     {
-        ErTree::from(top(&self.top)).er_add([self])
+        let error = top(&self.top);
+        with_source(error, self)
     }
 
     /// Like `.er_with()`, but borrows the whole tree so you can search its children too.
@@ -40,7 +41,8 @@ impl<E: Error + 'static> ErTree<E> {
         E: Into<BoxError>,
         A: Error + 'static,
     {
-        ErTree::from(top(&self)).er_add([self])
+        let error = top(&self);
+        with_source(error, self)
     }
 
     /// Erase the top error. This drops its stack traces, use `into_er_part()` to keep them.
@@ -157,7 +159,7 @@ impl<E: Error + Into<BoxError> + 'static, Mode> ErTreeContextExt<Mode> for ErTre
     where
         A: Error + 'static,
     {
-        ErTree::from(top.er_make()).er_add([self])
+        with_source(top.er_make(), self)
     }
 }
 impl<E> ErTree<E> {
@@ -288,4 +290,29 @@ impl<E: Error + Into<BoxError> + 'static> IntoErPart for ErTree<E> {
     fn into_er_part(self) -> ErPart {
         ErTree::into_er_part(self)
     }
+}
+
+// Keep the Vec work out of the caller's success path.
+#[cold]
+#[inline(never)]
+#[cfg_attr(feature = "src_locations", track_caller)]
+pub fn with_source<E, Input>(error: E, source: impl ErInput<Input>) -> ErTree<E>
+where
+    E: Error + 'static,
+{
+    let mut tree = ErTree::from(error);
+    let part = source.into_er_input();
+
+    #[cfg(feature = "stack_traces")]
+    {
+        let mut traces = part.stack_traces;
+        for trace in &mut traces {
+            trace.error_index.0 += 1;
+        }
+        tree.stack_traces = traces;
+    }
+
+    tree.nodes = vec![part.node];
+
+    tree
 }
