@@ -100,8 +100,6 @@ pub fn read_mode(input: Option<&str>) -> ErResult<&str, ModeErr> {
 
 Your `pub fn main()` can return `Result<(), ErReport<AppErr>>`.
 
-In normal code you would usually want to log your report before converting your error to a user facing error.
-
 ```rust
 if let Err(error) = read_port("fakenumber") {
     eprintln!("{}", error.er_report());
@@ -118,7 +116,7 @@ If the caller just wants text:
 let result: Result<u16, String> = read_port("85").er_report_string();
 ```
 
-`.er_top_string()` does the same with just the outer error, Ok passes through in both. (for public boundaries / actual errors, look at the `Public errors` section).
+`.er_top_string()` gives just the outer error, Ok passes through in both.
 
 ## Print top error
 
@@ -142,7 +140,7 @@ The `#[derive(Er)]` gives you `new()` and tuple convenience constructors on stru
 
 `.er(())` for empty structs, `.er(|_| path)` for 1 field structs, and `.er(|_| (port, enabled))` for 2 or more fields.
 
-Enums need a variant specified like `.er(|| ModeErr::variant_name(arg1))`, or `.er_with(|old| ModeErr::variant_name(old.code))` if you need the old error.
+For enums, use the variant helper, like `.er(|| ModeErr::unknown(input))`. Those helpers work in `.er_with()` too.
 
 You can still do `.er(|| MyTypeErr { a, b })` but the helpers take care of stuff like not having to call `.into()` or type the error name.
 
@@ -170,7 +168,9 @@ pub fn analyze() -> ErResult<(), AnalyzeErr> {
 }
 ```
 
-If you want to assemble it yourself, use `.er_with(|err| er_built(AnalyzeErr { code: err.code }))`. (This is an annoying case, .er() can do both but .er_with() needs the er_built to help, but just use .er_with() and the constructor helpers).
+For a finished struct or a foreign error, `.er_with()` needs `er_built(...)`, like `.er_with(|err| er_built(AnalyzeErr { code: err.code }))`.
+
+Derived enums work directly even with `{ ... }`, though `ModeErr::unknown(...)` saves you doing the field conversions yourself.
 
 `.er_with_tree(|t| ...)` gives you the tree if you need to search further down.
 
@@ -261,7 +261,7 @@ Use `.er_collect_all(())` to keep going and collect every error instead. If anyt
 
 ## Collect / aggregate / er_all!()
 
-Can be different types of sub error types. Already have an error or tree? Put it in the list directly, no need to wrap it in `Err(...)`.
+Different error types are fine here. Already have an error or tree? Put it in the list directly, no need for `Err(...)`.
 
 ### Only parent context
 
@@ -320,7 +320,7 @@ pub fn read_inputs(port: &str, enabled: &str) -> ErResult<(u16, bool), ChecksErr
 }
 ```
 
-It runs every result in order and if any fail it drops the successful values and returns one tree with every failure (the top error only gets made if something failed).
+It runs them in order and collects every failure, dropping the oks if any failed.
 
 For an iterator of the same type you can use `.er_collect_all()`.
 
@@ -411,7 +411,7 @@ pub fn public_read_port(input: &str, request_id: u32) -> Result<u16, ApiError> {
 }
 ```
 
-The closure only runs on errors and returns your other fields, one value or a tuple in field order. With no other fields you can use `.er_into(|_| {})`. You can swap the `String` for `ErSnapshot` with `#[er(into_snapshot)]` if you need the structure.
+The closure only runs on errors, return your remaining fields as a value or tuple, in field order. With none left, use `.er_into(|_| {})`. For a snapshot use `#[er(into_snapshot)]` instead.
 
 You should still print / show your error in your applications of course, and I'll even argue that as a library, if you at least give a string report to your consumer, you're gonna have great bug reports from users and a much easier time fixing bugs. Printing a report is often times more valuable than a friendly message you made up. Don't destroy your type. Include the message in the type itself next to the other data instead.
 
@@ -429,9 +429,7 @@ pub struct DeviceErr {
     pub status: u8,
 }
 pub fn check_device(result: Result<(), u8>) -> ErResult<(), DeviceErr> {
-    // Remember, in rust if the first value of a closure just gets passed to a function,
-    // you can pass the function directly. So you could also do `result.er_val(DeviceErr::new)`
-    result.er_val(|status| DeviceErr::new(status))
+    result.er_val(DeviceErr::new)
 }
 ```
 
@@ -510,7 +508,7 @@ if let Err(error) = read_port("fakenumber") {
 
 Can still print `.er_top()` or `.er_report()`. Each entry has its depth and the index of the error above it.
 
-On a Result, `.er_snapshot()` saves Err and leaves Ok alone (for public boundaries / actual errors, look at the `Public errors` section).
+On a Result, `.er_snapshot()` saves Err and leaves Ok alone.
 
 ```rust
 let result: Result<u16, ErSnapshot> = read_port("fakenumber").er_snapshot();
@@ -640,9 +638,7 @@ if let Err(error) = reader {
 
 ## Opaque (edge case)
 
-Look at the `Sharing a result`(right above) and the `Public error`(further up) examples first. That's for when you want to make a public type (attaching a string report, or a snapshot).
-
-But if you want to force the real report, into an Error, there is the escape hatch: 
+If you need the whole report as an `Error`, there's `.opaque_err()`:
 
 ```rust
 pub fn run() -> anyhow::Result<()> {
@@ -652,9 +648,7 @@ pub fn run() -> anyhow::Result<()> {
 }
 ```
 
-Nothing is deleted `ErAsError` keeps the presentation in its public `.0` field.
-
-But `.opaque_err()` stops searches (source() is empty), and going the other way, Anyhow's boxed conversion can also be sneaky and hide types from er_find. [The anyhow example](../../integrations/anyhow/src/lib.rs) shows both.
+`ErAsError` keeps the presentation in `.0`, but `.er_find()` won't search inside it. [The anyhow example](../../integrations/anyhow/src/lib.rs) also shows what happens to boxed errors going back into Er.
 
 ## Stack traces
 
