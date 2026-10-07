@@ -24,7 +24,7 @@ pub struct OuterErr;
 pub fn ingestion() {
     let cause = io::Error::new(io::ErrorKind::PermissionDenied, "no access");
     let result: Result<(), Box<dyn Error + Send + Sync>> = Err(Box::new(DriverErr(cause)));
-    let tree = result.er::<StageErr>(()).er::<OuterErr>(()).unwrap_err();
+    let tree = result.er(StageErr::new).er(OuterErr::new).unwrap_err();
     let driver = tree.er_find::<DriverErr>().unwrap();
     let source = tree.er_find::<io::Error>().unwrap();
 
@@ -57,14 +57,14 @@ pub fn ingestion() {
     let boxed = Box::new(io::Error::from(io::ErrorKind::PermissionDenied));
     let original = &*boxed as *const io::Error;
     let result: Result<(), Box<io::Error>> = Err(boxed);
-    let tree = result.er::<StageErr>(()).unwrap_err();
+    let tree = result.er(StageErr::new).unwrap_err();
     let found = tree.er_find::<Box<io::Error>>().unwrap();
     assert!(core::ptr::eq(&**found, original));
     assert!(tree.er_find::<io::Error>().is_none());
 
     let boxed: BoxError = Box::new(io::Error::from(io::ErrorKind::PermissionDenied));
     let result: Result<(), BoxError> = Err(boxed);
-    let tree = result.er::<StageErr>(()).unwrap_err();
+    let tree = result.er(StageErr::new).unwrap_err();
     assert_eq!(
         tree.er_find::<io::Error>().unwrap().kind(),
         io::ErrorKind::PermissionDenied
@@ -73,7 +73,7 @@ pub fn ingestion() {
 
     let boxed: BoxError = Box::new(io::Error::from(io::ErrorKind::PermissionDenied));
     let original = boxed.downcast_ref::<io::Error>().unwrap() as *const io::Error;
-    let tree = boxed.er::<StageErr>(());
+    let tree = boxed.er(StageErr::new);
     assert!(core::ptr::eq(
         tree.er_find::<io::Error>().unwrap(),
         original
@@ -81,8 +81,10 @@ pub fn ingestion() {
 
     let boxed: BoxError = Box::new(io::Error::from(io::ErrorKind::NotFound));
     let original = boxed.downcast_ref::<io::Error>().unwrap() as *const io::Error;
-    let tree = boxed.er_with::<io::Error>(|old| {
-        io::Error::from(old.downcast_ref::<io::Error>().unwrap().kind())
+    let tree = boxed.er_with::<io::Error, _>(|old| {
+        er_built(io::Error::from(
+            old.downcast_ref::<io::Error>().unwrap().kind(),
+        ))
     });
     assert_eq!(tree.top.kind(), io::ErrorKind::NotFound);
     assert!(core::ptr::eq(
@@ -91,12 +93,12 @@ pub fn ingestion() {
     ));
 
     let result: Result<(), String> = Err(String::from("plain message"));
-    let tree = result.er::<StageErr>(()).unwrap_err();
+    let tree = result.er(StageErr::new).unwrap_err();
 
     assert!(tree.er_report().to_string().contains("plain message"));
 
     let result: Result<(), &'static str> = Err("static message");
-    let tree = result.er::<StageErr>(()).unwrap_err();
+    let tree = result.er(StageErr::new).unwrap_err();
 
     assert!(tree.er_report().to_string().contains("static message"));
 }

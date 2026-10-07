@@ -169,7 +169,7 @@ pub fn top_output() {
     assert_eq!(format!("{wrapped:?}"), "TopOutputErr");
 
     let result: Result<(), TopOutputErrWrap> = Err(wrapped);
-    let report = result.er::<HandlerErr>(()).er_report().unwrap_err();
+    let report = result.er(HandlerErr::new).er_report().unwrap_err();
 
     assert!(report.er_contains::<TopOutputErr>());
     assert!(report.er_contains::<InnerErr>());
@@ -192,12 +192,12 @@ pub fn report_output() {
     assert_eq!(format!("{wrapped:?}"), displayed);
 
     let result: Result<(), ReportOutputErrWrap> = Err(wrapped);
-    let outer = result.er::<HandlerErr>(()).unwrap_err();
+    let outer = result.er(HandlerErr::new).unwrap_err();
     assert!(outer.er_contains::<ReportOutputErr>());
     assert!(outer.er_contains::<InnerErr>());
 
     let wrapped = ReportOutputErrWrap::from(ErTree::new(ReportOutputErr, [InnerErr]));
-    let outer = wrapped.er::<HandlerErr>(()).er_add([std::fmt::Error]);
+    let outer = wrapped.er(HandlerErr::new).er_add([std::fmt::Error]);
     assert!(outer.er_contains::<InnerErr>());
     assert!(outer.er_contains::<std::fmt::Error>());
 }
@@ -209,7 +209,7 @@ pub fn report_reentry() {
     let report = tree.into_er_report().single_line();
 
     let result: Result<(), ErReport<ReportOutputErr>> = Err(report);
-    let outer = result.er::<HandlerErr>(()).unwrap_err();
+    let outer = result.er(HandlerErr::new).unwrap_err();
 
     assert!(outer.er_contains::<ReportOutputErr>());
     assert!(ptr::eq(child, outer.er_find::<std::io::Error>().unwrap()));
@@ -249,7 +249,9 @@ pub fn std_error() {
     assert_eq!(wrapped.er_snapshot().entries.len(), 3);
 
     let _line = line!() + 1;
-    let result = Err::<(), _>(wrapped).er_wrap(HandlerErr::new);
+    let result = Err::<(), _>(wrapped).er_with_wrap::<HandlerErr, _>(|old| {
+        assert_eq!(old.0, 85);
+    });
     let tree = result.unwrap_err();
 
     assert_eq!(tree.er_find_all::<Tracked>().count(), 2);
@@ -272,8 +274,19 @@ pub fn std_error() {
     assert!(tree.er_contains::<InnerErr>());
 
     let wrapped = StandardErrWrap::from(ErTree::new(StandardErr::new(85u8), [InnerErr]));
+    let tree: ErTree<RequestErr> = Err::<(), _>(wrapped)
+        .er_with_wrap(|old| {
+            er_built(RequestErr {
+                input: old.0.to_string(),
+            })
+        })
+        .unwrap_err();
+    assert_eq!(tree.top.input, "85");
+    assert!(tree.er_contains::<InnerErr>());
+
+    let wrapped = StandardErrWrap::from(ErTree::new(StandardErr::new(85u8), [InnerErr]));
     let expected = wrapped.to_string();
-    let outer = Err::<(), _>(wrapped).er::<HandlerErr>(()).unwrap_err();
+    let outer = Err::<(), _>(wrapped).er(HandlerErr::new).unwrap_err();
 
     assert!(outer.er_contains::<StandardErrWrap<u8>>());
     assert_eq!(outer.nodes[0].error.to_string(), expected);
@@ -287,8 +300,19 @@ pub fn std_error() {
     assert_eq!(success.ok(), Some(7));
     assert!(!called);
 
+    let success = Ok::<_, StandardErrWrap<u8>>(7)
+        .er_with_wrap::<HandlerErr, _>(|_| {
+            called = true;
+        })
+        .er_with_wrap::<HandlerErr, _>(|_| {
+            called = true;
+            er_built(HandlerErr)
+        });
+    assert_eq!(success.ok(), Some(7));
+    assert!(!called);
+
     let wrapped = StandardErrWrap::from(ErTree::new(StandardErr::new(85u8), [InnerErr]));
-    let tree = wrapped.er_with(|old| RequestErr::new(old.0.to_string()));
+    let tree: ErTree<RequestErr> = wrapped.er_with_wrap(|old| old.0.to_string());
     assert_eq!(tree.top.input, "85");
     assert!(tree.er_contains::<InnerErr>());
 
@@ -297,7 +321,7 @@ pub fn std_error() {
     assert_eq!(snapshot.entries.len(), 2);
 
     let wrapped = StandardErrWrap::from(ErTree::new(StandardErr::new(85u8), [InnerErr]));
-    let tree = wrapped.er_wrap::<HandlerErr, _>(());
+    let tree = wrapped.er_wrap(HandlerErr::new);
     assert!(tree.er_contains::<InnerErr>());
 }
 
@@ -325,18 +349,18 @@ pub fn generic_wrap() {
 
     let result: Result<(), GenericWrap<u8>> = Err(wrapped);
     let tree = result
-        .er_with(|old| RequestErr::new(old.value.to_string()))
+        .er_with::<RequestErr, _>(|old| old.value.to_string())
         .unwrap_err();
     assert_eq!(tree.top.input, "7");
     assert_eq!(tree.er_find::<GenericErr<u8>>().unwrap().value, 7);
 
     let wrapped = GenericWrap::from(ErTree::new(GenericErr::new(8u8), [InnerErr]));
-    let tree = wrapped.er_with_tree(|tree| RequestErr::new(tree.top.value.to_string()));
+    let tree = wrapped.er_with_tree::<RequestErr, _>(|tree| tree.top.value.to_string());
     assert_eq!(tree.top.input, "8");
     assert!(tree.er_contains::<InnerErr>());
 
     let wrapped = GenericWrap::from(ErTree::new(GenericErr::new(9u8), [InnerErr]));
-    let tree = wrapped.er_with(|old| RequestErr::new(old.value.to_string()));
+    let tree = wrapped.er_with_wrap::<RequestErr, _>(|old| old.value.to_string());
     assert_eq!(tree.top.input, "9");
 
     let wrapped = GenericWrap::from(ErTree::new(GenericErr::new(10u8), [InnerErr]));

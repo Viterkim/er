@@ -76,6 +76,45 @@ pub fn broken_formatter() {
     );
     assert_eq!(snapshot.entries[3].parent, Some(2));
     assert_eq!(snapshot.er_top().to_string(), "ER_FMT_FAILED");
+
+    for text in [
+        tree.top.er_top_string(),
+        tree.top.er_report_string(),
+        tree.er_top_string(),
+        tree.er_report_string(),
+        tree.er_top().single_line().er_report_string(),
+        tree.er_report().single_line().er_top_string(),
+    ] {
+        assert_eq!(text, "ER_FMT_FAILED");
+    }
+
+    let report = tree.into_er_report().single_line();
+    assert_eq!(report.er_report_string(), "ER_FMT_FAILED");
+    let top = report.into_er_top();
+    assert_eq!(top.er_top_string(), "ER_FMT_FAILED");
+
+    #[cfg(feature = "macros")]
+    {
+        #[derive(Er)]
+        #[er(format = "{report}")]
+        struct Saved {
+            #[er(into_top)]
+            kind: Message,
+            #[er(into_report_string)]
+            report: String,
+        }
+
+        let result: Result<(), Saved> = Err::<(), _>(top).er_into(|_| ());
+        let saved = result.unwrap_err();
+        assert_eq!(saved.report, "ER_FMT_FAILED");
+        assert_eq!(saved.kind.text, "broken");
+    }
+
+    #[cfg(not(feature = "macros"))]
+    assert_eq!(
+        Err::<(), _>(top).er_report_string().unwrap_err(),
+        "ER_FMT_FAILED"
+    );
 }
 
 #[test]

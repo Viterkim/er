@@ -22,13 +22,13 @@ impl Error for Native {
 #[test]
 pub fn lookup() {
     let group = ErTree::new(Native(Leaf(99)), [Leaf(1), Leaf(2)]);
-    let read: ErResult<(), Leaf> = Err("bad".parse::<u8>().unwrap_err()).er(|| Leaf(3));
+    let read: ErResult<(), Leaf> = Err("bad".parse::<u8>().unwrap_err()).er(|_| 3);
 
     #[cfg(feature = "stack_traces")]
     let read = read.er_trace();
 
     let tree: ErTree<Leaf> =
-        er_all!(|| Leaf(0), [Err::<(), _>(group), Ok::<u8, Leaf>(7), read]).unwrap_err();
+        er_all!(|_| 0, [Err::<(), _>(group), Ok::<u8, Leaf>(7), read]).unwrap_err();
 
     assert!(tree.er_at_index(ErErrorIndex(1)).unwrap().is::<Native>());
     for (index, path, value) in [
@@ -66,7 +66,7 @@ pub fn lookup() {
         );
     }
 
-    let tree = tree.er(|| Leaf(8));
+    let tree: ErTree<Leaf> = tree.er(|_| 8);
     assert_eq!(
         tree.er_at_index(ErErrorIndex(5))
             .unwrap()
@@ -370,7 +370,7 @@ pub fn src_locations() {
     let first_line = line!() + 6;
     let second_line = line!() + 6;
     let tree: ErTree<Leaf> = er_all!(
-        || Leaf(2),
+        |_| 2,
         [
             plain,
             "bad".parse::<u16>().unwrap_err(),
@@ -388,7 +388,7 @@ pub fn src_locations() {
 
     let missing: Option<()> = None;
     let line = line!() + 1;
-    let tree = missing.er::<Leaf>(|| Leaf(3)).unwrap_err();
+    let tree = missing.er::<Leaf>(|_| 3).unwrap_err();
 
     assert_eq!(tree.src_location.line(), line);
 
@@ -405,7 +405,7 @@ pub fn src_locations() {
     let boxed: Box<dyn Error + Send + Sync> = Box::new(Leaf(7));
     let result: Result<(), BoxError> = Err(boxed);
     let line = line!() + 1;
-    let tree = result.er::<Leaf>(|| Leaf(8)).unwrap_err();
+    let tree = result.er::<Leaf>(|_| 8).unwrap_err();
 
     assert_eq!(tree.src_location.line(), line);
     assert_eq!(tree.nodes[0].src_location.line(), line);

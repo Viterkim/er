@@ -16,7 +16,7 @@ This is a made up `listen()` case to hit the pain points of different error libr
 
 [error-stack](#error-stack-080--thiserror-1)
 
-[Er](#er-06-1)
+[Er](#er-070-1)
 
 [thiserror, lazy style](#thiserror-lazy-style-2020-1)
 
@@ -52,7 +52,7 @@ Now we make the cases around what our caller cares about and keep the original e
 
 We get a typed current error with the old errors in a report. The lazy context callback can't see the failed error, so bind needs `map_err`. Lookup finds the error we gave it but not its real nested io source in that copied text frame.
 
-### Er (0.6)
+### Er (0.7.0)
 
 We get a typed top error with the stuff our caller cares about. `.er_with()` can read the failed error and keep it underneath. Everything below `.top` needs a search. And the old error can't also sit in a typed source field on the top variant, because the tree owns it.
 
@@ -394,7 +394,9 @@ fn main() {
 }
 ```
 
-## Er (0.6)
+Error-stack needs Send + Sync so no Rc/RefCell errors (`er-unsync` can).
+
+## Er (0.7.0)
 
 ```rust
 use er::*;
@@ -449,6 +451,8 @@ fn main() {
     }
 }
 ```
+
+For Rc/RefCell stuff there's `er-unsync`, same API with Rc, works without pointer atomics too.
 
 ## thiserror, lazy style (2.0.20)
 
@@ -676,6 +680,8 @@ fn main() {
 
 Similar to error-stack.
 
+Rootcause can do Rc/RefCell errors with Local, still needs Arc though.
+
 ## exn (0.3.1) (+ thiserror)
 
 ```rust
@@ -742,6 +748,8 @@ fn main() {
 ```
 
 Similar to error-stack and rootcause.
+
+Exn needs Send + Sync so no Rc/RefCell errors (`er-unsync` can).
 
 ## Eros (0.8.0) (+ thiserror)
 
@@ -950,7 +958,7 @@ use er::*;
 pub struct DeviceErr;
 
 fn inspect_device() {
-    let Err(error) = read_device().er::<DeviceErr>(()) else { return; };
+    let Err(error) = read_device().er(DeviceErr::new) else { return; };
 
     let original = error.er_find::<DriverErr>(); // Found in the tree
     let nested = error.er_find::<io::Error>(); // Found inside DriverErr too

@@ -151,13 +151,17 @@ pub fn helpers() -> ErTest {
     assert_eq!(error.top.to_string(), "port");
 
     let error = read_port("bad")
-        .er_with(|old| io::Error::other(old.to_string()))
+        .er_with::<io::Error, _>(|old| er_built(io::Error::other(old.to_string())))
         .unwrap_err();
     assert_eq!(error.top.to_string(), "TestError");
     assert!(error.er_contains::<ParseIntError>());
 
     let error = read_port("bad")
-        .er_with_tree(|old| io::Error::other(old.er_find::<ParseIntError>().unwrap().to_string()))
+        .er_with_tree::<io::Error, _>(|old| {
+            er_built(io::Error::other(
+                old.er_find::<ParseIntError>().unwrap().to_string(),
+            ))
+        })
         .unwrap_err();
     assert!(error.top.to_string().contains("invalid digit"));
     assert!(error.er_contains::<ParseIntError>());

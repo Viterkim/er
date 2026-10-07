@@ -6,13 +6,13 @@ use core::error::Error;
 
 /// The collection loop behind `er_all!`.
 #[cfg_attr(feature = "src_locations", track_caller)]
-pub fn collect<A, E, T>(
+pub fn collect<A, E, T, Input>(
     top: impl FnOnce() -> A,
     results: impl IntoIterator<Item = Result<T, E>>,
 ) -> ErResult<(), A>
 where
     A: Error + 'static,
-    E: ErInput,
+    E: ErInput<Input>,
 {
     let mut nodes: Vec<ErNode> = Vec::new();
     #[cfg(feature = "stack_traces")]

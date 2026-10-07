@@ -1,8 +1,12 @@
+#[cfg(er_unsync)]
+use crate::ErBoxedInput;
 use crate::{BoxError, ErFindAll, ErInput, ErNode, ErNodes, ErPart, ErSources, IntoErPart};
+#[cfg(er_unsync)]
+use alloc::boxed::Box;
 use alloc::vec::Vec;
 #[cfg(feature = "src_locations")]
 use core::panic::Location;
-use core::{error::Error, mem::take};
+use core::{error::Error, mem::take, ops::Deref};
 
 impl ErNode {
     /// This error's native `source()` chain.
@@ -62,7 +66,7 @@ impl Drop for ErNode {
     }
 }
 impl IntoErPart for ErNode {
-    type Error = dyn Error + Send + Sync;
+    type Error = <BoxError as Deref>::Target;
 
     fn er_error(&self) -> &Self::Error {
         &*self.error
@@ -77,7 +81,7 @@ impl IntoErPart for ErNode {
     }
 }
 impl IntoErPart for ErPart {
-    type Error = dyn Error + Send + Sync;
+    type Error = <BoxError as Deref>::Target;
 
     fn er_error(&self) -> &Self::Error {
         &*self.node.error
@@ -88,7 +92,7 @@ impl IntoErPart for ErPart {
     }
 }
 
-impl<E: IntoErPart> ErInput for E {
+impl<E: IntoErPart<Input>, Input> ErInput<Input> for E {
     type Error = E::Error;
 
     fn er_input_error(&self) -> &Self::Error {
@@ -98,6 +102,50 @@ impl<E: IntoErPart> ErInput for E {
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn into_er_input(self) -> ErPart {
         self.into_er_part()
+    }
+}
+
+// These boxes coerce to BoxError, std just doesn't give them an Into impl.
+#[cfg(er_unsync)]
+impl IntoErPart<ErBoxedInput> for Box<dyn Error + Send + Sync> {
+    type Error = Self;
+
+    fn er_error(&self) -> &Self {
+        self
+    }
+
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn into_er_part(self) -> ErPart {
+        let error: BoxError = self;
+        error.into_er_part()
+    }
+}
+#[cfg(er_unsync)]
+impl IntoErPart<ErBoxedInput> for Box<dyn Error + Send> {
+    type Error = Self;
+
+    fn er_error(&self) -> &Self {
+        self
+    }
+
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn into_er_part(self) -> ErPart {
+        let error: BoxError = self;
+        error.into_er_part()
+    }
+}
+#[cfg(er_unsync)]
+impl IntoErPart<ErBoxedInput> for Box<dyn Error + Sync> {
+    type Error = Self;
+
+    fn er_error(&self) -> &Self {
+        self
+    }
+
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn into_er_part(self) -> ErPart {
+        let error: BoxError = self;
+        error.into_er_part()
     }
 }
 

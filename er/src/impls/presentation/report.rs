@@ -1,11 +1,11 @@
 use crate::lines;
-use crate::render::report::write_entries;
+use crate::render::{format_string, report::write_entries};
 use crate::{
-    ErAsError, ErEntries, ErEntry, ErLineError, ErMake, ErNodes, ErOpaqueErrorExt, ErReport,
-    ErReportRef, ErSnapshot, ErSources, ErTopRef, ErTree, ErTreeContextExt, IntoErPart, IntoErTree,
-    Layout,
+    BoxError, ErAsError, ErEntries, ErEntry, ErLineError, ErMake, ErNodes, ErOpaqueErrorExt,
+    ErReport, ErReportRef, ErSnapshot, ErSources, ErTopRef, ErTree, ErTreeContextExt, IntoErPart,
+    IntoErTree, Layout,
 };
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use core::{error::Error, fmt};
 
 impl<'a, E> ErReportRef<'a, E> {
@@ -38,7 +38,7 @@ impl<E> Clone for ErReportRef<'_, E> {
 impl<'a, E: Error + 'static> ErReportRef<'a, E> {
     /// The report as text, keeps this layout.
     pub fn er_report_string(&self) -> String {
-        self.to_string()
+        format_string(self)
     }
 
     /// Just the outer error as text, keeps this layout.
@@ -47,7 +47,7 @@ impl<'a, E: Error + 'static> ErReportRef<'a, E> {
             tree: self.tree,
             layout: self.layout,
         }
-        .to_string()
+        .er_top_string()
     }
 
     /// Save the whole tree as messages, keeps its structure.
@@ -167,7 +167,7 @@ impl<E> AsMut<ErTree<E>> for ErReport<E> {
         &mut self.tree
     }
 }
-impl<E: Error + Send + Sync + 'static, Mode> ErTreeContextExt<Mode> for ErReport<E> {
+impl<E: Error + Into<BoxError> + 'static, Mode> ErTreeContextExt<Mode> for ErReport<E> {
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er<A>(self, top: impl ErMake<A, Mode>) -> ErTree<A>
     where
@@ -179,7 +179,7 @@ impl<E: Error + Send + Sync + 'static, Mode> ErTreeContextExt<Mode> for ErReport
 impl<E: Error + 'static> ErReport<E> {
     /// The report as text, keeps this layout.
     pub fn er_report_string(&self) -> String {
-        self.to_string()
+        self.as_ref().er_report_string()
     }
 
     /// Just the outer error as text, keeps this layout.
@@ -245,7 +245,7 @@ impl<E: Error + 'static> fmt::Debug for ErReport<E> {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl<E: Error + Send + Sync + 'static> IntoErPart for ErReport<E> {
+impl<E: Error + Into<BoxError> + 'static> IntoErPart for ErReport<E> {
     type Error = E;
 
     fn er_error(&self) -> &E {

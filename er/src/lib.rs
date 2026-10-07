@@ -1,6 +1,7 @@
 #![no_std]
-#![doc = include_str!("../docs/examples.md")]
-#![doc = include_str!("../docs/macros.md")]
+#![cfg_attr(er_unsync, doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/README.md")))]
+#![cfg_attr(not(er_unsync), doc = include_str!("../docs/examples.md"))]
+#![cfg_attr(not(er_unsync), doc = include_str!("../docs/macros.md"))]
 
 extern crate alloc;
 #[cfg(feature = "stack_traces")]
@@ -21,12 +22,18 @@ pub mod types;
 pub mod types_test;
 pub mod walk;
 
+#[cfg(all(feature = "macros", not(er_unsync)))]
+#[doc(inline)]
+pub use er_macros::Er;
+#[cfg(feature = "macros")]
+#[doc(inline)]
+pub use er_macros::ErFormat;
+#[cfg(all(feature = "macros", er_unsync))]
+#[doc(inline)]
+pub use er_macros::ErUnsync as Er;
 #[cfg(feature = "macros")]
 #[doc(hidden)]
 pub use er_macros::{__er_all_results, __er_try_results};
-#[cfg(feature = "macros")]
-#[doc(inline)]
-pub use er_macros::{Er, ErFormat};
 #[cfg(feature = "lazy")]
 #[doc(inline)]
 pub use lazy::{ErLazy, ErLazyError};

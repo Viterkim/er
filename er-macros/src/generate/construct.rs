@@ -8,10 +8,22 @@ use std::collections::HashSet;
 use syn::Data;
 
 pub fn construct(input: &Input<'_>) -> TokenStream {
+    if matches!(&input.item.data, Data::Enum(_)) {
+        let name = &input.item.ident;
+        let (impl_generics, type_generics, where_clause) = input.item.generics.split_for_impl();
+
+        return quote! {
+            impl #impl_generics ::core::convert::From<(Self,)> for #name #type_generics #where_clause {
+                fn from((error,): (Self,)) -> Self {
+                    error
+                }
+            }
+        };
+    }
     if input.options.no_constructors {
         return TokenStream::new();
     }
-    if !matches!(&input.item.data, Data::Struct(_)) || input.cases[0].fields.is_empty() {
+    if !matches!(&input.item.data, Data::Struct(_)) {
         return TokenStream::new();
     }
 

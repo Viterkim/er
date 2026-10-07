@@ -1,3 +1,11 @@
+# 0.7.0
+
+`.er_with()` takes fields now, example: `.er_with(|old| (old.code, path))`. Use `er_built(...)` if you assemble the whole error yourself. Same for the tree and Wrap forms.
+
+Add the `er-unsync` crate which is the same api with Rc sharing and stored errors without Send/Sync requirements.
+
+`.er_into()` can fill extra fields, like `.er_into(|_| (request_id, path))`.
+
 # 0.6.0
 
 Add `.er_into(|tree| ...)` for converting to public errors with a report or snapshot.

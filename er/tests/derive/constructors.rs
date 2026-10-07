@@ -40,6 +40,9 @@ pub fn empty_errors_with_unit() {
     }
 
     assert!(unit().unwrap_err().er_contains::<std::fmt::Error>());
+
+    let error = std::fmt::Error.er_with::<EmptyUnitErr, _>(|_| ());
+    assert!(error.er_contains::<std::fmt::Error>());
 }
 
 #[test]
@@ -144,6 +147,11 @@ pub fn boxed_error_can_be_used_or_wrapped() {
         Err::<(), std::fmt::Error>(std::fmt::Error).er(|_| original);
     let wrapped = wrapped.unwrap_err();
     assert!(wrapped.top.source.is::<BoxConstructErr>());
+
+    let original = BoxConstructErr::new(std::io::Error::other("original"));
+    let used: ErResult<(), BoxConstructErr> =
+        Err::<(), _>(std::fmt::Error).er_with(|_| er_built(original));
+    assert!(used.unwrap_err().top.source.is::<std::io::Error>());
 }
 
 #[derive(Er)]
@@ -264,7 +272,7 @@ pub struct DeviceContextErr {
 pub fn previous_error_fields_and_aggregation() {
     fn from_previous(path: &str) -> ErResult<(), DeviceContextErr> {
         let result: Result<(), ExactConstructErr> = Err(ExactConstructErr::new(85, "device"));
-        result.er_with(|old| DeviceContextErr::new(old.count, path))?;
+        result.er_with(|old| (old.count, path))?;
         Ok(())
     }
 
@@ -274,6 +282,21 @@ pub fn previous_error_fields_and_aggregation() {
         (85, "/dev/example")
     );
     assert!(error.er_contains::<ExactConstructErr>());
+
+    let result: ErResult<(), FileConstructErr> =
+        Err(error).er_with(|old| er_built(FileConstructErr::new(&old.path)));
+    assert_eq!(result.unwrap_err().top.path, PathBuf::from("/dev/example"));
+
+    let result: ErResult<(), JobErr> = Err::<(), _>(FileConstructErr::new("config.toml"))
+        .er_with(|old| JobErr::file(&old.path, "bad"));
+    let tree = result.unwrap_err();
+    assert!(matches!(&tree.top, JobErr::File { path, .. } if path == Path::new("config.toml")));
+    assert!(tree.er_contains::<FileConstructErr>());
+
+    let result: ErResult<(), JobErr> = Err::<(), _>(tree).er_with_tree(|tree| {
+        JobErr::file(&tree.er_find::<FileConstructErr>().unwrap().path, "bad")
+    });
+    assert_eq!(result.unwrap_err().er_find_all::<JobErr>().count(), 2);
 
     fn gather(path: &str) -> ErResult<(), FileConstructErr> {
         er_all!(|_| path, [Err::<(), _>(std::fmt::Error)])?;

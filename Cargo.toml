@@ -1,18 +1,19 @@
 [workspace]
 resolver = "3"
-members = ["er", "er-macros"]
+members = ["er", "er-unsync", "er-macros"]
 exclude = ["integrations"]
 
 [workspace.package]
 license = "MIT-0"
 readme = "README.md"
 repository = "https://github.com/Viterkim/er"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2024"
 rust-version = "1.89"
 publish = true
 
 [workspace.dependencies]
+proc-macro-crate = "3"
 proc-macro2 = "1.0"
 quote = "1.0"
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
@@ -21,3 +22,4 @@ syn = { version = "3.0", features = ["parsing", "visit", "fold"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(er_unsync)"] }

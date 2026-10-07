@@ -75,7 +75,7 @@ pub fn owned_context() {
     let inner_src_location = inner.src_location;
 
     let expected_line = line!() + 1;
-    let outer = inner.er::<OuterErr>(());
+    let outer = inner.er(OuterErr::new);
 
     assert!(outer.er_contains::<LegacyErr>());
     assert!(outer.er_contains::<io::Error>());

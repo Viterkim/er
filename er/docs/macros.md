@@ -202,11 +202,11 @@ If the `er` crate has another name, give Wrap its path with `#[er(crate = other_
 
 `#[er(into_top)]` moves the typed top into that field. `#[er(into_report_string)]` saves the full report as a `String`, or `#[er(into_snapshot)]` saves an `ErSnapshot` (it gets printed as a report too).
 
-`.er_into(|tree| ...)` runs the closure on errors, then fills in those fields. Use `|_| {}` if you don't need to look at the tree.
+`.er_into(|tree| ...)` runs the closure on errors, then fills in those fields. Return your remaining fields from the closure, like `.er_into(|_| (request_id, path))`, in field order. With none left, use `|_| {}`.
 
 If Rust can't infer the destination (like before `?`), use `.er_into::<ApiError>(...)`.
 
-Converted structs and variants need a report or snapshot, and all their fields need an `into_*` option. Put your other data in the typed top. Enum variants can accept different top types, unmarked variants stay ordinary.
+Converted structs and variants need a report or snapshot. Enum variants can accept different top types, unmarked variants stay ordinary.
 
 ## Public boundary optional source
 
@@ -222,7 +222,7 @@ pub enum OpenError {
 
 ## Wrap with std_error
 
-! WARNING ! Only add `std_error` with `output` if the foreign trait needs `Error` on the Wrap itself (Axum doesn't). When that Wrap comes back, use `.er_wrap()` instead of `.er()` or `.er_find()` won't see the errors inside it!
+! WARNING ! Only add `std_error` with `output` if the foreign trait needs `Error` on the Wrap itself (Axum doesn't). When that Wrap comes back, use the Wrap helpers below or `.er_find()` won't see the errors inside it!
 
 ```rust
 #[derive(Er)]
@@ -247,6 +247,8 @@ pub fn request(input: &str) -> ErResult<u16, RequestErr> {
     handler(input).er_wrap(|_| input)
 }
 ```
+
+If you need the old top, use `.er_with_wrap(|old| fields)`.
 
 For aggregation, take the tree out first with `.er_tree()` on the Result, or `.tree` on the Wrap.
 

@@ -1,10 +1,11 @@
 use crate::lines;
-use crate::render::write_top;
+use crate::render::{format_string, write_top};
 use crate::{
-    ErAsError, ErLineError, ErMake, ErNodes, ErOpaqueErrorExt, ErReport, ErReportRef, ErSnapshot,
-    ErSources, ErTop, ErTopRef, ErTree, ErTreeContextExt, IntoErPart, IntoErTree, Layout,
+    BoxError, ErAsError, ErLineError, ErMake, ErNodes, ErOpaqueErrorExt, ErReport, ErReportRef,
+    ErSnapshot, ErSources, ErTop, ErTopRef, ErTree, ErTreeContextExt, IntoErPart, IntoErTree,
+    Layout,
 };
-use alloc::string::{String, ToString};
+use alloc::string::String;
 use core::{error::Error, fmt};
 
 impl<'a, E> ErTopRef<'a, E> {
@@ -37,7 +38,7 @@ impl<E> Clone for ErTopRef<'_, E> {
 impl<E: fmt::Display> ErTopRef<'_, E> {
     /// Just the outer error as text, keeps this layout.
     pub fn er_top_string(&self) -> String {
-        self.to_string()
+        format_string(self)
     }
 
     /// Only formats once, no line endings.
@@ -60,7 +61,7 @@ impl<'a, E: Error + 'static> ErTopRef<'a, E> {
             tree: self.tree,
             layout: self.layout,
         }
-        .to_string()
+        .er_report_string()
     }
 
     /// Save the whole tree, even when printing just the top.
@@ -160,7 +161,7 @@ impl<E> AsMut<ErTree<E>> for ErTop<E> {
         &mut self.tree
     }
 }
-impl<E: Error + Send + Sync + 'static, Mode> ErTreeContextExt<Mode> for ErTop<E> {
+impl<E: Error + Into<BoxError> + 'static, Mode> ErTreeContextExt<Mode> for ErTop<E> {
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er<A>(self, top: impl ErMake<A, Mode>) -> ErTree<A>
     where
@@ -172,7 +173,7 @@ impl<E: Error + Send + Sync + 'static, Mode> ErTreeContextExt<Mode> for ErTop<E>
 impl<E: fmt::Display> ErTop<E> {
     /// Just the outer error as text, keeps this layout.
     pub fn er_top_string(&self) -> String {
-        self.to_string()
+        self.as_ref().er_top_string()
     }
 
     /// Only formats once, no line endings.
@@ -229,7 +230,7 @@ impl<E: fmt::Display> fmt::Debug for ErTop<E> {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl<E: Error + Send + Sync + 'static> IntoErPart for ErTop<E> {
+impl<E: Error + Into<BoxError> + 'static> IntoErPart for ErTop<E> {
     type Error = E;
 
     fn er_error(&self) -> &E {

@@ -47,7 +47,7 @@ pub struct SharedErr {
 #[cfg(target_has_atomic = "ptr")]
 pub fn shared_diagnostic() -> ErTree<SharedErr> {
     let error = ErTree::from(SharedErr::new(Device::new(85, Secret)));
-    error.er_with(|old| SharedErr::new(&old.device))
+    error.er_with(|old| old.device.clone())
 }
 
 #[cfg(test)]
@@ -64,7 +64,7 @@ pub mod tests {
         );
 
         let errors: ErTree<FirmwareErr> = er_all!(
-            || FirmwareErr::new(Device::new(85, Secret)),
+            |_| Device::new(85, Secret),
             ["bad".parse::<u8>().unwrap_err(), "bad".parse::<bool>()]
         )
         .unwrap_err();
@@ -72,12 +72,11 @@ pub mod tests {
         let errors = er_add!(errors, [core::fmt::Error, "bad".parse::<u16>()]);
         assert_eq!(errors.nodes.len(), 4);
 
-        let values = er_try!(
-            || FirmwareErr::new(Device::new(85, Secret)),
+        let values: ErResult<_, FirmwareErr> = er_try!(
+            |_| Device::new(85, Secret),
             ["85".parse::<u8>(), "true".parse::<bool>()],
-        )
-        .unwrap_report();
-        assert_eq!(values, (85, true));
+        );
+        assert_eq!(values.unwrap_report(), (85, true));
 
         let saved = saved_diagnostic().unwrap_err();
         assert_eq!(saved.report, saved.snapshot.er_report().to_string());

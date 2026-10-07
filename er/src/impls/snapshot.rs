@@ -2,6 +2,7 @@
 use crate::ErSnapshotLocation;
 use crate::lines;
 use crate::render::{
+    format_string,
     report::{valid_depth, write_entries},
     write_top,
 };
@@ -63,12 +64,7 @@ impl From<ErEntries<'_>> for ErSnapshot {
         let mut entries = Vec::new();
 
         for entry in walk {
-            let mut message = String::new();
-            let result = fmt::write(&mut message, format_args!("{}", entry.error));
-            if result.is_err() {
-                message.clear();
-                message.push_str("ER_FMT_FAILED");
-            }
+            let message = format_string(entry.error);
 
             #[cfg(feature = "src_locations")]
             let src_location = entry.src_location.map(|location| ErSnapshotLocation {

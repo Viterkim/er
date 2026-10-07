@@ -6,6 +6,7 @@ cargo fmt --all --check
 
 cargo +1.89.0 check --workspace --all-features --all-targets
 cargo +1.89.0 check -p er --no-default-features --all-targets
+cargo +1.89.0 check -p er-unsync --no-default-features --all-targets
 
 # Pass +1.89.0 (or nothing for current)
 test_core() {
@@ -33,4 +34,5 @@ cargo clippy -p er --all-targets --no-default-features --features serde -- -D wa
 # Docs
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 RUSTDOCFLAGS="-D warnings" cargo doc -p er --no-default-features --no-deps
+RUSTDOCFLAGS="-D warnings" cargo doc -p er-unsync --no-default-features --no-deps
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps

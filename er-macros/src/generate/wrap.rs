@@ -64,13 +64,13 @@ pub fn expand(
     let alloc = binding(&node_names, "__er_alloc");
     let mut node_generics = declaration.clone();
     node_generics.params.push(syn::parse2(quote!(#node_root))?);
-    // A Wrap containing Rc must still compile. Turning its top into a node needs Send/Sync.
+    // The runtime decides which errors can become stored nodes.
     let predicates = &mut node_generics.make_where_clause().predicates;
     predicates.push(syn::parse2(quote!(
         #wrap #type_generics: #er_path::IntoErTree<Error = #node_root>
     ))?);
     predicates.push(syn::parse2(quote!(
-        #node_root: ::core::error::Error + ::core::marker::Send + ::core::marker::Sync + 'static
+        #node_root: ::core::error::Error + ::core::convert::Into<#er_path::BoxError> + 'static
     ))?);
     let (node_impl, _, node_where) = node_generics.split_for_impl();
 
@@ -124,8 +124,8 @@ pub fn expand(
 
     let std_error_docs = options.std_error.then(|| {
         quote! {
-            /// ! WARNING ! `.er()` on a Result with this, hides the sub errors from find!
-            /// Use `.er_wrap()` on the way back. I can't enforce it, sorry.
+            /// ! WARNING ! `.er()` and `.er_with()` on a Result with this hide the sub errors from find!
+            /// Use `.er_wrap()`, or `.er_with_wrap()` with the old top. I can't enforce it, sorry.
         }
     });
 
@@ -212,9 +212,9 @@ pub fn expand(
         }
         #conversion
         impl #node_impl #wrap #type_generics #node_where {
-            /// Use the old top to make a new one, keeping this tree below it.
+            /// Build the new top from fields taken from the old top.
             #[track_caller]
-            pub fn er_with<#new_top>(self, #top: impl ::core::ops::FnOnce(&#node_root) -> #new_top) -> #er_path::ErTree<#new_top>
+            pub fn er_with<#new_top, #mode>(self, #top: impl #er_path::ErWithFields<#node_root, #new_top, #mode>) -> #er_path::ErTree<#new_top>
             where
                 #new_top: ::core::error::Error + 'static,
             {
