@@ -1,4 +1,4 @@
-use proc_macro2::Span;
+use proc_macro2::{Span, TokenStream, TokenTree};
 use std::collections::HashSet;
 use syn::Ident;
 
@@ -8,6 +8,23 @@ pub fn plain(ident: &Ident) -> String {
         name.drain(..2);
     }
     name
+}
+
+pub fn identifiers(tokens: TokenStream) -> HashSet<String> {
+    let mut names = HashSet::new();
+    let mut pending: Vec<_> = tokens.into_iter().collect();
+
+    while let Some(token) = pending.pop() {
+        match token {
+            TokenTree::Ident(ident) => {
+                names.insert(plain(&ident));
+            }
+            TokenTree::Group(group) => pending.extend(group.stream()),
+            _ => {}
+        }
+    }
+
+    names
 }
 
 pub fn binding(reserved: &HashSet<String>, name: &str) -> Ident {

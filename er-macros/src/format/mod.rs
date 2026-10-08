@@ -1,12 +1,12 @@
+pub mod body;
+pub mod censor;
+
 use crate::generate::constructors::constructors;
 use crate::input::{Input, bounds::format_generics};
 use crate::names::binding;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{DeriveInput, Error, Generics, Ident, Result};
-
-pub mod body;
-pub mod censor;
 
 pub fn expand(item: &DeriveInput) -> Result<TokenStream> {
     let input = Input::parse(item)?;

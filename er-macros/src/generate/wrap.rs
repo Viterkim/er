@@ -1,7 +1,7 @@
 use super::replace_self::ReplaceSelf;
 use crate::input::attrs::{WrapOptions, WrapOutput};
-use crate::names::binding;
-use proc_macro2::{TokenStream, TokenTree};
+use crate::names::{binding, identifiers};
+use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::HashSet;
 use syn::fold::Fold as _;
@@ -45,19 +45,7 @@ pub fn expand(
     let (root_impl, _, root_where) = root_generics.split_for_impl();
 
     // Don't shadow names from the user's bounds, including trait names.
-    let mut node_names = HashSet::new();
-    let mut tokens: Vec<_> = quote!(#declaration #where_clause #stored #wrap #er_path)
-        .into_iter()
-        .collect();
-    while let Some(token) = tokens.pop() {
-        match token {
-            TokenTree::Ident(ident) => {
-                node_names.insert(crate::names::plain(&ident));
-            }
-            TokenTree::Group(group) => tokens.extend(group.stream()),
-            _ => {}
-        }
-    }
+    let node_names = identifiers(quote!(#declaration #where_clause #stored #wrap #er_path));
     let node_root = binding(&node_names, "__ErNodeRoot");
     let mode = binding(&node_names, "__ErContextMode");
     let new_top = binding(&node_names, "__ErNewTop");

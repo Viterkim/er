@@ -24,6 +24,7 @@ impl Parse for Input {
                 content.parse::<Token![,]>()?;
             }
         }
+
         Ok(Self {
             er_path,
             top,

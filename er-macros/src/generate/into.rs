@@ -2,9 +2,9 @@ use crate::{
     fields::with_fields,
     generate::constructors::exact_type,
     input::{Input, attrs::IntoField},
-    names::{binding, plain},
+    names::{binding, identifiers},
 };
-use proc_macro2::{TokenStream, TokenTree};
+use proc_macro2::TokenStream;
 use quote::{ToTokens as _, quote};
 use std::collections::HashSet;
 use syn::{Error, Path, Type, parse_quote};
@@ -19,18 +19,8 @@ pub fn implementation(input: &Input<'_>, path: &Path) -> syn::Result<TokenStream
         return Ok(TokenStream::new());
     }
 
-    let mut reserved = HashSet::new();
     let item = input.item;
-    let mut tokens: Vec<_> = quote!(#item).into_iter().collect();
-    while let Some(token) = tokens.pop() {
-        match token {
-            TokenTree::Ident(ident) => {
-                reserved.insert(plain(&ident));
-            }
-            TokenTree::Group(group) => tokens.extend(group.stream()),
-            _ => (),
-        }
-    }
+    let reserved = identifiers(quote!(#item));
 
     let source = binding(&reserved, "__ErSource");
     let tree = binding(&reserved, "__er_tree");

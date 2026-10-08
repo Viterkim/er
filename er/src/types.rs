@@ -8,7 +8,7 @@ use core::{error::Error, panic::Location};
 /// A Result with your typed error on top.
 pub type ErResult<T, E> = Result<T, ErTree<E>>;
 
-/// Share data between errors by passing `&old.field` to the next constructor.
+/// Share data between errors without copying the value.
 #[cfg_attr(not(er_unsync), doc = "Uses Arc, so the target needs pointer atomics.")]
 #[cfg_attr(er_unsync, doc = "Uses Rc.")]
 #[cfg(any(er_unsync, target_has_atomic = "ptr"))]

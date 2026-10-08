@@ -1,3 +1,5 @@
+pub mod impls;
+
 use super::{
     Input,
     attrs::{FieldMode, IntoField},
@@ -6,8 +8,6 @@ use crate::names::plain;
 use quote::{ToTokens as _, quote};
 use std::collections::HashSet;
 use syn::{Generics, Type, visit::Visit as _};
-
-pub mod impls;
 
 pub struct FormatBounds<'a, 'out> {
     pub name: &'a str,

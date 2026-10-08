@@ -1,12 +1,12 @@
-use attrs::{ContainerOptions, FieldOptions};
-use format::{Format, FormatTrait};
-use std::collections::HashSet;
-use syn::{DeriveInput, Ident};
-
 pub mod attrs;
 pub mod bounds;
 pub mod format;
 pub mod impls;
+
+use attrs::{ContainerOptions, FieldOptions};
+use format::{Format, FormatTrait};
+use std::collections::HashSet;
+use syn::{DeriveInput, Ident};
 
 pub struct Field<'a> {
     pub item: &'a syn::Field,

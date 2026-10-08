@@ -1,9 +1,9 @@
+pub mod impls;
+
 use super::Field;
 use proc_macro2::Span;
 use std::collections::HashMap;
 use syn::LitStr;
-
-pub mod impls;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FormatTrait {

@@ -1,3 +1,10 @@
+pub mod construct;
+pub mod constructors;
+pub mod into;
+pub mod replace_self;
+pub mod source;
+pub mod wrap;
+
 use crate::{
     format,
     input::{Input, bounds::format_generics},
@@ -9,13 +16,6 @@ use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{DeriveInput, Path, parse_quote};
-
-pub mod construct;
-pub mod constructors;
-pub mod into;
-pub mod replace_self;
-pub mod source;
-pub mod wrap;
 
 pub fn expand(item: &DeriveInput) -> syn::Result<TokenStream> {
     expand_for(item, "er")
