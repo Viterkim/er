@@ -1,4 +1,4 @@
-use crate::{ErFromTree, ErShared, ErTree};
+use crate::{ErFromTree, ErReport, ErShared, ErTree};
 #[cfg(er_unsync)]
 use alloc::rc::Rc as Shared;
 #[cfg(all(er_unsync, target_has_atomic = "ptr"))]
@@ -80,11 +80,19 @@ impl<E, A: ErFromTree<E, Input>, Input> ErFromTree<E, Input> for Shared<A> {
     fn er_from_tree(tree: ErTree<E>, input: Input) -> Self {
         Self::new(A::er_from_tree(tree, input))
     }
+
+    fn er_from_report(report: ErReport<E>, input: Input) -> Self {
+        Self::new(A::er_from_report(report, input))
+    }
 }
 
 #[cfg(all(er_unsync, target_has_atomic = "ptr"))]
 impl<E, A: ErFromTree<E, Input>, Input> ErFromTree<E, Input> for Arc<A> {
     fn er_from_tree(tree: ErTree<E>, input: Input) -> Self {
         Self::new(A::er_from_tree(tree, input))
+    }
+
+    fn er_from_report(report: ErReport<E>, input: Input) -> Self {
+        Self::new(A::er_from_report(report, input))
     }
 }

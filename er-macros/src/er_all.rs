@@ -12,13 +12,10 @@ impl Parse for Input {
         input.parse::<Token![,]>()?;
         let content;
         syn::bracketed!(content in input);
-        let mut results = Vec::new();
-        while !content.is_empty() {
-            results.push(content.parse()?);
-            if !content.is_empty() {
-                content.parse::<Token![,]>()?;
-            }
-        }
+        let results = content
+            .parse_terminated(TokenTree::parse, Token![,])?
+            .into_iter()
+            .collect();
 
         Ok(Self {
             er_all_item,

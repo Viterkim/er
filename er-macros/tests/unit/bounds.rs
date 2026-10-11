@@ -8,7 +8,7 @@ pub fn token_bounds() -> syn::Result<()> {
         pub struct Payload<T> { pub value: selected!(T) }
     };
     let input = Input::parse(&item)?;
-    let generics = format_generics(&input)?;
+    let generics = format_generics(&input);
     let expected: syn::WherePredicate = syn::parse_quote!(selected!(T): ::core::fmt::Debug);
     assert_eq!(
         generics
@@ -25,7 +25,7 @@ pub fn token_bounds() -> syn::Result<()> {
     }
 
     let input = Input::parse(&item)?;
-    let generics = format_generics(&input)?;
+    let generics = format_generics(&input);
     let expected: syn::WherePredicate = syn::parse_quote!(T: ::core::fmt::Debug);
     assert_eq!(
         generics

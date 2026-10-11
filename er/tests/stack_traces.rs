@@ -226,7 +226,7 @@ pub mod composed {
         assert_eq!(tree.stack_traces[1].error_index, ErErrorIndex(0));
 
         let tree = Err::<(), _>("raw value")
-            .er_val(ReadErr::new)
+            .er_val::<ReadErr, _>(|value| value)
             .er_trace()
             .unwrap_err();
         assert_eq!(tree.stack_traces.len(), 1);

@@ -11,7 +11,7 @@ pub enum FieldMode {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum IntoField {
     Top,
-    ReportString,
+    ReportString { single_line: bool },
     Snapshot,
 }
 
@@ -235,7 +235,28 @@ pub fn field(attributes: &[Attribute]) -> Result<FieldOptions> {
             let conversion = if meta.path.is_ident("into_top") {
                 Some(IntoField::Top)
             } else if meta.path.is_ident("into_report_string") {
-                Some(IntoField::ReportString)
+                let mut single_line = false;
+                if meta.input.peek(syn::token::Paren) {
+                    meta.parse_nested_meta(|inner| {
+                        if !inner.path.is_ident("single_line") {
+                            return Err(inner.error("expected `single_line`"));
+                        }
+                        if single_line {
+                            return Err(inner.error("`single_line` is set more than once"));
+                        }
+                        if !inner.input.is_empty() && !inner.input.peek(syn::token::Comma) {
+                            return Err(inner.error("`single_line` takes no value"));
+                        }
+
+                        single_line = true;
+                        Ok(())
+                    })?;
+                    if !single_line {
+                        return Err(meta.error("expected `into_report_string(single_line)`"));
+                    }
+                }
+
+                Some(IntoField::ReportString { single_line })
             } else if meta.path.is_ident("into_snapshot") {
                 Some(IntoField::Snapshot)
             } else {

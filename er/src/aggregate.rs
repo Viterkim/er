@@ -1,13 +1,13 @@
 #[cfg(feature = "stack_traces")]
 use crate::impls::stack_trace::append_traces;
-use crate::{ErInput, ErNode, ErResult, ErTree};
+use crate::{ErInput, ErMake, ErNode, ErResult, ErTree};
 use alloc::vec::Vec;
 use core::error::Error;
 
 /// The collection loop behind `er_all!`.
 #[cfg_attr(feature = "src_locations", track_caller)]
-pub fn collect<A, E, T, Input>(
-    top: impl FnOnce() -> A,
+pub fn collect<A, E, T, Input, Mode>(
+    top: impl ErMake<A, Mode>,
     results: impl IntoIterator<Item = Result<T, E>>,
 ) -> ErResult<(), A>
 where
@@ -51,7 +51,7 @@ where
             nodes,
             #[cfg(feature = "stack_traces")]
             stack_traces: traces,
-            ..ErTree::from(top())
+            ..ErTree::from(top.er_make())
         })
     }
 }

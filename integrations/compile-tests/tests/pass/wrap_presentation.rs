@@ -21,13 +21,51 @@ impl __er_alloc for u8 {}
 
 #[derive(Er)]
 #[er(wrap(output = top, std_error))]
-pub struct GenericResponse<T: __er_alloc>(pub T);
+#[allow(non_upper_case_globals)]
+pub struct GenericResponse<__ErLineFailure: __er_alloc, const __er_emit: usize>(
+    pub __ErLineFailure,
+);
+
+#[derive(Er)]
+#[er(wrap(output = top, std_error))]
+pub struct BorrowedResponse<'__er_view> {
+    pub text: &'__er_view str,
+}
 
 pub fn main() {
-    let wrapped =
-        GenericResponseWrap::from(ErTree::new(GenericResponse::new(7u8), [core::fmt::Error]));
+    let text = String::from("borrowed");
+    let tree = ErTree {
+        top: BorrowedResponse { text: &text },
+        nodes: Vec::new(),
+        src_location: core::panic::Location::caller(),
+    };
+    let wrapped = BorrowedResponseWrap::from(tree);
+    assert_eq!(wrapped.er_top_string(), wrapped.to_string());
+
+    let mut lines = Vec::new();
+    wrapped
+        .for_each_line(|line| lines.push(line.to_owned()))
+        .unwrap();
+    assert_eq!(lines, [wrapped.to_string()]);
+    assert_eq!(
+        wrapped.try_for_each_line(|_| Err(&text)),
+        Err(ErLineError::Callback(&text))
+    );
+    assert_eq!(
+        Err::<(), _>(&wrapped).opaque_err().unwrap_err().to_string(),
+        wrapped.to_string()
+    );
+
+    let wrapped = GenericResponseWrap::from(ErTree::new(
+        GenericResponse::<_, 85>::new(7u8),
+        [core::fmt::Error],
+    ));
     assert_eq!(wrapped.er_top_string(), "GenericResponse(7)");
     assert_eq!(wrapped.er_snapshot().entries.len(), 2);
+    assert_eq!(
+        wrapped.try_for_each_line(|_| Err(85)),
+        Err(ErLineError::Callback(85))
+    );
 
     let local = LocalErr::new(std::rc::Rc::new(7)).er_wrap();
     assert!(local.opaque_err().to_string().contains("LocalErr(7)"));

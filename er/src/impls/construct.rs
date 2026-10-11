@@ -1,4 +1,8 @@
-use crate::{ErBuilt, ErFields, ErFromTree, ErIntoFields, ErMake, ErReady, ErTree, ErWithFields};
+use crate::{
+    ErBuilt, ErFields, ErFromTree, ErIntoFields, ErMake, ErReady, ErReport, ErTree, ErValFields,
+    ErWithFields,
+};
+use alloc::boxed::Box;
 
 impl<A, F: FnOnce() -> A> ErMake<A, ErReady> for F {
     fn er_make(self) -> A {
@@ -36,6 +40,27 @@ where
         self(error).0
     }
 }
+impl<E, A, Input, F> ErValFields<E, A, ErFields> for F
+where
+    F: FnOnce(E) -> Input,
+    A: From<(Input,)>,
+{
+    type Input = Input;
+
+    fn er_val_fields(self, value: E) -> A {
+        A::from((self(value),))
+    }
+}
+impl<E, A, F> ErValFields<E, A, ErReady> for F
+where
+    F: FnOnce(E) -> ErBuilt<A>,
+{
+    type Input = ErBuilt<A>;
+
+    fn er_val_fields(self, value: E) -> A {
+        self(value).0
+    }
+}
 impl<E, A, Input, F> ErIntoFields<E, A> for F
 where
     F: FnOnce(&ErTree<E>) -> Input,
@@ -46,5 +71,20 @@ where
     fn er_into_tree(self, tree: ErTree<E>) -> A {
         let values = self(&tree);
         A::er_from_tree(tree, values)
+    }
+
+    fn er_into_report(self, report: ErReport<E>) -> A {
+        let values = self(&report.tree);
+        A::er_from_report(report, values)
+    }
+}
+
+impl<E, A: ErFromTree<E, Input>, Input> ErFromTree<E, Input> for Box<A> {
+    fn er_from_tree(tree: ErTree<E>, input: Input) -> Self {
+        Self::new(A::er_from_tree(tree, input))
+    }
+
+    fn er_from_report(report: ErReport<E>, input: Input) -> Self {
+        Self::new(A::er_from_report(report, input))
     }
 }

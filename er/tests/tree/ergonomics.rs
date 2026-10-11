@@ -137,7 +137,7 @@ pub fn er_val() -> Result<(), ErReport<ChildErr>> {
     let input: Result<u8, u8> = Ok(7);
     let result: ErResult<u8, ChildErr> = input.er_val(|value| {
         calls.set(calls.get() + 1);
-        ChildErr(value)
+        value
     });
 
     assert_eq!(result.er_report()?, 7);
@@ -145,7 +145,7 @@ pub fn er_val() -> Result<(), ErReport<ChildErr>> {
 
     let result: Result<(), u8> = Err(7);
     let _expected_line = line!() + 1;
-    let error = result.er_val(ChildErr).unwrap_err();
+    let error = result.er_val::<ChildErr, _>(|value| value).unwrap_err();
 
     assert_eq!(error.top.0, 7);
     assert!(error.nodes.is_empty());
@@ -155,6 +155,39 @@ pub fn er_val() -> Result<(), ErReport<ChildErr>> {
 
     #[cfg(feature = "src_locations")]
     assert_eq!(error.src_location.line(), _expected_line);
+
+    let text = String::from("owned");
+    let original = text.as_ptr();
+    let error = Err::<(), _>(text)
+        .er_val::<FieldErr, _>(|value| value)
+        .unwrap_err();
+
+    assert_eq!(error.top.0.as_ptr(), original);
+
+    let error = Err::<(), _>(7u8)
+        .er_val::<PresetErr, _>(PresetErr::invalid)
+        .unwrap_err();
+
+    let PresetErr::Invalid(code) = error.top;
+    assert_eq!(code, 7);
+
+    let error = Err::<(), _>(String::from("foreign"))
+        .er_val::<std::io::Error, _>(|value| er_built(std::io::Error::other(value)))
+        .unwrap_err();
+
+    assert_eq!(error.top.to_string(), "foreign");
+
+    let tree = ErTree::new(ChildErr(8), [std::fmt::Error]);
+    let error = Err::<(), _>(tree)
+        .er_val::<ChildErr, _>(|tree| tree.top.0)
+        .unwrap_err();
+
+    assert_eq!(error.top.0, 8);
+    assert!(error.nodes.is_empty());
+
+    let empty = Err::<(), _>(85u8).er_val::<AppErr, _>(|_| ()).unwrap_err();
+
+    assert!(empty.nodes.is_empty());
 
     Ok(())
 }
@@ -256,7 +289,7 @@ pub fn local_roots() {
     );
 
     let status: Result<(), u8> = Err(7);
-    let mapped = status.er_val(|attempts| LocalErr::new(Cell::new(attempts), "mapped"));
+    let mapped: ErResult<(), LocalErr> = status.er_val(|attempts| (Cell::new(attempts), "mapped"));
 
     assert_eq!(mapped.unwrap_err().top.attempts.get(), 7);
 

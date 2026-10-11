@@ -158,6 +158,7 @@ pub fn no_failures() -> Result<(), ErReport<Batch>> {
     let successes: Vec<Result<u8, Item>> = vec![Ok(7), Ok(8)];
     er_all!(parent, successes).er_report()?;
     er_all!(parent, []).er_report()?;
+    aggregate::collect((), [Ok::<_, Item>(7)]).er_report()?;
 
     let value = std::cell::RefCell::new(0);
     er_all!(
@@ -261,6 +262,12 @@ pub fn collect() {
     assert!(decode(&[]).er_report().unwrap().is_empty());
     let failed = decode(&["7", "bad", "8"]).unwrap_err();
     assert!(failed.er_contains::<std::num::ParseIntError>());
+
+    let grouped: ErResult<(), Item> = aggregate::collect(|_| 9, [Err::<(), _>(Item(1))]);
+    let tree = grouped.unwrap_err();
+
+    assert_eq!(tree.top.0, 9);
+    assert_eq!(tree.nodes[0].er_find::<Item>().unwrap().0, 1);
 
     let parents = Cell::new(0);
     let context = |_| {

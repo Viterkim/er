@@ -5,7 +5,7 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::HashSet;
 use syn::fold::Fold as _;
-use syn::{DeriveInput, Generics, Ident, Path, Type};
+use syn::{DeriveInput, Generics, Ident, Lifetime, Path, Type, parse_quote};
 
 pub fn expand(
     input: &DeriveInput,
@@ -13,7 +13,7 @@ pub fn expand(
     options: &WrapOptions,
     reserved: &HashSet<String>,
     formatter: &Ident,
-) -> syn::Result<TokenStream> {
+) -> TokenStream {
     let tree = binding(reserved, "tree");
     let value = binding(reserved, "error");
     let report = binding(reserved, "report");
@@ -28,21 +28,25 @@ pub fn expand(
     let visibility = &input.vis;
 
     let (_, type_generics, _) = input.generics.split_for_impl();
-    let stored = syn::parse2(quote!(#error #type_generics))?;
+    let stored: Type = parse_quote!(#error #type_generics);
     let mut replace_self = ReplaceSelf { original: &stored };
     let declaration = replace_self.fold_generics(input.generics.clone());
     let (impl_generics, type_generics, where_clause) = declaration.split_for_impl();
     let inner = quote!(#er_path::ErTree<#stored>);
 
     let mut root_generics = declaration.clone();
-    let root_bound = syn::parse2(quote!(
-        #stored: ::core::error::Error + 'static
-    ))?;
     root_generics
         .make_where_clause()
         .predicates
-        .push(root_bound);
+        .push(parse_quote!(#stored: ::core::error::Error + 'static));
     let (root_impl, _, root_where) = root_generics.split_for_impl();
+
+    let mut top_generics = declaration.clone();
+    top_generics
+        .make_where_clause()
+        .predicates
+        .push(parse_quote!(#stored: ::core::fmt::Display));
+    let (top_impl, _, top_where) = top_generics.split_for_impl();
 
     // Don't shadow names from the user's bounds, including trait names.
     let node_names = identifiers(quote!(#declaration #where_clause #stored #wrap #er_path));
@@ -51,15 +55,15 @@ pub fn expand(
     let new_top = binding(&node_names, "__ErNewTop");
     let alloc = binding(&node_names, "__er_alloc");
     let mut node_generics = declaration.clone();
-    node_generics.params.push(syn::parse2(quote!(#node_root))?);
+    node_generics.params.push(parse_quote!(#node_root));
     // The runtime decides which errors can become stored nodes.
     let predicates = &mut node_generics.make_where_clause().predicates;
-    predicates.push(syn::parse2(quote!(
+    predicates.push(parse_quote!(
         #wrap #type_generics: #er_path::IntoErTree<Error = #node_root>
-    ))?);
-    predicates.push(syn::parse2(quote!(
+    ));
+    predicates.push(parse_quote!(
         #node_root: ::core::error::Error + ::core::convert::Into<#er_path::BoxError> + 'static
-    ))?);
+    ));
     let (node_impl, _, node_where) = node_generics.split_for_impl();
 
     let conversion = if options.std_error {
@@ -68,7 +72,7 @@ pub fn expand(
         }
     } else {
         let mut context_generics = node_generics.clone();
-        context_generics.params.push(syn::parse2(quote!(#mode))?);
+        context_generics.params.push(parse_quote!(#mode));
         let (context_impl, _, context_where) = context_generics.split_for_impl();
 
         quote! {
@@ -99,15 +103,14 @@ pub fn expand(
 
     let formatting = match options.output {
         None => TokenStream::new(),
-        Some(output) => formatting(
-            er_path,
-            &wrap,
-            &declaration,
-            &root_generics,
-            &stored,
-            output,
-            formatter,
-        )?,
+        Some(output) => {
+            let (generics, view) = match output {
+                WrapOutput::Top => (&top_generics, format_ident!("er_top")),
+                WrapOutput::Report => (&root_generics, format_ident!("er_report")),
+            };
+
+            formatting(er_path, &wrap, generics, &view, formatter)
+        }
     };
 
     let std_error_docs = options.std_error.then(|| {
@@ -128,21 +131,23 @@ pub fn expand(
                         self.tree.er_report_string()
                     }
 
-                    /// Just the outer error as text.
-                    pub fn er_top_string(&self) -> #alloc::string::String {
-                        self.tree.er_top_string()
-                    }
-
                     /// Save the messages and tree structure.
                     pub fn er_snapshot(&self) -> #er_path::ErSnapshot {
                         self.tree.er_snapshot()
+                    }
+                }
+
+                impl #top_impl #wrap #type_generics #top_where {
+                    /// Just the outer error as text.
+                    pub fn er_top_string(&self) -> #alloc::string::String {
+                        self.tree.er_top_string()
                     }
                 }
             };
         }
     });
 
-    Ok(quote! {
+    quote! {
         /// Your tree, in a type you can implement foreign traits on.
         #std_error_docs
         #[must_use]
@@ -225,30 +230,43 @@ pub fn expand(
             }
         }
         #formatting
-    })
+    }
 }
 
 fn formatting(
     er_path: &Path,
     wrap: &Ident,
-    declaration: &Generics,
-    error_generics: &Generics,
-    stored: &Type,
-    output: WrapOutput,
+    generics: &Generics,
+    view: &Ident,
     formatter: &Ident,
-) -> syn::Result<TokenStream> {
-    let (view, format_generics) = match output {
-        WrapOutput::Top => {
-            let mut generics = declaration.clone();
-            let bound = syn::parse2(quote!(#stored: ::core::fmt::Display))?;
-            generics.make_where_clause().predicates.push(bound);
-            (quote!(er_top), generics)
-        }
-        WrapOutput::Report => (quote!(er_report), error_generics.clone()),
-    };
-    let (impl_generics, type_generics, where_clause) = format_generics.split_for_impl();
+) -> TokenStream {
+    let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
+    let reserved = identifiers(quote!(#generics #wrap #er_path));
+    let failure = binding(&reserved, "__ErLineFailure");
+    let emit = binding(&reserved, "__er_emit");
+    let borrow = Lifetime::new(
+        &format!("'{}", binding(&reserved, "__er_view")),
+        formatter.span(),
+    );
+    let mut borrowed_generics = generics.clone();
+    borrowed_generics.params.insert(0, parse_quote!(#borrow));
+    let (borrowed_impl, _, borrowed_where) = borrowed_generics.split_for_impl();
 
-    Ok(quote! {
+    quote! {
+        impl #impl_generics #wrap #type_generics #where_clause {
+            /// Only formats once, no line endings.
+            pub fn for_each_line(&self, #emit: impl ::core::ops::FnMut(&str)) -> ::core::fmt::Result {
+                #er_path::lines::for_each_line(self, #emit)
+            }
+
+            /// Like `for_each_line()`, but the callback can fail.
+            pub fn try_for_each_line<#failure>(
+                &self,
+                #emit: impl ::core::ops::FnMut(&str) -> ::core::result::Result<(), #failure>,
+            ) -> ::core::result::Result<(), #er_path::ErLineError<#failure>> {
+                #er_path::lines::try_for_each_line(self, #emit)
+            }
+        }
         impl #impl_generics ::core::fmt::Display for #wrap #type_generics #where_clause {
             fn fmt(&self, #formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 ::core::fmt::Display::fmt(&self.tree.#view(), #formatter)
@@ -266,5 +284,12 @@ fn formatting(
                 #er_path::ErAsError(self)
             }
         }
-    })
+        impl #borrowed_impl #er_path::ErOpaqueErrorExt for &#borrow #wrap #type_generics #borrowed_where {
+            type Output = #er_path::ErAsError<Self>;
+
+            fn opaque_err(self) -> Self::Output {
+                #er_path::ErAsError(self)
+            }
+        }
+    }
 }

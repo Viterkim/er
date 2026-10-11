@@ -1,7 +1,7 @@
 #![allow(non_upper_case_globals)]
 
 use er::*;
-use std::{error::Error, io, sync::Arc};
+use std::{error::Error, io, marker::PhantomData, sync::Arc};
 
 #[derive(Er)]
 pub struct FileError {
@@ -26,7 +26,7 @@ pub enum CallError<E> {
 #[derive(Er)]
 pub struct OptionalError {
     #[er(source, skip)]
-    pub cause: Option<Box<dyn Error + Send + Sync>>,
+    pub cause: ::core::option::r#Option<Box<dyn Error + Send + Sync>>,
 }
 
 #[derive(Er)]
@@ -34,6 +34,12 @@ pub struct BorrowedError<'a, const __er_source: usize> {
     pub request: &'a str,
     #[er(source)]
     pub cause: &'a io::Error,
+}
+
+#[derive(Er)]
+pub struct MutableError<'a, E: ?Sized> {
+    #[er(source)]
+    pub cause: &'a mut E,
 }
 
 pub type Cause = Box<io::Error>;
@@ -49,7 +55,25 @@ pub enum AliasedError {
 #[derive(Er)]
 pub struct BoxedError<E: ?Sized> {
     #[er(source)]
-    pub cause: Box<E>,
+    pub cause: ::std::boxed::r#Box<E>,
+}
+
+pub trait __ErAsDynError {}
+pub trait __ErAsSource {}
+
+pub struct SourceTag;
+impl __ErAsDynError for SourceTag {}
+impl __ErAsSource for SourceTag {}
+
+#[derive(Er)]
+pub struct BoundError<T: __ErAsDynError>
+where
+    T: __ErAsSource,
+{
+    #[er(source)]
+    pub cause: io::Error,
+    #[er(skip)]
+    pub tag: PhantomData<T>,
 }
 
 #[test]
@@ -60,6 +84,9 @@ pub fn sources() {
     let tree = ErTree::from(error);
     assert_eq!(tree.er_find::<io::Error>().unwrap().to_string(), "file");
     assert!(tree.er_report().to_string().contains("file"));
+
+    let error = BoundError::<SourceTag>::new(io::Error::other("bound"), PhantomData);
+    assert!(ErTree::from(error).er_contains::<io::Error>());
 
     for error in [
         CallError::failed(io::Error::other("call")),
@@ -76,6 +103,14 @@ pub fn sources() {
     let request = String::from("katten");
     let cause = io::Error::other("borrowed");
     let error = BorrowedError::<85>::new(&request, &cause);
+    assert!(error.source().is_some_and(|cause| cause.is::<io::Error>()));
+
+    let mut cause = io::Error::other("mutable");
+    let error = MutableError::new(&mut cause);
+    assert!(error.source().is_some_and(|cause| cause.is::<io::Error>()));
+
+    let cause: &mut dyn Error = &mut cause;
+    let error = MutableError::new(cause);
     assert!(error.source().is_some_and(|cause| cause.is::<io::Error>()));
 
     for error in [

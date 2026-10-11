@@ -16,7 +16,7 @@ pub fn nested_helpers() {
     }
 
     let mut line = 0;
-    let error = outer(&mut line).unwrap_err();
+    let mut error = outer(&mut line).unwrap_err();
     assert!(error.er_contains::<ParseIntError>());
     assert_eq!(error.er_find_all::<ErTestError>().count(), 1);
 
@@ -32,8 +32,36 @@ pub fn nested_helpers() {
     assert_eq!(report, error.to_string());
     assert_eq!(report, error.er_report().to_string());
 
+    let mut lines = Vec::new();
+    error
+        .for_each_line(|line| lines.push(line.to_owned()))
+        .unwrap();
+    assert_eq!(lines.join("\n"), report);
+
+    let failure = String::from("stop");
+    assert_eq!(
+        error.try_for_each_line(|_| Err(&failure)),
+        Err(ErLineError::Callback(&failure))
+    );
+    assert_eq!(
+        Err::<(), _>(&error).opaque_err().unwrap_err().to_string(),
+        report
+    );
+    let opaque = Err::<(), _>(&mut error).opaque_err().unwrap_err();
+    assert_eq!(opaque.to_string(), report);
+    assert!(std::ptr::eq(opaque.0.tree, &error.tree));
+
     let snapshot = error.er_snapshot();
+    assert_eq!(Err::<(), _>(&error).er_snapshot().unwrap_err(), snapshot);
+    assert_eq!(
+        Err::<(), _>(&mut error).er_snapshot().unwrap_err(),
+        snapshot
+    );
     let error = Err::<(), _>(error.into_er_tree()).er_test().unwrap_err();
+    let opaque = Err::<(), _>(error).opaque_err().unwrap_err();
+    assert_eq!(opaque.to_string(), report);
+    assert!(core::error::Error::source(&opaque).is_none());
+    let error = opaque.0;
     assert_eq!(error.er_snapshot(), snapshot);
 
     #[cfg(feature = "stack_traces")]
@@ -157,6 +185,11 @@ pub fn helpers() -> ErTest {
     assert!(error.er_contains::<ParseIntError>());
 
     let error = read_port("bad")
+        .er_with::<ErTestError, _>(|_| {})
+        .unwrap_err();
+    assert!(error.er_contains::<ParseIntError>());
+
+    let error = read_port("bad")
         .er_with_tree::<io::Error, _>(|old| {
             er_built(io::Error::other(
                 old.er_find::<ParseIntError>().unwrap().to_string(),
@@ -169,7 +202,7 @@ pub fn helpers() -> ErTest {
     let mut ports = ["bad", "85", "65536"].into_iter().map(read_port);
     let error = ports
         .by_ref()
-        .er_collect::<Vec<_>, ErTestError>(|| ErTestError)
+        .er_collect::<Vec<_>, ErTestError>(|_| {})
         .unwrap_err();
     assert_eq!(error.er_find_all::<ParseIntError>().count(), 1);
     assert_eq!(ports.next().unwrap()?, 85);

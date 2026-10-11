@@ -1,11 +1,13 @@
 #[cfg(all(feature = "macros", er_unsync))]
 use crate::ErBoxedInput;
+use crate::lines;
+use crate::{
+    ErAsError, ErInput, ErLineError, ErMake, ErOpaqueErrorExt, ErPart, ErReportRef, ErTest,
+    ErTestError, ErTestExt, ErTestFailure, ErTestOptionNone, ErTree, ErTreeContextExt, IntoErPart,
+    IntoErTree,
+};
 #[cfg(feature = "macros")]
 use crate::{ErBail, ErFields};
-use crate::{
-    ErInput, ErMake, ErPart, ErTest, ErTestError, ErTestExt, ErTestFailure, ErTestOptionNone,
-    ErTree, ErTreeContextExt, IntoErPart, IntoErTree,
-};
 use core::{error::Error, fmt, mem, ops::Deref};
 
 impl ErTestFailure {
@@ -27,6 +29,19 @@ impl ErTestFailure {
 
         Self { tree }
     }
+
+    /// Only formats once, no line endings.
+    pub fn for_each_line(&self, emit: impl FnMut(&str)) -> fmt::Result {
+        lines::for_each_line(self, emit)
+    }
+
+    /// Like `for_each_line()`, but the callback can fail.
+    pub fn try_for_each_line<X>(
+        &self,
+        emit: impl FnMut(&str) -> Result<(), X>,
+    ) -> Result<(), ErLineError<X>> {
+        lines::try_for_each_line(self, emit)
+    }
 }
 impl<E: IntoErPart> From<E> for ErTestFailure {
     #[cfg_attr(feature = "src_locations", track_caller)]
@@ -42,6 +57,20 @@ impl fmt::Display for ErTestFailure {
 impl fmt::Debug for ErTestFailure {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(self, formatter)
+    }
+}
+impl ErOpaqueErrorExt for ErTestFailure {
+    type Output = ErAsError<Self>;
+
+    fn opaque_err(self) -> Self::Output {
+        ErAsError(self)
+    }
+}
+impl<'a> ErOpaqueErrorExt for &'a ErTestFailure {
+    type Output = ErAsError<ErReportRef<'a, ErTestError>>;
+
+    fn opaque_err(self) -> Self::Output {
+        self.er_report().opaque_err()
     }
 }
 impl Deref for ErTestFailure {
@@ -97,6 +126,11 @@ impl fmt::Debug for ErTestError {
 impl Error for ErTestError {}
 impl From<()> for ErTestError {
     fn from(_: ()) -> Self {
+        Self
+    }
+}
+impl From<((),)> for ErTestError {
+    fn from(_: ((),)) -> Self {
         Self
     }
 }

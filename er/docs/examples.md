@@ -411,6 +411,8 @@ pub fn public_read_port(input: &str, request_id: u32) -> Result<u16, ApiError> {
 }
 ```
 
+`#[er(into_report_string(single_line))]` saves the report on one line. Plain `into_report_string` keeps the layout you chose on the top or report, or uses multiline when converting a tree.
+
 The closure only runs on errors, return your remaining fields as a value or tuple, in field order. With none left, use `.er_into(|_| {})`. For a snapshot use `#[er(into_snapshot)]` instead.
 
 You should still print / show your error in your applications of course, and I'll even argue that as a library, if you at least give a string report to your consumer, you're gonna have great bug reports from users and a much easier time fixing bugs. Printing a report is often times more valuable than a friendly message you made up. Don't destroy your type. Include the message in the type itself next to the other data instead.
@@ -429,7 +431,7 @@ pub struct DeviceErr {
     pub status: u8,
 }
 pub fn check_device(result: Result<(), u8>) -> ErResult<(), DeviceErr> {
-    result.er_val(DeviceErr::new)
+    result.er_val(|v| v)
 }
 ```
 
@@ -472,12 +474,11 @@ pub struct ConnectErr {
     pub details: JsData,
 }
 pub fn connect(server: &str, result: Result<(), JsValue>) -> ErResult<(), ConnectErr> {
-    let e = |value| ConnectErr::new(server, value);
-    result.er_val(e)
+    result.er_val(|v| (server, v))
 }
 ```
 
-The constructor does the `.into()` for us. And if we had variants that did not have the data, i would make an enum and only have the data on the some of the variants.
+The helpers does the `.into()` for us. And if we had variants that did not have the data, i would make an enum and only have the data on the some of the variants.
 
 ## Bail
 

@@ -26,7 +26,7 @@ where
     {
         let mut values = Vec::new();
         aggregate::collect(
-            || error.er_make(),
+            error,
             self.map(|result| result.map(|value| values.push(value))),
         )?;
         Ok(values.into_iter().collect())

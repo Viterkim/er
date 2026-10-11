@@ -38,6 +38,16 @@ pub fn without_derives() {
     let root = ErTree::from(Error::other("fresh"));
     assert!(root.nodes.is_empty());
 
+    struct SavedText(String);
+    impl ErFromTree<Error> for SavedText {
+        fn er_from_tree(tree: ErTree<Error>, _: ()) -> Self {
+            Self(tree.er_report_string())
+        }
+    }
+
+    let saved: SavedText = read_port("bad").er_report().er_into(|_| {}).unwrap_err();
+    assert!(saved.0.contains("invalid digit"));
+
     let error = Error::other("source").er::<Error>(|| Error::other("context"));
     assert_eq!(error.top.to_string(), "context");
     assert_eq!(error.nodes[0].error.to_string(), "source");

@@ -69,7 +69,21 @@ pub mod tests {
     #[test]
     pub fn chain() {
         let device = Rc::new(RefCell::new(Device { port: 8 }));
-        let tree = diagnostic(&device).unwrap_err();
+        let value: ErResult<(), DeviceErr> =
+            Err::<(), _>(Rc::clone(&device)).er_val(|device| (device, 85));
+
+        assert!(Rc::ptr_eq(&device, &value.unwrap_err().top.device.value));
+
+        let mut tree = diagnostic(&device).unwrap_err();
+        let expected = tree.er_report_string();
+        assert_eq!(
+            Err::<(), _>(&mut tree).er_report_string().unwrap_err(),
+            expected
+        );
+        assert_eq!(
+            Err::<(), _>(&tree).er_report_string().unwrap_err(),
+            tree.er_report_string()
+        );
         let leaf = tree.er_find::<DeviceErr>().unwrap();
 
         assert!(Rc::ptr_eq(&device, &leaf.device.value));
@@ -77,16 +91,43 @@ pub mod tests {
         leaf.device.borrow_mut().port = 9;
         assert_eq!(tree.top.device.borrow().port, 9);
 
-        let expected = tree.er_report_string();
-        let saved: Rc<SavedErr> = tree.er_into(|_| Rc::clone(&device));
+        let expected = tree.er_report().single_line().to_string();
+        let saved: Rc<SavedErr> = tree
+            .into_er_report()
+            .single_line()
+            .er_into(|_| Rc::clone(&device));
         assert_eq!(saved.report, expected);
         assert_eq!(saved.kind.device.borrow().port, 9);
         assert!(Rc::ptr_eq(&device, &saved.device));
 
-        let wrapped = BoundaryErrWrap::from(ErTree::new(
+        let snapshot = diagnostic(&device).er_snapshot().unwrap_err();
+        let report = snapshot.er_report().single_line().er_report_string();
+        let mut saved = snapshot.into_er_top().single_line();
+        assert_eq!(
+            Err::<(), _>(&mut saved).er_report_string().unwrap_err(),
+            report
+        );
+        assert_eq!(Err::<(), _>(saved).er_report_string().unwrap_err(), report);
+        assert_eq!(Ok::<_, ErSnapshot>(85).expect_report("saved failure"), 85);
+
+        let mut wrapped = BoundaryErrWrap::from(ErTree::new(
             BoundaryErr::new(&device),
             [DeviceErr::new(&device, 86)],
         ));
+        let expected = wrapped.to_string();
+        let mut lines = Vec::new();
+        wrapped
+            .for_each_line(|line| lines.push(line.to_string()))
+            .unwrap();
+        assert_eq!(lines.join("\n"), expected);
+        assert_eq!(
+            Err::<(), _>(&mut wrapped)
+                .opaque_err()
+                .unwrap_err()
+                .to_string(),
+            expected
+        );
+
         let tree: ErTree<AppErr> = Err::<(), _>(wrapped)
             .er_with_wrap(|old| {
                 er_built(AppErr {

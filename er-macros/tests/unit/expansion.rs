@@ -1,4 +1,4 @@
-use crate::generate::constructors::exact_type;
+use crate::input::impls::exact_type;
 use quote::quote;
 use std::collections::HashSet;
 
@@ -128,6 +128,10 @@ pub fn into_options() -> syn::Result<()> {
         "struct Data { #[er(into_top)] kind: E, #[er(into_top)] other: E, #[er(into_snapshot)] diagnostics: S }",
         "struct Data { #[er(into_snapshot, into_report_string)] report: S }",
         "struct Data { #[er(into_snapshot = true)] report: S }",
+        "struct Data { #[er(into_report_string())] report: S }",
+        "struct Data { #[er(into_report_string(sideways))] report: S }",
+        "struct Data { #[er(into_report_string(single_line, single_line))] report: S }",
+        "struct Data { #[er(into_report_string(single_line = true))] report: S }",
         "#[er(into_snapshot)] struct Data;",
         "enum Data { First(#[er(into_top)] E, #[er(into_snapshot)] S), Second(#[er(into_top)] E, #[er(into_snapshot)] S) }",
         "enum Data { First(#[er(into_snapshot)] S), Second(#[er(into_snapshot)] S) }",

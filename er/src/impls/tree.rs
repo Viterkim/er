@@ -3,12 +3,12 @@ use crate::impls::stack_trace::append_traces;
 use crate::{
     BoxError, ErEntries, ErEntry, ErErrorIndex, ErFindAll, ErInput, ErMake, ErNode, ErNodes,
     ErPart, ErReport, ErReportRef, ErSnapshot, ErSources, ErTop, ErTopRef, ErTree,
-    ErTreeContextExt, ErWithFields, IntoErPart, IntoErTree, Layout,
+    ErTreeContextExt, ErWithFields, IntoErPart, IntoErTree, IntoErTreeRef, Layout,
 };
 use alloc::{string::String, vec, vec::Vec};
 #[cfg(feature = "src_locations")]
 use core::panic::Location;
-use core::{error::Error, fmt};
+use core::{error::Error, fmt, ops::Deref};
 
 impl<E: Error + 'static> ErTree<E> {
     /// Put existing errors below this one, even if the list is empty.
@@ -246,6 +246,30 @@ impl<E> IntoErTree for ErTree<E> {
 
     fn into_er_tree(self) -> Self {
         self
+    }
+}
+impl<'a, E> IntoErTreeRef<'a> for &'a ErTree<E> {
+    type Error = E;
+
+    fn into_er_report_ref(self) -> ErReportRef<'a, E> {
+        self.er_report()
+    }
+}
+impl<'a, E: 'a, P: Deref<Target = ErTree<E>>> IntoErTreeRef<'a> for &'a P {
+    type Error = E;
+
+    fn into_er_report_ref(self) -> ErReportRef<'a, E> {
+        self.er_report()
+    }
+}
+impl<'a, 'b, P: ?Sized> IntoErTreeRef<'a> for &'b mut P
+where
+    &'b P: IntoErTreeRef<'a>,
+{
+    type Error = <&'b P as IntoErTreeRef<'a>>::Error;
+
+    fn into_er_report_ref(self) -> ErReportRef<'a, Self::Error> {
+        <&'b P as IntoErTreeRef<'a>>::into_er_report_ref(self)
     }
 }
 impl<E> AsMut<ErTree<E>> for ErTree<E> {

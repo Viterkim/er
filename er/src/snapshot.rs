@@ -40,7 +40,7 @@ pub struct ErSnapshotLocation {
 /// The whole saved report, borrows the snapshot.
 #[derive(Clone, Copy)]
 #[must_use]
-pub struct ErSnapshotReport<'a> {
+pub struct ErSnapshotReportRef<'a> {
     pub snapshot: &'a ErSnapshot,
     pub layout: Layout,
 }
@@ -48,7 +48,23 @@ pub struct ErSnapshotReport<'a> {
 /// Just the saved outer error, borrows the snapshot.
 #[derive(Clone, Copy)]
 #[must_use]
-pub struct ErSnapshotTop<'a> {
+pub struct ErSnapshotTopRef<'a> {
     pub snapshot: &'a ErSnapshot,
+    pub layout: Layout,
+}
+
+/// The whole saved report, owns the snapshot.
+#[derive(Clone)]
+#[must_use]
+pub struct ErSnapshotReport {
+    pub snapshot: ErSnapshot,
+    pub layout: Layout,
+}
+
+/// Just the saved outer error, owns the snapshot.
+#[derive(Clone)]
+#[must_use]
+pub struct ErSnapshotTop {
+    pub snapshot: ErSnapshot,
     pub layout: Layout,
 }

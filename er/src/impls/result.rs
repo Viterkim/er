@@ -1,10 +1,12 @@
 #[cfg(er_unsync)]
 use crate::ErBoxedInput;
 use crate::impls::tree::with_source;
+use crate::render::format_string;
 use crate::{
-    BoxError, ErContextExt, ErErrorContextExt, ErErrorExt, ErInput, ErMake, ErOpaqueErrorExt,
-    ErPresentationExt, ErReport, ErResult, ErResultExt, ErSnapshot, ErTop, ErTree, ErValueExt,
-    IntoErTree,
+    BoxError, ErBorrowedPresentationExt, ErContextExt, ErErrorContextExt, ErErrorExt, ErInput,
+    ErMake, ErOpaqueErrorExt, ErPresentationExt, ErReport, ErReportRef, ErResult, ErResultExt,
+    ErSnapshot, ErSnapshotPresentationExt, ErTop, ErTopRef, ErTree, ErValueExt, IntoErSnapshot,
+    IntoErTree, IntoErTreeRef,
 };
 #[cfg(feature = "macros")]
 use crate::{ErAllError, ErAllItem, ErAllResult, ErBail, ErFields, ErPart, ErReady};
@@ -67,10 +69,9 @@ impl<T, E> ErValueExt for Result<T, E> {
     type Err = E;
 
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_val<A, F>(self, f: F) -> ErResult<T, A>
+    fn er_build_value<A>(self, f: impl FnOnce(E) -> A) -> ErResult<T, A>
     where
         A: Error + 'static,
-        F: FnOnce(E) -> A,
     {
         match self {
             Ok(value) => Ok(value),
@@ -143,6 +144,103 @@ impl<T, E: ErOpaqueErrorExt> ErOpaqueErrorExt for Result<T, E> {
         match self {
             Ok(value) => Ok(value),
             Err(error) => Err(error.opaque_err()),
+        }
+    }
+}
+
+impl<T, E: IntoErSnapshot> ErSnapshotPresentationExt for Result<T, E> {
+    type Ok = T;
+    type Top = E::Top;
+    type Report = E::Report;
+
+    fn er_top(self) -> Result<T, E::Top> {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_er_top()),
+        }
+    }
+
+    fn er_report(self) -> Result<T, E::Report> {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_er_report()),
+        }
+    }
+
+    fn er_report_string(self) -> Result<T, String> {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(format_string(&error.into_er_report())),
+        }
+    }
+
+    fn er_top_string(self) -> Result<T, String> {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(format_string(&error.into_er_top())),
+        }
+    }
+
+    fn er_snapshot(self) -> Result<T, ErSnapshot> {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_er_snapshot()),
+        }
+    }
+}
+
+impl<'a, T, E: IntoErTreeRef<'a>> ErBorrowedPresentationExt<'a> for Result<T, E> {
+    type Ok = T;
+    type Err = E::Error;
+
+    fn er_tree(self) -> Result<T, &'a ErTree<E::Error>> {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_er_tree_ref()),
+        }
+    }
+
+    fn er_top(self) -> Result<T, ErTopRef<'a, E::Error>> {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_er_top_ref()),
+        }
+    }
+
+    fn er_report(self) -> Result<T, ErReportRef<'a, E::Error>> {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_er_report_ref()),
+        }
+    }
+
+    fn er_report_string(self) -> Result<T, String>
+    where
+        E::Error: Error + 'static,
+    {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_er_report_ref().er_report_string()),
+        }
+    }
+
+    fn er_top_string(self) -> Result<T, String>
+    where
+        E::Error: fmt::Display,
+    {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_er_top_ref().er_top_string()),
+        }
+    }
+
+    fn er_snapshot(self) -> Result<T, ErSnapshot>
+    where
+        E::Error: Error + 'static,
+    {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_er_tree_ref().er_snapshot()),
         }
     }
 }

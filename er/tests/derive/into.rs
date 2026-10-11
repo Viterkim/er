@@ -18,6 +18,8 @@ pub struct Saved<E> {
     pub kind: E,
     #[er(into_report_string)]
     pub diagnostics: String,
+    #[er(into_report_string(single_line))]
+    pub single_line: String,
 }
 
 #[derive(Er)]
@@ -64,12 +66,47 @@ pub fn caller_fields() {
     assert_eq!(result.unwrap(), 85);
     assert_eq!(calls.get(), 0);
 
+    let error: Box<RequestError> = run()
+        .er_into(|_| (85, "session", caller.as_str()))
+        .unwrap_err();
+    assert!(core::ptr::eq(error.caller.as_ptr(), caller.as_ptr()));
+
     #[cfg(target_has_atomic = "ptr")]
     {
         let error: Arc<RequestError> = run()
             .er_into(|_| (85, "session", caller.as_str()))
             .unwrap_err();
         assert_eq!(error.caller, caller);
+    }
+}
+
+#[test]
+pub fn layouts() {
+    let tree = run().unwrap_err();
+    let multiline = tree.er_report_string();
+    let single_line = tree.er_report().single_line().to_string();
+    let error: Saved<RunErr> = tree.er_into(|_| {});
+
+    assert_eq!(error.diagnostics, multiline);
+    assert_eq!(error.single_line, single_line);
+
+    let report = run().unwrap_err().into_er_report().single_line();
+    let expected = report.er_report_string();
+    let error: Saved<RunErr> = report.er_into(|_| {});
+    assert_eq!(error.diagnostics, expected);
+    assert_eq!(error.single_line, expected);
+
+    let top = run().unwrap_err().into_er_top().single_line();
+    let expected = top.er_report_string();
+    let error: Box<Saved<RunErr>> = Err::<(), _>(top).er_into(|_| {}).unwrap_err();
+    assert_eq!(error.diagnostics, expected);
+
+    #[cfg(target_has_atomic = "ptr")]
+    {
+        let report = run().unwrap_err().into_er_report().single_line();
+        let expected = report.er_report_string();
+        let error: Arc<Saved<RunErr>> = Err::<(), _>(report).er_into(|_| {}).unwrap_err();
+        assert_eq!(error.diagnostics, expected);
     }
 }
 
@@ -133,6 +170,10 @@ pub enum PublicError {
         report: String,
         #[er(into_report_string)]
         other_report: String,
+        #[er(into_report_string(single_line))]
+        single_line: String,
+        #[er(into_report_string(single_line))]
+        other_single_line: String,
         #[er(into_snapshot)]
         snapshot: ErSnapshot,
         #[er(into_snapshot)]
@@ -158,13 +199,17 @@ pub fn variants() {
             kind,
             report,
             other_report,
+            single_line,
+            other_single_line,
             snapshot,
             other_snapshot,
         } => {
             assert_eq!(kind.0, "session");
             assert_eq!(report, other_report);
+            assert_eq!(single_line, other_single_line);
             assert_eq!(snapshot, other_snapshot);
             assert_eq!(report, snapshot.er_report().to_string());
+            assert_eq!(single_line, snapshot.er_report().single_line().to_string());
         }
         _ => panic!("wrong variant"),
     }

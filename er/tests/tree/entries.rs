@@ -37,8 +37,8 @@ pub fn lookup() {
         (3, &[0, 1][..], 2),
         (4, &[1][..], 3),
     ] {
-        let by_index = tree.er_at_index(ErErrorIndex(index)).unwrap();
-        let by_path = tree.er_at_path(path).unwrap();
+        let by_index = tree.er_top().er_at_index(ErErrorIndex(index)).unwrap();
+        let by_path = tree.er_report().er_at_path(path).unwrap();
         assert!(std::ptr::eq(by_index, by_path));
         assert_eq!(by_index.downcast_ref::<Leaf>().unwrap().0, value);
     }
@@ -100,8 +100,14 @@ pub fn walk() {
         ],
     );
     let report = tree.into_er_report();
+    assert!(std::ptr::eq(
+        report.er_at_index(ErErrorIndex(1)).unwrap(),
+        report.er_at_path(&[0]).unwrap()
+    ));
+    assert!(report.tree.nodes[0].er_contains::<Leaf>());
+    assert!(!report.tree.nodes[0].er_contains::<IoError>());
 
-    let matches = report.as_ref().er_find_all::<Leaf>();
+    let matches: ErFindAll<'_, Leaf> = report.as_ref().er_find_all();
     assert_eq!(matches.map(|leaf| leaf.0).collect::<Vec<_>>(), [0, 1, 2, 3]);
     assert!(std::ptr::eq(
         report.er_find_all::<Native>().next().unwrap(),
@@ -113,7 +119,7 @@ pub fn walk() {
     ));
     assert!(report.er_find_all::<IoError>().next().is_none());
 
-    let matches = report.tree.er_top().er_find_all::<Leaf>();
+    let matches: ErFindAll<'_, Leaf> = report.tree.er_top().er_find_all();
     assert_eq!(matches.count(), 4);
     assert_eq!(
         report.tree.nodes[0]
@@ -124,8 +130,15 @@ pub fn walk() {
     );
 
     let entries: Vec<_> = report.as_ref().er_entries().collect();
+    let top_entries = report.er_top().er_entries();
+    assert_eq!(
+        top_entries.map(|entry| entry.index).collect::<Vec<_>>(),
+        [0, 1, 2, 3, 4, 5]
+    );
     let mut visited = Vec::new();
-    report.er_for_each_entry(|entry| visited.push(entry));
+    report
+        .er_top()
+        .er_for_each_entry(|entry| visited.push(entry));
 
     assert_eq!(visited.len(), entries.len());
 
@@ -218,6 +231,14 @@ pub fn root_and_source() {
     assert_eq!(tree.er_report().er_entries().count(), 2);
 
     let top = ErTree::from(Leaf(9)).into_er_top();
+    assert!(std::ptr::eq(
+        top.er_at_index(ErErrorIndex(0)).unwrap(),
+        top.er_at_path(&[]).unwrap()
+    ));
+    assert_eq!(top.er_entries().count(), 1);
+    let mut entries = Vec::new();
+    top.er_for_each_entry(|entry| entries.push(entry));
+    assert_eq!(entries.len(), 1);
     assert!(std::ptr::eq(
         top.er_find_all::<Leaf>().next().unwrap(),
         &top.tree.top

@@ -5,9 +5,9 @@ use super::{
     attrs::{FieldMode, IntoField},
 };
 use crate::names::plain;
-use quote::{ToTokens as _, quote};
+use quote::ToTokens as _;
 use std::collections::HashSet;
-use syn::{Generics, Type, visit::Visit as _};
+use syn::{Generics, Type, parse_quote, visit::Visit as _};
 
 pub struct FormatBounds<'a, 'out> {
     pub name: &'a str,
@@ -18,7 +18,19 @@ pub struct FormatBounds<'a, 'out> {
     pub keep_type_bound: bool,
 }
 
-pub fn format_generics(input: &Input<'_>) -> syn::Result<Generics> {
+pub struct BoundSyntax {
+    pub opaque: bool,
+}
+
+// Identical macro calls can expand to different types at different locations.
+pub fn bound_key(ty: &Type) -> Option<String> {
+    let mut syntax = BoundSyntax { opaque: false };
+    syntax.visit_type(ty);
+
+    (!syntax.opaque).then(|| ty.to_token_stream().to_string())
+}
+
+pub fn format_generics(input: &Input<'_>) -> Generics {
     let mut parameters: HashSet<_> = input
         .type_names
         .union(&input.const_names)
@@ -34,7 +46,7 @@ pub fn format_generics(input: &Input<'_>) -> syn::Result<Generics> {
 
     let mut generics = input.item.generics.clone();
     if parameters.is_empty() {
-        return Ok(generics);
+        return generics;
     }
 
     let mut seen = HashSet::new();
@@ -54,13 +66,16 @@ pub fn format_generics(input: &Input<'_>) -> syn::Result<Generics> {
             bounds.visit_type(&field.item.ty);
 
             for ty in types {
-                let key = ty.to_token_stream().to_string();
+                let key = bound_key(ty);
                 for format in formats {
-                    if seen.insert((key.clone(), *format)) {
+                    if key
+                        .as_ref()
+                        .is_none_or(|key| seen.insert((key.clone(), *format)))
+                    {
                         let format = format.ident();
-                        let predicate = syn::parse2(quote!(
+                        let predicate = parse_quote!(
                             #ty: ::core::fmt::#format
-                        ))?;
+                        );
                         generics.make_where_clause().predicates.push(predicate);
                     }
                 }
@@ -68,5 +83,5 @@ pub fn format_generics(input: &Input<'_>) -> syn::Result<Generics> {
         }
     }
 
-    Ok(generics)
+    generics
 }

@@ -1,14 +1,27 @@
 use crate::lines;
 use crate::render::{format_string, report::write_entries};
 use crate::{
-    BoxError, ErAsError, ErEntries, ErEntry, ErLineError, ErMake, ErNodes, ErOpaqueErrorExt,
-    ErReport, ErReportRef, ErSnapshot, ErSources, ErTopRef, ErTree, ErTreeContextExt, IntoErPart,
-    IntoErTree, Layout,
+    BoxError, ErAsError, ErEntries, ErEntry, ErErrorIndex, ErFindAll, ErLineError, ErMake, ErNodes,
+    ErOpaqueErrorExt, ErReport, ErReportRef, ErSnapshot, ErSources, ErTop, ErTopRef, ErTree,
+    ErTreeContextExt, IntoErPart, IntoErTree, IntoErTreeRef, Layout,
 };
 use alloc::string::String;
 use core::{error::Error, fmt};
 
 impl<'a, E> ErReportRef<'a, E> {
+    /// The same report, keeping its layout.
+    pub const fn er_report(&self) -> Self {
+        *self
+    }
+
+    /// Just the top, keeping this layout.
+    pub const fn er_top(&self) -> ErTopRef<'a, E> {
+        ErTopRef {
+            tree: self.tree,
+            layout: self.layout,
+        }
+    }
+
     /// Pick how it gets printed.
     pub const fn layout(self, layout: Layout) -> Self {
         Self { layout, ..self }
@@ -29,18 +42,32 @@ impl<'a, E> From<&'a ErTree<E>> for ErReportRef<'a, E> {
         tree.er_report()
     }
 }
+impl<'a, E> From<ErTopRef<'a, E>> for ErReportRef<'a, E> {
+    fn from(top: ErTopRef<'a, E>) -> Self {
+        top.er_report()
+    }
+}
 impl<E> Copy for ErReportRef<'_, E> {}
 impl<E> Clone for ErReportRef<'_, E> {
     fn clone(&self) -> Self {
         *self
     }
 }
-impl<'a, E: Error + 'static> ErReportRef<'a, E> {
-    /// The report as text, keeps this layout.
-    pub fn er_report_string(&self) -> String {
-        format_string(self)
-    }
+impl<'a, E> IntoErTreeRef<'a> for ErReportRef<'a, E> {
+    type Error = E;
 
+    fn into_er_report_ref(self) -> Self {
+        self
+    }
+}
+impl<'a, E> IntoErTreeRef<'a> for &ErReportRef<'a, E> {
+    type Error = E;
+
+    fn into_er_report_ref(self) -> ErReportRef<'a, E> {
+        *self
+    }
+}
+impl<E: fmt::Display> ErReportRef<'_, E> {
     /// Just the outer error as text, keeps this layout.
     pub fn er_top_string(&self) -> String {
         ErTopRef {
@@ -48,6 +75,22 @@ impl<'a, E: Error + 'static> ErReportRef<'a, E> {
             layout: self.layout,
         }
         .er_top_string()
+    }
+}
+impl<'a, E: Error + 'static> ErReportRef<'a, E> {
+    /// Look up a stored error by index. Native sources aren't counted.
+    pub fn er_at_index(&self, index: ErErrorIndex) -> Option<&'a (dyn Error + 'static)> {
+        self.tree.er_at_index(index)
+    }
+
+    /// Follow child indices. An empty path selects the root.
+    pub fn er_at_path(&self, path: &[usize]) -> Option<&'a (dyn Error + 'static)> {
+        self.tree.er_at_path(path)
+    }
+
+    /// The report as text, keeps this layout.
+    pub fn er_report_string(&self) -> String {
+        format_string(self)
     }
 
     /// Save the whole tree as messages, keeps its structure.
@@ -89,7 +132,7 @@ impl<'a, E: Error + 'static> ErReportRef<'a, E> {
     }
 
     /// Finds all the instances of an error type, for when you have duplicates.
-    pub fn er_find_all<T: Error + 'static>(&self) -> impl Iterator<Item = &'a T> + use<'a, E, T> {
+    pub fn er_find_all<T: Error + 'static>(&self) -> ErFindAll<'a, T> {
         self.tree.er_find_all::<T>()
     }
 
@@ -115,8 +158,28 @@ impl<E: Error + 'static> ErOpaqueErrorExt for ErReportRef<'_, E> {
         ErAsError(self)
     }
 }
+impl<'a, E: Error + 'static> ErOpaqueErrorExt for &ErReportRef<'a, E> {
+    type Output = ErAsError<ErReportRef<'a, E>>;
+
+    fn opaque_err(self) -> Self::Output {
+        self.er_report().opaque_err()
+    }
+}
 
 impl<E> ErReport<E> {
+    /// Borrow the same report, keeping its layout.
+    pub const fn er_report(&self) -> ErReportRef<'_, E> {
+        self.as_ref()
+    }
+
+    /// Just the top, keeping this layout.
+    pub const fn er_top(&self) -> ErTopRef<'_, E> {
+        ErTopRef {
+            tree: &self.tree,
+            layout: self.layout,
+        }
+    }
+
     /// Pick how it gets printed.
     pub fn layout(self, layout: Layout) -> Self {
         Self { layout, ..self }
@@ -151,6 +214,11 @@ impl<E> From<ErTree<E>> for ErReport<E> {
         tree.into_er_report()
     }
 }
+impl<E> From<ErTop<E>> for ErReport<E> {
+    fn from(top: ErTop<E>) -> Self {
+        top.into_er_report()
+    }
+}
 impl<E> IntoErTree for ErReport<E> {
     type Error = E;
 
@@ -167,6 +235,13 @@ impl<E> AsMut<ErTree<E>> for ErReport<E> {
         &mut self.tree
     }
 }
+impl<'a, E> IntoErTreeRef<'a> for &'a ErReport<E> {
+    type Error = E;
+
+    fn into_er_report_ref(self) -> ErReportRef<'a, E> {
+        self.er_report()
+    }
+}
 impl<E: Error + Into<BoxError> + 'static, Mode> ErTreeContextExt<Mode> for ErReport<E> {
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er<A>(self, top: impl ErMake<A, Mode>) -> ErTree<A>
@@ -176,15 +251,26 @@ impl<E: Error + Into<BoxError> + 'static, Mode> ErTreeContextExt<Mode> for ErRep
         self.tree.er(top)
     }
 }
-impl<E: Error + 'static> ErReport<E> {
-    /// The report as text, keeps this layout.
-    pub fn er_report_string(&self) -> String {
-        self.as_ref().er_report_string()
-    }
-
+impl<E: fmt::Display> ErReport<E> {
     /// Just the outer error as text, keeps this layout.
     pub fn er_top_string(&self) -> String {
         self.as_ref().er_top_string()
+    }
+}
+impl<E: Error + 'static> ErReport<E> {
+    /// Look up a stored error by index. Native sources aren't counted.
+    pub fn er_at_index(&self, index: ErErrorIndex) -> Option<&(dyn Error + 'static)> {
+        self.tree.er_at_index(index)
+    }
+
+    /// Follow child indices. An empty path selects the root.
+    pub fn er_at_path(&self, path: &[usize]) -> Option<&(dyn Error + 'static)> {
+        self.tree.er_at_path(path)
+    }
+
+    /// The report as text, keeps this layout.
+    pub fn er_report_string(&self) -> String {
+        self.as_ref().er_report_string()
     }
 
     /// Save the whole tree as messages, keeps its structure.
@@ -226,7 +312,7 @@ impl<E: Error + 'static> ErReport<E> {
     }
 
     /// Finds all the instances of an error type, for when you have duplicates.
-    pub fn er_find_all<T: Error + 'static>(&self) -> impl Iterator<Item = &T> {
+    pub fn er_find_all<T: Error + 'static>(&self) -> ErFindAll<'_, T> {
         self.tree.er_find_all::<T>()
     }
 
@@ -261,5 +347,12 @@ impl<E: Error + 'static> ErOpaqueErrorExt for ErReport<E> {
 
     fn opaque_err(self) -> Self::Output {
         ErAsError(self)
+    }
+}
+impl<'a, E: Error + 'static> ErOpaqueErrorExt for &'a ErReport<E> {
+    type Output = ErAsError<ErReportRef<'a, E>>;
+
+    fn opaque_err(self) -> Self::Output {
+        self.er_report().opaque_err()
     }
 }

@@ -1,7 +1,7 @@
 pub mod body;
 pub mod censor;
 
-use crate::generate::constructors::constructors;
+use crate::generate::construct;
 use crate::input::{Input, bounds::format_generics};
 use crate::names::binding;
 use proc_macro2::TokenStream;
@@ -31,10 +31,10 @@ pub fn expand(item: &DeriveInput) -> Result<TokenStream> {
         ));
     }
 
-    let generics = format_generics(&input)?;
+    let generics = format_generics(&input);
     let formatter = binding(&input.const_names, "__er_f");
     let formatting = implementations(&input, &generics, &formatter);
-    let constructors = constructors(&input)?;
+    let constructors = construct::methods(&input)?;
     Ok(quote! {
         #formatting
         #constructors

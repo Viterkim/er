@@ -240,7 +240,12 @@ pub fn chunks() {
 
 #[test]
 pub fn partitions() -> fmt::Result {
-    let input = "a\r\nb\rc\0d\n\n";
+    let input = "æ\r\n日本\rc\0🦀\n\n";
+    let boundaries: Vec<_> = input
+        .char_indices()
+        .skip(1)
+        .map(|(index, _)| index)
+        .collect();
 
     for wrap in [render::Wrap::Indent("  "), render::Wrap::Flatten] {
         let render = |parts: &[&str]| -> Result<String, fmt::Error> {
@@ -267,11 +272,11 @@ pub fn partitions() -> fmt::Result {
         assert_eq!(characters, expected);
 
         // Each bit chooses a cut between two characters.
-        for cuts in 0..1 << (input.len() - 1) {
+        for cuts in 0..1 << boundaries.len() {
             let mut parts = Vec::new();
             let mut start = 0;
-            for end in 1..input.len() {
-                if cuts & (1 << (end - 1)) != 0 {
+            for (bit, end) in boundaries.iter().copied().enumerate() {
+                if cuts & (1 << bit) != 0 {
                     parts.push(&input[start..end]);
                     start = end;
                 }

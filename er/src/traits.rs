@@ -1,10 +1,12 @@
 #[cfg(feature = "test")]
 use crate::ErTest;
-use crate::{BoxError, ErNode, ErPart, ErReport, ErResult, ErSnapshot, ErTop, ErTree};
+use crate::{
+    BoxError, ErNode, ErPart, ErReport, ErReportRef, ErResult, ErSnapshot, ErTop, ErTopRef, ErTree,
+};
 use alloc::string::String;
 use core::error::Error;
 
-/// A finished error for `.er_with()` and its tree and Wrap forms.
+/// A finished error for `.er_with()`, `.er_val()` and the tree and Wrap forms.
 pub struct ErBuilt<E>(pub E);
 
 /// Use this error directly instead of building it from fields.
@@ -32,6 +34,13 @@ pub trait ErWithFields<E: ?Sized, A, Mode>: for<'a> FnOnce(&'a E) -> Self::Input
     type Input;
 
     fn er_with_fields(self, error: &E) -> A;
+}
+
+#[doc(hidden)]
+pub trait ErValFields<E, A, Mode>: FnOnce(E) -> Self::Input {
+    type Input;
+
+    fn er_val_fields(self, value: E) -> A;
 }
 
 /// Add a new top error above a raw error.
@@ -153,19 +162,27 @@ pub trait ErValueExt {
     type Err;
 
     /// For values that can't go in the tree, like `Err(85)`.
+    /// Takes ownership of the value. Return fields, an enum constructor, or `er_built(MyErr { ... })`.
     ///
-    /// ! WARNING ! Don't use this to add context to an existing tree, you'll nuke it. Use `.er()` for that.
+    /// ! WARNING ! Don't use this to add context to an error or tree, you'll nuke it. Use `.er()` or `.er_with()` for that.
     ///
     /// ```rust,ignore
-    /// // Err(85) calls DeviceErr::new(85)
-    /// // Same as `|v| DeviceErr::new(v)`
-    /// device_status().er_val(DeviceErr::new)?;
+    /// device_status().er_val(|v| v)?;
     /// ```
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_val<A, F>(self, f: F) -> ErResult<Self::Ok, A>
+    fn er_val<A, Mode>(self, fields: impl ErValFields<Self::Err, A, Mode>) -> ErResult<Self::Ok, A>
     where
+        Self: Sized,
         A: Error + 'static,
-        F: FnOnce(Self::Err) -> A;
+    {
+        self.er_build_value(|value| fields.er_val_fields(value))
+    }
+
+    #[doc(hidden)]
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_build_value<A>(self, f: impl FnOnce(Self::Err) -> A) -> ErResult<Self::Ok, A>
+    where
+        A: Error + 'static;
 }
 
 /// Collect successful values and add context to failures.
@@ -226,9 +243,9 @@ pub trait ErPresentationExt {
     where
         Self: Sized,
     {
-        match self.er_tree() {
+        match self.er_report() {
             Ok(value) => Ok(value),
-            Err(tree) => Err(fields.er_into_tree(tree)),
+            Err(report) => Err(fields.er_into_report(report)),
         }
     }
 
@@ -290,6 +307,141 @@ pub trait ErPresentationExt {
     }
 }
 
+/// Pick the output for a Result with a saved snapshot or its presentation.
+pub trait ErSnapshotPresentationExt {
+    type Ok;
+    type Top: core::fmt::Display + core::fmt::Debug;
+    type Report: core::fmt::Display + core::fmt::Debug;
+
+    /// Just the saved outer error, leaves Ok alone.
+    fn er_top(self) -> Result<Self::Ok, Self::Top>;
+
+    /// The whole saved report, leaves Ok alone.
+    fn er_report(self) -> Result<Self::Ok, Self::Report>;
+
+    /// Print the whole saved report, leaves Ok alone.
+    fn er_report_string(self) -> Result<Self::Ok, String>;
+
+    /// Print just the saved outer error, leaves Ok alone.
+    fn er_top_string(self) -> Result<Self::Ok, String>;
+
+    /// Get the saved entries back, leaves Ok alone.
+    fn er_snapshot(self) -> Result<Self::Ok, ErSnapshot>;
+
+    /// Get the Ok value, or panic with the whole saved report.
+    ///
+    /// # Panics
+    /// Panics if the result is Err.
+    #[track_caller]
+    fn unwrap_report(self) -> Self::Ok
+    where
+        Self: Sized,
+    {
+        self.er_report().unwrap()
+    }
+
+    /// Get the Ok value, or panic with your message and the whole saved report.
+    ///
+    /// # Panics
+    /// Panics if the result is Err.
+    #[track_caller]
+    fn expect_report(self, message: &str) -> Self::Ok
+    where
+        Self: Sized,
+    {
+        self.er_report().expect(message)
+    }
+}
+
+/// Pick the output for a Result that borrows a tree or its presentation.
+pub trait ErBorrowedPresentationExt<'a> {
+    type Ok;
+    type Err: 'a;
+
+    /// Get the borrowed tree back, leaves Ok alone.
+    fn er_tree(self) -> Result<Self::Ok, &'a ErTree<Self::Err>>;
+
+    /// Just the outer error, leaves Ok alone.
+    fn er_top(self) -> Result<Self::Ok, ErTopRef<'a, Self::Err>>;
+
+    /// The whole report, leaves Ok alone.
+    fn er_report(self) -> Result<Self::Ok, ErReportRef<'a, Self::Err>>;
+
+    /// Print the whole report, leaves Ok alone.
+    fn er_report_string(self) -> Result<Self::Ok, String>
+    where
+        Self::Err: Error + 'static;
+
+    /// Print just the outer error, leaves Ok alone.
+    fn er_top_string(self) -> Result<Self::Ok, String>
+    where
+        Self::Err: core::fmt::Display;
+
+    /// Save the failed tree as messages, leaves Ok alone.
+    fn er_snapshot(self) -> Result<Self::Ok, ErSnapshot>
+    where
+        Self::Err: Error + 'static;
+
+    /// Get the Ok value, or panic with the whole report.
+    ///
+    /// # Panics
+    /// Panics if the result is Err.
+    #[track_caller]
+    fn unwrap_report(self) -> Self::Ok
+    where
+        Self: Sized,
+        Self::Err: Error + 'static,
+    {
+        self.er_report().unwrap()
+    }
+
+    /// Get the Ok value, or panic with your message and the whole report.
+    ///
+    /// # Panics
+    /// Panics if the result is Err.
+    #[track_caller]
+    fn expect_report(self, message: &str) -> Self::Ok
+    where
+        Self: Sized,
+        Self::Err: Error + 'static,
+    {
+        self.er_report().expect(message)
+    }
+}
+
+/// Borrow a tree or change its borrowed presentation, keeping an existing layout.
+pub trait IntoErTreeRef<'a>: Sized {
+    type Error: 'a;
+
+    /// Borrow the whole report.
+    fn into_er_report_ref(self) -> ErReportRef<'a, Self::Error>;
+
+    /// Borrow just the outer error.
+    fn into_er_top_ref(self) -> ErTopRef<'a, Self::Error> {
+        self.into_er_report_ref().er_top()
+    }
+
+    /// Borrow the tree. Leaves the layout behind.
+    fn into_er_tree_ref(self) -> &'a ErTree<Self::Error> {
+        self.into_er_report_ref().tree
+    }
+}
+
+/// Move a snapshot or change its presentation, keeping an existing layout.
+pub trait IntoErSnapshot {
+    type Top: core::fmt::Display + core::fmt::Debug;
+    type Report: core::fmt::Display + core::fmt::Debug;
+
+    /// Take the saved entries out. Borrowed snapshots copy their entries.
+    fn into_er_snapshot(self) -> ErSnapshot;
+
+    /// Just the saved outer error.
+    fn into_er_top(self) -> Self::Top;
+
+    /// The whole saved report.
+    fn into_er_report(self) -> Self::Report;
+}
+
 /// Convert a tree into your own error, saving its diagnostics.
 /// Generated by `#[derive(Er)]` for fields marked `into_top`,
 /// `into_report_string` and `into_snapshot`.
@@ -297,6 +449,12 @@ pub trait ErPresentationExt {
 pub trait ErFromTree<E, Input = ()>: Sized {
     /// Save the diagnostics and turn the tree into your error.
     fn er_from_tree(tree: ErTree<E>, input: Input) -> Self;
+
+    /// Convert an owned report. Override this to use its chosen layout.
+    /// The default delegates to `er_from_tree()`.
+    fn er_from_report(report: ErReport<E>, input: Input) -> Self {
+        Self::er_from_tree(report.tree, input)
+    }
 }
 
 #[doc(hidden)]
@@ -304,6 +462,13 @@ pub trait ErIntoFields<E, A>: for<'a> FnOnce(&'a ErTree<E>) -> Self::Input {
     type Input;
 
     fn er_into_tree(self, tree: ErTree<E>) -> A;
+
+    fn er_into_report(self, report: ErReport<E>) -> A
+    where
+        Self: Sized,
+    {
+        self.er_into_tree(report.tree)
+    }
 }
 
 /// Turn an Option or Result into ErTest. Existing test failures pass through.
@@ -427,7 +592,7 @@ pub trait IntoErTree {
     where
         Self: Sized,
     {
-        fields.er_into_tree(self.into_er_tree())
+        fields.er_into_report(self.into_er_report())
     }
 
     /// Just the outer error, moves the tree and keeps an existing layout.
