@@ -81,9 +81,9 @@ pub fn ingestion() {
 
     let boxed: BoxError = Box::new(io::Error::from(io::ErrorKind::NotFound));
     let original = boxed.downcast_ref::<io::Error>().unwrap() as *const io::Error;
-    let tree = boxed.er_with::<io::Error, _>(|old| {
+    let tree = boxed.er_with::<io::Error, _>(|err| {
         er_built(io::Error::from(
-            old.downcast_ref::<io::Error>().unwrap().kind(),
+            err.downcast_ref::<io::Error>().unwrap().kind(),
         ))
     });
     assert_eq!(tree.top.kind(), io::ErrorKind::NotFound);
@@ -125,4 +125,44 @@ pub fn erased_nodes() {
 
     #[cfg(feature = "src_locations")]
     assert_eq!(tree.nodes[0].src_location, src);
+}
+
+#[test]
+pub fn presentations() {
+    macro_rules! check {
+        ($convert:expr) => {
+            let child = ErTree::new(StageErr, [io::Error::other("source")]);
+            let nodes = child.nodes.as_ptr();
+            #[cfg(feature = "src_locations")]
+            let source = child.src_location;
+            #[cfg(feature = "stack_traces")]
+            let child = child.er_trace();
+
+            let boxed = Box::new(($convert)(child));
+            let _expected = line!();
+            let tree: ErTree<OuterErr> = Err::<(), _>(boxed).er(()).unwrap_err();
+            assert!(tree.er_contains::<StageErr>());
+            assert!(tree.er_contains::<io::Error>());
+            assert_eq!(tree.nodes[0].nodes.as_ptr(), nodes);
+
+            #[cfg(feature = "src_locations")]
+            {
+                assert_eq!(tree.src_location.line(), _expected);
+                assert_eq!(tree.nodes[0].src_location, source);
+            }
+            #[cfg(feature = "stack_traces")]
+            assert_eq!(tree.stack_traces[0].error_index, ErErrorIndex(1));
+            let boxed = Box::new(($convert)(tree));
+            let tree: ErTree<OuterErr> = er_all!((), [boxed]).unwrap_err();
+            assert!(tree.er_contains::<StageErr>());
+            assert!(tree.er_contains::<io::Error>());
+            assert_eq!(tree.nodes[0].nodes[0].nodes.as_ptr(), nodes);
+            #[cfg(feature = "stack_traces")]
+            assert_eq!(tree.stack_traces[0].error_index, ErErrorIndex(2));
+        };
+    }
+
+    check!(|tree| tree);
+    check!(ErTree::into_er_top);
+    check!(ErTree::into_er_report);
 }

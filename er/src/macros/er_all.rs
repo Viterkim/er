@@ -10,8 +10,7 @@ macro_rules! er_all {
         $crate::__er_all_results!($crate, [$($result),*], $top)
     }};
     ($top:expr, $results:expr $(,)?) => {{
-        $crate::aggregate::collect(
-            || $crate::ErMake::er_make($top),
+        $crate::aggregate::gather(
             ::core::iter::Iterator::map(
                 ::core::iter::IntoIterator::into_iter($results),
                 {
@@ -21,6 +20,6 @@ macro_rules! er_all {
                     |__er_item| $crate::ErAllItem::er_all_item(__er_item)
                 },
             ),
-        )
+        ).finish(|| $crate::ErMake::er_make($top))
     }};
 }

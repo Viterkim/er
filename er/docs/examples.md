@@ -172,7 +172,7 @@ For a finished struct or a foreign error, `.er_with()` needs `er_built(...)`, li
 
 Derived enums work directly even with `{ ... }`, though `ModeErr::unknown(...)` saves you doing the field conversions yourself.
 
-`.er_with_tree(|t| ...)` gives you the tree if you need to search further down.
+`.er_with_tree(|tree| ...)` gives you the tree if you need to search further down.
 
 Raw errors take the same helpers:
 
@@ -218,7 +218,7 @@ pub struct TwoErr {
 }
 
 pub fn read_config(path: PathBuf, machine: &str) -> ErResult<String, TwoErr> {
-    read_file(path).er_with(|old| (old.path.clone(), machine))
+    read_file(path).er_with(|err| (err.path.clone(), machine))
 }
 ```
 
@@ -388,36 +388,32 @@ match error {
 }
 ```
 
-Use `.er_into()` to save the report on your type, you get the tree first if you want to print it:
+Use `.er_into()` to construct your public error from the report. The closure owns it, so you can save the diagnostic text and move out the typed top:
 
 ```rust
 #[derive(Er)]
 #[er(format = "{report}")]
 pub struct ApiError {
-    #[er(into_top)]
     pub kind: ReadPortErr,
-
-    #[er(into_report_string)]
     pub report: String,
 
     pub request_id: u32,
 }
 pub fn public_read_port(input: &str, request_id: u32) -> Result<u16, ApiError> {
-    read_port(input).er_into(|tree| {
-        eprintln!("{}", tree.er_report());
+    read_port(input).er_into(|report| {
+        let text = report.er_report_string();
+        eprintln!("{text}");
 
-        request_id
+        (report.tree.top, text, request_id)
     })
 }
 ```
 
-`#[er(into_report_string(single_line))]` saves the report on one line. Plain `into_report_string` keeps the layout you chose on the top or report, or uses multiline when converting a tree.
-
-The closure only runs on errors, return your remaining fields as a value or tuple, in field order. With none left, use `.er_into(|_| {})`. For a snapshot use `#[er(into_snapshot)]` instead.
+The closure only runs on errors and returns the fields, same as `.er_val()`. The function's return type chooses your public error. Another library can accept the diagnostic text with `.er_into(|report| report.er_report_string())` through an ordinary field conversion, without knowing your Er version. Use `report.single_line()` before rendering for one line, or `report.er_snapshot()` to save the messages instead.
 
 You should still print / show your error in your applications of course, and I'll even argue that as a library, if you at least give a string report to your consumer, you're gonna have great bug reports from users and a much easier time fixing bugs. Printing a report is often times more valuable than a friendly message you made up. Don't destroy your type. Include the message in the type itself next to the other data instead.
 
-Yes this opts out from auto implementing stuff with `From<>`, this is on purpose so you have to go through `.er_into()` and decide what to do with the report.
+The conversion lives here in your application, where you decide what to keep from the report.
 
 ## Non errors (values)
 
@@ -435,9 +431,9 @@ pub fn check_device(result: Result<(), u8>) -> ErResult<(), DeviceErr> {
 }
 ```
 
-If you have some data, you want some logic to convert, i would NOT put it a layer beneath (by mapping it to an error, then putting it below).
+Put the value on the error this function returns. Give the field its own data type when you need conversion logic, and let the tuple helpers call `.into()` for you. You don't need to turn the value into another error and add a layer above it.
 
-Use types and data, here's an example with `JsValue` where we just use it as data on our error. 
+Here's `JsValue` as data on our error:
 
 ```rust
 use js_sys::Reflect;
@@ -478,7 +474,7 @@ pub fn connect(server: &str, result: Result<(), JsValue>) -> ErResult<(), Connec
 }
 ```
 
-The helpers does the `.into()` for us. And if we had variants that did not have the data, i would make an enum and only have the data on the some of the variants.
+The function's return type chooses `ConnectErr`, and the helpers convert `server` into `String` and `v` into `JsData`. If some cases don't have that data, use an enum and put it on the variants that do.
 
 ## Bail
 
@@ -565,7 +561,7 @@ test the_best_test ... FAILED
 
 Make your test helper functions return other types since `?` would fall through without adding context.
 
-For Options, use `option.er_test()?`.
+For Options and unit errors (`Result<T, ()>`), use `.er_test()?`.
 
 The macros work too, but you do need to use `er_all!(|| ErTestError, results)?` so Rust knows which error to build.
 
@@ -616,14 +612,15 @@ pub enum SessionErrKind {
 pub struct SessionError {
     #[er(into_top)]
     pub kind: SessionErrKind,
-
     #[er(into_report_string)]
     pub report: String,
 }
 
-let completion: Result<(), Arc<SessionError>> = run_session().er_into(|tree| {
-    // It automatically does the .into() for the Arc too (also works without it).
-    eprintln!("{}", tree.er_report());
+let completion: Result<(), Arc<SessionError>> = run_session().er_into(|report| {
+    let text = report.er_report_string();
+    eprintln!("{text}");
+
+    report
 });
 
 let reader = completion.clone();
@@ -736,15 +733,15 @@ pub fn listen(input: &str) -> ErResult<TcpListener, ListenErr> {
 #[derive(Er)]
 #[er(format = "{report}")]
 pub struct ListenError {
-    #[er(into_top)]
     pub kind: ListenErr,
-
-    #[er(into_report_string)]
     pub report: String,
 }
 pub fn public_error_example(input: &str) -> Result<TcpListener, ListenError> {
-    listen(input).er_into(|tree| {
-        eprintln!("{}", tree.er_report());
+    listen(input).er_into(|report| {
+        let text = report.er_report_string();
+        eprintln!("{text}");
+
+        (report.tree.top, text)
     })
 }
 

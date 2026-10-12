@@ -25,10 +25,14 @@ where
         A: Error + 'static,
     {
         let mut values = Vec::new();
-        aggregate::collect(
-            error,
-            self.map(|result| result.map(|value| values.push(value))),
-        )?;
-        Ok(values.into_iter().collect())
+        let failures = aggregate::gather(self.map(|result| result.map(|value| values.push(value))));
+
+        if failures.is_empty() {
+            drop(error);
+            Ok(values.into_iter().collect())
+        } else {
+            drop(values);
+            Err(failures.into_tree(error.er_make()))
+        }
     }
 }

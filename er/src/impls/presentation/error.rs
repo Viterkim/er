@@ -13,6 +13,26 @@ impl<P: fmt::Display> fmt::Debug for ErAsError<P> {
 }
 impl<P: fmt::Display> Error for ErAsError<P> {}
 
+impl<'a, P: ?Sized> ErOpaqueErrorExt for &&'a P
+where
+    &'a P: ErOpaqueErrorExt,
+{
+    type Output = <&'a P as ErOpaqueErrorExt>::Output;
+
+    fn opaque_err(self) -> Self::Output {
+        (*self).opaque_err()
+    }
+}
+impl<'a, P: ?Sized> ErOpaqueErrorExt for &'a &mut P
+where
+    &'a P: ErOpaqueErrorExt,
+{
+    type Output = <&'a P as ErOpaqueErrorExt>::Output;
+
+    fn opaque_err(self) -> Self::Output {
+        <&'a P as ErOpaqueErrorExt>::opaque_err(self)
+    }
+}
 impl<'a, P: ?Sized> ErOpaqueErrorExt for &'a mut P
 where
     &'a P: ErOpaqueErrorExt,

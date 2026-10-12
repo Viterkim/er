@@ -36,7 +36,7 @@ pub struct FirmwareError {
     pub snapshot: ErSnapshot,
 }
 pub fn saved_diagnostic() -> Result<(), FirmwareError> {
-    Err::<(), _>(diagnostic()).er_into(|_| {})
+    Err::<(), _>(diagnostic()).er_into(|report| report)
 }
 
 #[cfg(target_has_atomic = "ptr")]
@@ -47,7 +47,7 @@ pub struct SharedErr {
 #[cfg(target_has_atomic = "ptr")]
 pub fn shared_diagnostic() -> ErTree<SharedErr> {
     let error = ErTree::from(SharedErr::new(Device::new(85, Secret)));
-    error.er_with(|old| old.device.clone())
+    error.er_with(|err| err.device.clone())
 }
 
 #[cfg(test)]
@@ -64,7 +64,7 @@ pub mod tests {
         );
 
         let value: ErResult<(), FirmwareErr> =
-            Err::<(), _>(85u8).er_val(|bus| Device::new(bus, Secret));
+            Err::<(), _>(85u8).er_val(|v| Device::new(v, Secret));
 
         assert_eq!(value.unwrap_err().top.device.bus, 85);
 

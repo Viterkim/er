@@ -133,19 +133,34 @@ pub fn bail() {
 pub struct ChildErr(pub u8);
 #[test]
 pub fn er_val() -> Result<(), ErReport<ChildErr>> {
+    fn convert(input: Result<u8, u8>, calls: &Cell<usize>) -> ErResult<u8, ChildErr> {
+        input.er_val(|v| {
+            calls.set(calls.get() + 1);
+            v
+        })
+    }
+
+    fn propagate(input: Result<u8, u8>) -> ErResult<u8, ChildErr> {
+        let value = input.er_val(|v| v)?;
+        Ok(value)
+    }
+
     let calls = Cell::new(0);
     let input: Result<u8, u8> = Ok(7);
-    let result: ErResult<u8, ChildErr> = input.er_val(|value| {
-        calls.set(calls.get() + 1);
-        value
-    });
+    let result = convert(input, &calls);
 
     assert_eq!(result.er_report()?, 7);
     assert_eq!(calls.get(), 0);
 
+    let tree = convert(Err(7), &calls).unwrap_err();
+    assert_eq!(tree.top.0, 7);
+    assert!(tree.nodes.is_empty());
+    assert_eq!(calls.get(), 1);
+    assert_eq!(propagate(Err(8)).unwrap_err().top.0, 8);
+
     let result: Result<(), u8> = Err(7);
     let _expected_line = line!() + 1;
-    let error = result.er_val::<ChildErr, _>(|value| value).unwrap_err();
+    let error = result.er_val::<ChildErr, _>(|v| v).unwrap_err();
 
     assert_eq!(error.top.0, 7);
     assert!(error.nodes.is_empty());
@@ -158,9 +173,7 @@ pub fn er_val() -> Result<(), ErReport<ChildErr>> {
 
     let text = String::from("owned");
     let original = text.as_ptr();
-    let error = Err::<(), _>(text)
-        .er_val::<FieldErr, _>(|value| value)
-        .unwrap_err();
+    let error = Err::<(), _>(text).er_val::<FieldErr, _>(|v| v).unwrap_err();
 
     assert_eq!(error.top.0.as_ptr(), original);
 
@@ -172,7 +185,7 @@ pub fn er_val() -> Result<(), ErReport<ChildErr>> {
     assert_eq!(code, 7);
 
     let error = Err::<(), _>(String::from("foreign"))
-        .er_val::<std::io::Error, _>(|value| er_built(std::io::Error::other(value)))
+        .er_val::<std::io::Error, _>(|v| er_built(std::io::Error::other(v)))
         .unwrap_err();
 
     assert_eq!(error.top.to_string(), "foreign");
@@ -289,7 +302,7 @@ pub fn local_roots() {
     );
 
     let status: Result<(), u8> = Err(7);
-    let mapped: ErResult<(), LocalErr> = status.er_val(|attempts| (Cell::new(attempts), "mapped"));
+    let mapped: ErResult<(), LocalErr> = status.er_val(|v| (Cell::new(v), "mapped"));
 
     assert_eq!(mapped.unwrap_err().top.attempts.get(), 7);
 
@@ -349,17 +362,22 @@ pub fn raw_context() {
 
 #[test]
 pub fn er_with() {
+    fn convert<T>(input: Result<T, ChildErr>, calls: &Cell<usize>) -> ErResult<T, ParentErr> {
+        let value = input.er_with(|err| {
+            calls.set(calls.get() + 1);
+            err.0
+        })?;
+        Ok(value)
+    }
+
     let calls = Cell::new(0);
     let ok: Result<u8, ChildErr> = Ok(7);
-    let result: ErResult<u8, ParentErr> = ok.er_with(|err| {
-        calls.set(calls.get() + 1);
-        err.0
-    });
+    let result = convert(ok, &calls);
     assert!(matches!(result, Ok(7)));
     assert_eq!(calls.get(), 0);
 
     let result: Result<(), ChildErr> = Err(ChildErr(1));
-    let error = result.er_with::<ParentErr, _>(|err| err.0).unwrap_err();
+    let error = convert(result, &calls).unwrap_err();
     assert_eq!(error.top.0, 1);
     assert_eq!(error.er_find::<ChildErr>().unwrap().0, 1);
 
@@ -382,7 +400,7 @@ pub fn er_with() {
     assert_eq!(error.er_find::<ChildErr>().unwrap().0, 3);
     assert_eq!(error.er_find_all::<ParentErr>().count(), 2);
 
-    let error: ErTree<ParentErr> = error.er_with(|old| er_built(ParentErr(old.0 + 1)));
+    let error: ErTree<ParentErr> = error.er_with(|err| er_built(ParentErr(err.0 + 1)));
     assert_eq!(error.top.0, 5);
 }
 

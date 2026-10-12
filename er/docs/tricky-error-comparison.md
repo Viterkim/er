@@ -1130,16 +1130,16 @@ We already made `ListenErr` with the cases and fields we want to give them, so w
 #[derive(Er)]
 #[er(format = "{report}")]
 pub struct ListenError {
-    #[er(into_top)]
     pub kind: ListenErr,
-
-    #[er(into_report_string)]
     pub report: String,
 }
 
 pub fn public_error_example(input: &str) -> Result<TcpListener, ListenError> {
-    listen(input).er_into(|tree| {
-        eprintln!("{}", tree.er_report());
+    listen(input).er_into(|report| {
+        let text = report.er_report_string();
+        eprintln!("{text}");
+
+        (report.tree.top, text)
     })
 }
 ```

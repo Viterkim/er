@@ -104,7 +104,7 @@ pub fn broken_formatter() {
             report: String,
         }
 
-        let result: Result<(), Saved> = Err::<(), _>(top).er_into(|_| ());
+        let result: Result<(), Saved> = Err::<(), _>(top).er_into(|report| report);
         let saved = result.unwrap_err();
         assert_eq!(saved.report, "ER_FMT_FAILED");
         assert_eq!(saved.kind.text, "broken");

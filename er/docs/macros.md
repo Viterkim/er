@@ -198,19 +198,26 @@ Want Display/Debug on the Wrap itself? Add `output = report` or `output = top`. 
 
 If the `er` crate has another name, give Wrap its path with `#[er(crate = other_name, wrap)]`.
 
-## Conversion / er_into
+## Saving diagnostics
 
 `#[er(into_top)]` moves the typed top into that field. `#[er(into_report_string)]` saves the full report as a `String`, or `#[er(into_snapshot)]` saves an `ErSnapshot` (it gets printed as a report too).
 
-`.er_into(|tree| ...)` runs the closure on errors, then fills in those fields. Return your remaining fields from the closure, like `.er_into(|_| (request_id, path))`, in field order. With none left, use `|_| {}`.
+These attributes generate `ErFromTree` for types you own. Return the report from `.er_into()` and Er fills those fields. Put any remaining fields next to it, in field order:
 
-If Rust can't infer the destination (like before `?`), use `.er_into::<ApiError>(...)`.
+```rust
+result.er_into(|report| report)
+result.er_into(|report| (report, (request_id, path)))
+```
+
+`#[er(into_report_string(single_line))]` saves one line. Plain `into_report_string` keeps the report's chosen layout. A foreign destination can take ordinary fields, like `.er_into(|report| report.er_report_string())`, without knowing your Er version.
 
 Converted structs and variants need a report or snapshot. Enum variants can accept different top types, unmarked variants stay ordinary.
 
 ## Public boundary optional source
 
 If you make an error at the public boundary(after you've used your report), and you want that error to contain a source, put `#[er(source)]` on that field. One source per struct or enum variant. Box, Rc and Arc return the error inside, an Option returns no source when it's None, and `skip` still controls the top error's formatting.
+
+For a generic pointer alias like `type Cause<E> = Arc<E>`, use `#[er(source(deref))]` to expose the pointed error. Rust resolves the alias and Er adds the bounds for its target.
 
 ```rust
 #[derive(Er)]
@@ -248,7 +255,7 @@ pub fn request(input: &str) -> ErResult<u16, RequestErr> {
 }
 ```
 
-If you need the old top, use `.er_with_wrap(|old| fields)`.
+If you need the old top, use `.er_with_wrap(|err| fields)`.
 
 For aggregation, take the tree out first with `.er_tree()` on the Result, or `.tree` on the Wrap.
 

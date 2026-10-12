@@ -268,11 +268,50 @@ pub struct DeviceContextErr {
     pub path: String,
 }
 
+pub struct RawValue(pub u8);
+
+#[derive(ErFormat)]
+pub struct Details(pub u16);
+impl From<RawValue> for Details {
+    fn from(value: RawValue) -> Self {
+        Self(u16::from(value.0) + 85)
+    }
+}
+
+#[derive(Er)]
+pub struct ValueErr {
+    pub path: String,
+    pub details: Details,
+}
+#[test]
+pub fn value_fields() {
+    fn convert(input: Result<u8, RawValue>, path: &str) -> ErResult<u8, ValueErr> {
+        input.er_val(|v| (path, v))
+    }
+
+    fn propagate(input: Result<u8, RawValue>, path: &str) -> ErResult<u8, ValueErr> {
+        let value = input.er_val(|v| (path, v))?;
+        Ok(value)
+    }
+
+    for tree in [
+        convert(Err(RawValue(7)), "device").unwrap_err(),
+        propagate(Err(RawValue(7)), "device").unwrap_err(),
+    ] {
+        assert_eq!(tree.top.path, "device");
+        assert_eq!(tree.top.details.0, 92);
+        assert!(tree.nodes.is_empty());
+    }
+
+    assert_eq!(convert(Ok(7), "device").unwrap_report(), 7);
+    assert_eq!(propagate(Ok(8), "device").unwrap_report(), 8);
+}
+
 #[test]
 pub fn previous_error_fields_and_aggregation() {
     fn from_previous(path: &str) -> ErResult<(), DeviceContextErr> {
         let result: Result<(), ExactConstructErr> = Err(ExactConstructErr::new(85, "device"));
-        result.er_with(|old| (old.count, path))?;
+        result.er_with(|err| (err.count, path))?;
         Ok(())
     }
 
@@ -284,14 +323,26 @@ pub fn previous_error_fields_and_aggregation() {
     assert!(error.er_contains::<ExactConstructErr>());
 
     let result: ErResult<(), FileConstructErr> =
-        Err(error).er_with(|old| er_built(FileConstructErr::new(&old.path)));
+        Err(error).er_with(|err| er_built(FileConstructErr::new(&err.path)));
     assert_eq!(result.unwrap_err().top.path, PathBuf::from("/dev/example"));
 
-    let result: ErResult<(), JobErr> = Err::<(), _>(FileConstructErr::new("config.toml"))
-        .er_with(|old| JobErr::file(&old.path, "bad"));
+    fn variant(input: Result<(), FileConstructErr>) -> ErResult<(), JobErr> {
+        input.er_with(|err| JobErr::file(&err.path, "bad"))?;
+        Ok(())
+    }
+
+    fn value_variant(input: Result<(), PathBuf>) -> ErResult<(), JobErr> {
+        input.er_val(|v| JobErr::file(v, "bad"))
+    }
+
+    let result = variant(Err(FileConstructErr::new("config.toml")));
     let tree = result.unwrap_err();
     assert!(matches!(&tree.top, JobErr::File { path, .. } if path == Path::new("config.toml")));
     assert!(tree.er_contains::<FileConstructErr>());
+
+    let mapped = value_variant(Err(PathBuf::from("config.toml"))).unwrap_err();
+    assert!(matches!(&mapped.top, JobErr::File { path, .. } if path == Path::new("config.toml")));
+    assert!(mapped.nodes.is_empty());
 
     let result: ErResult<(), JobErr> = Err::<(), _>(tree).er_with_tree(|tree| {
         JobErr::file(&tree.er_find::<FileConstructErr>().unwrap().path, "bad")
@@ -391,10 +442,10 @@ pub mod constants {
         let result: ErResult<(), Root> = Err::<(), _>(io::Error::other("stopped")).er(|_| "task");
         let wrapped_error = RootWrap::from(result.unwrap_err());
         let mut lines = Vec::new();
-        wrapped_error.for_each_line(|line| lines.push(line.to_owned()))?;
+        wrapped_error.for_each_line(|l| lines.push(l.to_owned()))?;
         assert!(lines.iter().any(|line| line.contains("stopped")));
 
-        let saved: Boundary = wrapped_error.er_into(|_| value);
+        let saved: Boundary = wrapped_error.er_into(|saved| (saved, value));
         match saved {
             Boundary::Saved { diagnostics, tag } => {
                 assert!(diagnostics.contains("stopped"));

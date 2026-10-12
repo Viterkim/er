@@ -247,6 +247,115 @@ pub fn results() {
 }
 
 #[test]
+pub fn borrows() {
+    use std::{ops::Deref, rc::Rc, sync::Arc};
+
+    fn view(
+        value: impl Deref<Target = ErSnapshot> + std::fmt::Display,
+        snapshot: &ErSnapshot,
+        text: &str,
+    ) {
+        assert!(std::ptr::eq(&*value, snapshot));
+        assert_eq!(value.to_string(), text);
+    }
+
+    macro_rules! check {
+        ($value:expr, $snapshot:expr, $report:expr, $top:expr $(,)?) => {{
+            let snapshot: &ErSnapshot = $snapshot;
+            let report: &str = $report;
+            let top: &str = $top;
+            let mut result = Err::<(), _>($value);
+            view(result.as_ref().er_report().unwrap_err(), snapshot, report);
+            view(result.as_mut().er_top().unwrap_err(), snapshot, top);
+            assert_eq!(result.as_ref().er_report_string().unwrap_err(), report);
+            assert_eq!(result.as_mut().er_report_string().unwrap_err(), report);
+
+            let saved = result.as_mut().er_snapshot().unwrap_err();
+            assert_eq!(saved, *snapshot);
+            assert_ne!(saved.entries.as_ptr(), snapshot.entries.as_ptr());
+        }};
+    }
+
+    let snapshot = ErTree::new(Message::new("top\nline"), [Message::new("child")]).er_snapshot();
+    check!(
+        &snapshot,
+        &snapshot,
+        &snapshot.er_report_string(),
+        &snapshot.er_top_string(),
+    );
+
+    let shared = Arc::new(snapshot.clone());
+    let local = Rc::new(snapshot.clone());
+    check!(
+        &shared,
+        &shared,
+        &snapshot.er_report_string(),
+        &snapshot.er_top_string(),
+    );
+    check!(
+        &local,
+        &local,
+        &snapshot.er_report_string(),
+        &snapshot.er_top_string(),
+    );
+
+    for layout in [Layout::Multiline, Layout::SingleLine] {
+        let report = snapshot.er_report().layout(layout);
+        let top = snapshot.er_top().layout(layout);
+        let expected = report.er_report_string();
+        let expected_top = top.er_top_string();
+        check!(&report, &snapshot, &expected, &expected_top);
+        check!(&top, &snapshot, &expected, &expected_top);
+
+        let mut borrowed = Err::<(), _>(&report);
+        let opaque = borrowed.as_ref().opaque_err().unwrap_err();
+        assert!(std::ptr::eq(opaque.0.snapshot, &snapshot));
+        assert_eq!(opaque.to_string(), expected);
+        assert_eq!(
+            borrowed.as_mut().opaque_err().unwrap_err().to_string(),
+            expected
+        );
+
+        let boxed = Box::new(report);
+        let shared = Arc::new(report);
+        let local = Rc::new(top);
+        let field = ErShared::new(report);
+        check!(&boxed, &snapshot, &expected, &expected_top);
+        check!(&shared, &snapshot, &expected, &expected_top);
+        check!(&local, &snapshot, &expected, &expected_top);
+        check!(&field, &snapshot, &expected, &expected_top);
+        assert_eq!(
+            Err::<(), _>(&shared).opaque_err().unwrap_err().to_string(),
+            expected
+        );
+        assert_eq!(
+            Err::<(), _>(&local).opaque_err().unwrap_err().to_string(),
+            expected_top
+        );
+
+        let shared = Arc::new(snapshot.clone().into_er_report().layout(layout));
+        let local = Rc::new(snapshot.clone().into_er_top().layout(layout));
+        check!(&shared, &shared.snapshot, &expected, &expected_top);
+        check!(&local, &local.snapshot, &expected, &expected_top);
+
+        let mut owned = snapshot.clone().into_er_report().layout(layout);
+        check!(&owned, &owned.snapshot, &expected, &expected_top);
+        let mut result = Err::<(), _>(&mut owned);
+        let view = result.as_ref().er_report().unwrap_err();
+        assert!(std::ptr::eq(
+            view.snapshot,
+            &result.as_ref().unwrap_err().snapshot
+        ));
+        assert_eq!(view.layout, layout);
+        assert_eq!(
+            result.as_ref().opaque_err().unwrap_err().to_string(),
+            expected
+        );
+        assert_eq!(result.as_mut().er_report_string().unwrap_err(), expected);
+    }
+}
+
+#[test]
 pub fn unwrap_messages() {
     fn panic_message(panic: Box<dyn std::any::Any + Send>) -> String {
         *panic.downcast::<String>().unwrap()
@@ -284,11 +393,7 @@ pub fn callbacks() {
     assert_eq!(messages, ["top", "child"]);
 
     let mut lines = Vec::new();
-    assert!(
-        report
-            .for_each_line(|line| lines.push(line.to_string()))
-            .is_ok()
-    );
+    assert!(report.for_each_line(|l| lines.push(l.to_string())).is_ok());
     assert_eq!(lines.join("\n"), report.to_string());
 
     let failure = String::from("stop");

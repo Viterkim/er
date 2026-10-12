@@ -182,16 +182,14 @@ pub fn top_output() {
     assert_eq!(format!("{wrapped:?}"), "TopOutputErr");
 
     let mut lines = Vec::new();
-    wrapped
-        .for_each_line(|line| lines.push(line.to_owned()))
-        .unwrap();
+    wrapped.for_each_line(|l| lines.push(l.to_owned())).unwrap();
     assert_eq!(lines, ["TopOutputErr"]);
     assert_eq!(
         wrapped.try_for_each_line(|_| Err(85)),
         Err(ErLineError::Callback(85))
     );
 
-    let mut result = Err::<(), _>(wrapped);
+    let mut result = Err::<(), _>(Box::new(wrapped));
     assert_eq!(
         result.as_ref().opaque_err().unwrap_err().to_string(),
         "TopOutputErr"
@@ -224,12 +222,10 @@ pub fn report_output() {
     assert_eq!(format!("{wrapped:?}"), displayed);
 
     let mut lines = Vec::new();
-    wrapped
-        .for_each_line(|line| lines.push(line.to_owned()))
-        .unwrap();
+    wrapped.for_each_line(|l| lines.push(l.to_owned())).unwrap();
     assert_eq!(lines.join("\n"), displayed);
 
-    let mut result = Err::<(), _>(wrapped);
+    let mut result = Err::<(), _>(Box::new(wrapped));
     assert_eq!(
         result.as_ref().opaque_err().unwrap_err().to_string(),
         displayed
@@ -296,9 +292,7 @@ pub fn std_error() {
     assert_eq!(wrapped.er_snapshot().entries.len(), 3);
 
     let mut lines = Vec::new();
-    wrapped
-        .for_each_line(|line| lines.push(line.to_owned()))
-        .unwrap();
+    wrapped.for_each_line(|l| lines.push(l.to_owned())).unwrap();
     assert_eq!(lines.join("\n"), expected);
 
     let failure = String::from("stop");
@@ -331,8 +325,8 @@ pub fn std_error() {
     );
 
     let _line = line!() + 1;
-    let result = Err::<(), _>(Box::new(wrapped)).er_with_wrap::<HandlerErr, _>(|old| {
-        assert_eq!(old.0, 85);
+    let result = Err::<(), _>(Box::new(wrapped)).er_with_wrap::<HandlerErr, _>(|err| {
+        assert_eq!(err.0, 85);
     });
     let tree = result.unwrap_err();
 
@@ -357,9 +351,9 @@ pub fn std_error() {
 
     let wrapped = StandardErrWrap::from(ErTree::new(StandardErr::new(85u8), [InnerErr]));
     let tree: ErTree<RequestErr> = Err::<(), _>(wrapped)
-        .er_with_wrap(|old| {
+        .er_with_wrap(|err| {
             er_built(RequestErr {
-                input: old.0.to_string(),
+                input: err.0.to_string(),
             })
         })
         .unwrap_err();
@@ -394,7 +388,7 @@ pub fn std_error() {
     assert!(!called);
 
     let wrapped = StandardErrWrap::from(ErTree::new(StandardErr::new(85u8), [InnerErr]));
-    let tree: ErTree<RequestErr> = wrapped.er_with_wrap(|old| old.0.to_string());
+    let tree: ErTree<RequestErr> = wrapped.er_with_wrap(|err| err.0.to_string());
     assert_eq!(tree.top.input, "85");
     assert!(tree.er_contains::<InnerErr>());
 
@@ -431,7 +425,7 @@ pub fn generic_wrap() {
 
     let result: Result<(), GenericWrap<u8>> = Err(wrapped);
     let tree = result
-        .er_with::<RequestErr, _>(|old| old.value.to_string())
+        .er_with::<RequestErr, _>(|err| err.value.to_string())
         .unwrap_err();
     assert_eq!(tree.top.input, "7");
     assert_eq!(tree.er_find::<GenericErr<u8>>().unwrap().value, 7);
@@ -442,7 +436,7 @@ pub fn generic_wrap() {
     assert!(tree.er_contains::<InnerErr>());
 
     let wrapped = GenericWrap::from(ErTree::new(GenericErr::new(9u8), [InnerErr]));
-    let tree = wrapped.er_with_wrap::<RequestErr, _>(|old| old.value.to_string());
+    let tree = wrapped.er_with_wrap::<RequestErr, _>(|err| err.value.to_string());
     assert_eq!(tree.top.input, "9");
 
     let wrapped = GenericWrap::from(ErTree::new(GenericErr::new(10u8), [InnerErr]));
@@ -472,9 +466,7 @@ pub fn borrowed_top() {
     assert_eq!(format!("{wrapped:?}"), "BorrowedErr { text: \"borrowed\" }");
 
     let mut lines = Vec::new();
-    wrapped
-        .for_each_line(|line| lines.push(line.to_owned()))
-        .unwrap();
+    wrapped.for_each_line(|l| lines.push(l.to_owned())).unwrap();
     assert_eq!(lines, [wrapped.to_string()]);
 
     let report: ErReport<BorrowedErr<'_>> = wrapped.into();

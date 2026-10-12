@@ -1,7 +1,7 @@
 #![allow(non_upper_case_globals)]
 
 use er::*;
-use std::{error::Error, fmt, io, marker::PhantomData, sync::Arc};
+use std::{error::Error, fmt, io, marker::PhantomData, rc::Rc, sync::Arc};
 
 #[derive(Er)]
 pub struct FileError {
@@ -58,6 +58,34 @@ pub enum AliasedError {
 pub struct BoxedError<E: ?Sized> {
     #[er(source)]
     pub cause: ::std::boxed::r#Box<E>,
+}
+
+pub type GenericBox<E> = Box<E>;
+pub type GenericRc<E> = Rc<E>;
+pub type GenericArc<E> = Arc<E>;
+
+#[derive(Er)]
+pub enum GenericAliasError<E: ?Sized> {
+    Boxed(#[er(source(deref))] GenericBox<E>),
+    Shared(#[er(source(deref))] GenericRc<E>),
+    Atomic(#[er(source(deref))] GenericArc<E>),
+    OptionalBox(#[er(source(deref))] Option<GenericBox<E>>),
+    OptionalRc(#[er(source(deref))] Option<GenericRc<E>>),
+    OptionalArc(#[er(source(deref))] Option<GenericArc<E>>),
+    Wrapped(#[er(source(deref))] Box<Self>),
+    OptionalWrapped(#[er(source(deref))] Option<Box<Self>>),
+}
+
+#[derive(Er)]
+pub struct PointerError<P> {
+    #[er(source(deref))]
+    pub cause: P,
+}
+
+#[derive(Er)]
+pub struct OptionalPointerError<P> {
+    #[er(source(deref))]
+    pub cause: Option<P>,
 }
 
 #[derive(Er)]
@@ -208,6 +236,65 @@ pub fn boxed() {
     for error in errors {
         assert!(error.source().is_some_and(|cause| cause.is::<io::Error>()));
     }
+}
+
+#[test]
+pub fn generic_aliases() {
+    for error in [
+        GenericAliasError::<io::Error>::boxed(Box::new(io::Error::other("boxed"))),
+        GenericAliasError::shared(Rc::new(io::Error::other("shared"))),
+        GenericAliasError::atomic(Arc::new(io::Error::other("atomic"))),
+        GenericAliasError::optional_box(Some(Box::new(io::Error::other("optional box")))),
+        GenericAliasError::optional_rc(Some(Rc::new(io::Error::other("optional rc")))),
+        GenericAliasError::optional_arc(Some(Arc::new(io::Error::other("optional arc")))),
+    ] {
+        let expected: &io::Error = match &error {
+            GenericAliasError::Boxed(cause) | GenericAliasError::OptionalBox(Some(cause)) => cause,
+            GenericAliasError::Shared(cause) | GenericAliasError::OptionalRc(Some(cause)) => cause,
+            GenericAliasError::Atomic(cause) | GenericAliasError::OptionalArc(Some(cause)) => cause,
+            _ => panic!("expected a direct source"),
+        };
+        let source = error.source().unwrap().downcast_ref::<io::Error>().unwrap();
+        assert!(std::ptr::eq(source, expected));
+        assert!(ErTree::from(error).er_contains::<io::Error>());
+    }
+
+    let cause: Box<dyn Error + Send + Sync> = Box::new(io::Error::other("dynamic"));
+    let error = GenericAliasError::<dyn Error + Send + Sync>::boxed(cause);
+    assert!(error.source().is_some_and(|cause| cause.is::<io::Error>()));
+
+    let error = GenericAliasError::<io::Error>::Wrapped(Box::new(GenericAliasError::boxed(
+        Box::new(io::Error::other("wrapped")),
+    )));
+    assert!(ErTree::from(error).er_contains::<io::Error>());
+
+    let error = GenericAliasError::<io::Error>::OptionalWrapped(Some(Box::new(
+        GenericAliasError::boxed(Box::new(io::Error::other("optional wrapped"))),
+    )));
+    assert!(ErTree::from(error).er_contains::<io::Error>());
+
+    for error in [
+        GenericAliasError::<io::Error>::OptionalBox(None),
+        GenericAliasError::OptionalRc(None),
+        GenericAliasError::OptionalArc(None),
+        GenericAliasError::OptionalWrapped(None),
+    ] {
+        assert!(error.source().is_none());
+    }
+
+    let cause = Arc::new(io::Error::other("pointer"));
+    let error = PointerError::<Arc<io::Error>>::new(cause.clone());
+    let source = error.source().unwrap().downcast_ref::<io::Error>().unwrap();
+    assert!(std::ptr::eq(source, &*cause));
+
+    let error = OptionalPointerError::<Arc<io::Error>>::new(Some(cause.clone()));
+    let source = error.source().unwrap().downcast_ref::<io::Error>().unwrap();
+    assert!(std::ptr::eq(source, &*cause));
+    assert!(
+        OptionalPointerError::<Arc<io::Error>>::new(None)
+            .source()
+            .is_none()
+    );
 }
 
 #[test]

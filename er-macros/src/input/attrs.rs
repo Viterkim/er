@@ -15,10 +15,16 @@ pub enum IntoField {
     Snapshot,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SourceMode {
+    Normal,
+    Deref,
+}
+
 pub struct FieldOptions {
     pub mode: FieldMode,
     pub exact: bool,
-    pub source: bool,
+    pub source: Option<SourceMode>,
     pub into: Option<IntoField>,
 }
 
@@ -225,7 +231,7 @@ pub fn field(attributes: &[Attribute]) -> Result<FieldOptions> {
 
     let mut mode = FieldMode::Normal;
     let mut exact = false;
-    let mut source = false;
+    let mut source = None;
     let mut into = None;
 
     for attribute in er_attributes(attributes) {
@@ -274,13 +280,32 @@ pub fn field(attributes: &[Attribute]) -> Result<FieldOptions> {
             }
 
             if meta.path.is_ident("source") {
-                if source {
+                if source.is_some() {
                     return Err(meta.error("`source` is set more than once"));
+                }
+                let mut mode = SourceMode::Normal;
+                if meta.input.peek(syn::token::Paren) {
+                    meta.parse_nested_meta(|inner| {
+                        if !inner.path.is_ident("deref") {
+                            return Err(inner.error("expected `deref`"));
+                        }
+                        if mode == SourceMode::Deref {
+                            return Err(inner.error("`deref` is set more than once"));
+                        }
+                        if !inner.input.is_empty() && !inner.input.peek(syn::token::Comma) {
+                            return Err(inner.error("`deref` takes no value"));
+                        }
+                        mode = SourceMode::Deref;
+                        Ok(())
+                    })?;
+                    if mode == SourceMode::Normal {
+                        return Err(meta.error("expected `source(deref)`"));
+                    }
                 }
                 if !meta.input.is_empty() && !meta.input.peek(syn::token::Comma) {
                     return Err(meta.error("`source` takes no value"));
                 }
-                source = true;
+                source = Some(mode);
                 return Ok(());
             }
 

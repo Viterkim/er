@@ -90,6 +90,18 @@ pub fn expand(
                     #er_path::IntoErPart::into_er_part(#tree)
                 }
             }
+            impl #node_impl #er_path::IntoErPart for #alloc::boxed::Box<#wrap #type_generics> #node_where {
+                type Error = #stored;
+
+                fn er_error(&self) -> &#stored {
+                    &self.tree.top
+                }
+
+                #[track_caller]
+                fn into_er_part(self) -> #er_path::ErPart {
+                    #er_path::IntoErPart::into_er_part(*self)
+                }
+            }
             impl #context_impl #er_path::ErTreeContextExt<#mode> for #wrap #type_generics #context_where {
                 #[track_caller]
                 fn er<#new_top>(self, #top: impl #er_path::ErMake<#new_top, #mode>) -> #er_path::ErTree<#new_top>

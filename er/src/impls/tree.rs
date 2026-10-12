@@ -133,7 +133,7 @@ impl<E: Error + 'static> ErTree<E> {
 
     /// Finds all the instances of an error type, for when you have duplicates.
     ///
-    /// `error.er_find_all::<PortErr>().find(|e| e.input == "aint_even_a_number_cmon_man")`
+    /// `error.er_find_all::<PortErr>().find(|err| err.input == "aint_even_a_number_cmon_man")`
     pub fn er_find_all<T: Error + 'static>(&self) -> ErFindAll<'_, T> {
         ErFindAll::new(&self.top, &self.nodes)
     }

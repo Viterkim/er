@@ -37,7 +37,7 @@ pub fn lines() -> fmt::Result {
         let expected = parts.concat();
         let mut lines = Vec::new();
         let display: &dyn fmt::Display = &value;
-        lines::for_each_line(display, |line| lines.push(line.to_owned()))?;
+        lines::for_each_line(display, |l| lines.push(l.to_owned()))?;
 
         assert_eq!(lines, expected.lines().collect::<Vec<_>>());
         assert_eq!(value.calls.get(), 1);
@@ -76,8 +76,8 @@ pub fn callback_failure() {
     assert_eq!(calls, 1);
 
     let mut lines = Vec::new();
-    let result = tree.into_er_report().try_for_each_line(|line| {
-        lines.push(line.to_owned());
+    let result = tree.into_er_report().try_for_each_line(|l| {
+        lines.push(l.to_owned());
 
         if lines.len() == 2 {
             return Err(17);
@@ -89,8 +89,8 @@ pub fn callback_failure() {
     assert_eq!(result, Err(ErLineError::Callback(17)));
     assert_eq!(lines, ["first", "second"]);
 
-    let result = lines::try_for_each_line(&"unterminated", |line| {
-        assert_eq!(line, "unterminated");
+    let result = lines::try_for_each_line(&"unterminated", |l| {
+        assert_eq!(l, "unterminated");
         Err(&stop)
     });
 
@@ -111,7 +111,7 @@ pub fn chunks() -> fmt::Result {
 
     report.tree.top.calls.set(0);
     let mut lines = Vec::new();
-    report.for_each_line(|line| lines.push(line.to_owned()))?;
+    report.for_each_line(|l| lines.push(l.to_owned()))?;
 
     assert_eq!(lines, expected.lines().collect::<Vec<_>>());
     assert_eq!(report.tree.top.calls.get(), 1);
@@ -134,7 +134,7 @@ pub fn format_failure() {
     let mut lines = Vec::new();
     let outcome = ErTree::from(Broken)
         .into_er_top()
-        .for_each_line(|line| lines.push(line.to_owned()));
+        .for_each_line(|l| lines.push(l.to_owned()));
 
     assert_eq!(outcome, Err(fmt::Error));
     assert_eq!(lines, ["done"]);

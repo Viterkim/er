@@ -1,17 +1,49 @@
 #[cfg(feature = "stack_traces")]
+use crate::ErStackTrace;
+#[cfg(feature = "stack_traces")]
 use crate::impls::stack_trace::append_traces;
 use crate::{ErInput, ErMake, ErNode, ErResult, ErTree};
 use alloc::vec::Vec;
 use core::error::Error;
 
-/// The collection loop behind `er_all!`.
+#[doc(hidden)]
+pub struct CollectedErrors {
+    pub nodes: Vec<ErNode>,
+    #[cfg(feature = "stack_traces")]
+    pub stack_traces: Vec<ErStackTrace>,
+}
+impl CollectedErrors {
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
+    }
+
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    pub fn into_tree<A: Error + 'static>(self, top: A) -> ErTree<A> {
+        ErTree {
+            nodes: self.nodes,
+            #[cfg(feature = "stack_traces")]
+            stack_traces: self.stack_traces,
+            ..ErTree::from(top)
+        }
+    }
+
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    pub fn finish<A, Mode>(self, top: impl ErMake<A, Mode>) -> ErResult<(), A>
+    where
+        A: Error + 'static,
+    {
+        if self.is_empty() {
+            Ok(())
+        } else {
+            Err(self.into_tree(top.er_make()))
+        }
+    }
+}
+
+#[doc(hidden)]
 #[cfg_attr(feature = "src_locations", track_caller)]
-pub fn collect<A, E, T, Input, Mode>(
-    top: impl ErMake<A, Mode>,
-    results: impl IntoIterator<Item = Result<T, E>>,
-) -> ErResult<(), A>
+pub fn gather<E, T, Input>(results: impl IntoIterator<Item = Result<T, E>>) -> CollectedErrors
 where
-    A: Error + 'static,
     E: ErInput<Input>,
 {
     let mut nodes: Vec<ErNode> = Vec::new();
@@ -44,14 +76,22 @@ where
         }
     }
 
-    if nodes.is_empty() {
-        Ok(())
-    } else {
-        Err(ErTree {
-            nodes,
-            #[cfg(feature = "stack_traces")]
-            stack_traces: traces,
-            ..ErTree::from(top.er_make())
-        })
+    CollectedErrors {
+        nodes,
+        #[cfg(feature = "stack_traces")]
+        stack_traces: traces,
     }
+}
+
+/// The collection loop behind `er_all!`.
+#[cfg_attr(feature = "src_locations", track_caller)]
+pub fn collect<A, E, T, Input, Mode>(
+    top: impl ErMake<A, Mode>,
+    results: impl IntoIterator<Item = Result<T, E>>,
+) -> ErResult<(), A>
+where
+    A: Error + 'static,
+    E: ErInput<Input>,
+{
+    gather(results).finish(top)
 }

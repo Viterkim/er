@@ -56,7 +56,7 @@ pub fn converted_fields<'a, 'item>(
     {
         return Err(Error::new_spanned(
             case.shape,
-            "`.er_into()` needs an `into_report_string` or `into_snapshot` field to save diagnostics",
+            "converted errors need an `into_report_string` or `into_snapshot` field to save diagnostics",
         ));
     }
 
@@ -106,7 +106,7 @@ pub fn implementation(input: &Input<'_>, path: &Path) -> syn::Result<TokenStream
                 if bound_key(ty).is_some_and(|key| !sources.insert(key)) {
                     return Err(Error::new_spanned(
                         field.item,
-                        "these variants accept the same top type, so `.er_into()` cannot choose between them",
+                        "these converted variants accept the same top type",
                     ));
                 }
                 ty.clone()
@@ -115,7 +115,7 @@ pub fn implementation(input: &Input<'_>, path: &Path) -> syn::Result<TokenStream
                 if cases.len() > 1 {
                     return Err(Error::new_spanned(
                         case.shape,
-                        "multiple converted variants need distinct `into_top` types so `.er_into()` can choose one",
+                        "multiple converted variants need distinct `into_top` types",
                     ));
                 }
                 generics.params.push(parse_quote!(#source));

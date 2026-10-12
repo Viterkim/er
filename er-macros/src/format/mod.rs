@@ -17,7 +17,7 @@ pub fn expand(item: &DeriveInput) -> Result<TokenStream> {
                 "use derive(Er) for `into_*` fields",
             ));
         }
-        if field.options.source {
+        if field.options.source.is_some() {
             return Err(Error::new_spanned(
                 field.item,
                 "use derive(Er) for `source`, ErFormat does not implement Error",

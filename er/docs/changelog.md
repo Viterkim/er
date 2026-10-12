@@ -1,5 +1,7 @@
 # 0.8.0
 
+`.er_into()` now gets the owned report and accepts field builders, like `.er_into(|report| report.er_report_string())`. Return `report` for automatic `into_*` filling, or `(report, fields)` for extra fields. Finished errors use `er_built(...)`, same as `.er_with()` and `.er_val()`. Foreign destinations need no Er conversion trait.
+
 Also use the tuple helpers with `.er_val()` like `.er_val(|v| (path, v))`, same for `aggregate::collect()` but just use `er_all!()`.
 
 Snapshot Results get the printing and unwrap helpers, `ErSnapshotReport` and `ErSnapshotTop` now own the snapshot, the borrowed forms end in `Ref`.
@@ -8,7 +10,7 @@ Add the missing 'helper functions' on ref/mut variants.
 
 # 0.7.0
 
-`.er_with()` takes fields now, example: `.er_with(|old| (old.code, path))`. Use `er_built(...)` if you assemble the whole error yourself. Same for the tree and Wrap forms.
+`.er_with()` takes fields now, example: `.er_with(|err| (err.code, path))`. Use `er_built(...)` if you assemble the whole error yourself. Same for the tree and Wrap forms.
 
 Add the `er-unsync` crate which is the same api with Rc sharing and stored errors without Send/Sync requirements.
 
@@ -58,9 +60,9 @@ New `.er_add([error])` instead of `with_part` and `push_part`.
 
 `er_add!(tree, [first, second])` added (mixed types and results behind the `macros` feature).
 
-`.er_with(|err|)` now gets the 'top' error instead of the tree. So `err.top.path` is now `err.path` (If you need the old one, you can use `.er_with_tree(|t|)`).
+`.er_with(|err|)` now gets the 'top' error instead of the tree. So `err.top.path` is now `err.path` (If you need the old one, you can use `.er_with_tree(|tree|)`).
 
-Add `ErShared<T>` for sharing data between errors by passing `&old.field` (used with `.er_with(|old|)`).
+Add `ErShared<T>` for sharing data between errors by passing `&err.field` (used with `.er_with(|err|)`).
 
 # 0.3.0
 
@@ -118,7 +120,7 @@ Readme and docs changes.
 
 Optional serde for snapshots.
 
-Add `.er_with(|t|)` / `.er_with(|err|)` to copy fields off the previous error, without `map_err` accidentally destroying the tree.
+Add `.er_with(|tree|)` / `.er_with(|err|)` to copy fields off the previous error, without `map_err` accidentally destroying the tree.
 
 # 0.1.2
 

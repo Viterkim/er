@@ -38,15 +38,29 @@ pub fn without_derives() {
     let root = ErTree::from(Error::other("fresh"));
     assert!(root.nodes.is_empty());
 
-    struct SavedText(String);
-    impl ErFromTree<Error> for SavedText {
-        fn er_from_tree(tree: ErTree<Error>, _: ()) -> Self {
-            Self(tree.er_report_string())
+    struct SavedText(String, Error);
+    impl From<((String, Error),)> for SavedText {
+        fn from(((text, err),): ((String, Error),)) -> Self {
+            Self(text, err)
         }
     }
 
-    let saved: SavedText = read_port("bad").er_report().er_into(|_| {}).unwrap_err();
+    let saved: SavedText = read_port("bad")
+        .er_report()
+        .unwrap_err()
+        .single_line()
+        .er_into(|report| {
+            let text = report.er_report_string();
+            (text, report.tree.top)
+        });
     assert!(saved.0.contains("invalid digit"));
+    assert!(!saved.0.contains('\n'));
+    assert_eq!(saved.1.to_string(), "port");
+
+    let success: Result<u16, SavedText> = read_port("85").er_into(|_| -> (String, Error) {
+        panic!("boundary constructor ran for a successful result");
+    });
+    assert_eq!(success.ok(), Some(85));
 
     let error = Error::other("source").er::<Error>(|| Error::other("context"));
     assert_eq!(error.top.to_string(), "context");

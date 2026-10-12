@@ -3,6 +3,23 @@ use er::*;
 use std::io;
 
 #[test]
+pub fn unit() -> ErTest {
+    let value = Ok::<_, ()>(85).er_test()?;
+    assert_eq!(value, 85);
+
+    let line = line!() + 1;
+    let err = Err::<(), _>(()).er_test().unwrap_err();
+    assert!(err.tree.nodes.is_empty());
+
+    #[cfg(feature = "src_locations")]
+    assert_eq!(err.tree.src_location.line(), line);
+    #[cfg(not(feature = "src_locations"))]
+    let _ = line;
+
+    Ok(())
+}
+
+#[test]
 pub fn nested_helpers() {
     fn inner(line: &mut u32) -> ErTest {
         *line = line!() + 1;
@@ -33,9 +50,7 @@ pub fn nested_helpers() {
     assert_eq!(report, error.er_report().to_string());
 
     let mut lines = Vec::new();
-    error
-        .for_each_line(|line| lines.push(line.to_owned()))
-        .unwrap();
+    error.for_each_line(|l| lines.push(l.to_owned())).unwrap();
     assert_eq!(lines.join("\n"), report);
 
     let failure = String::from("stop");
@@ -58,6 +73,7 @@ pub fn nested_helpers() {
         snapshot
     );
     let error = Err::<(), _>(error.into_er_tree()).er_test().unwrap_err();
+    let error = Err::<(), _>(Box::new(error)).er_test().unwrap_err();
     let opaque = Err::<(), _>(error).opaque_err().unwrap_err();
     assert_eq!(opaque.to_string(), report);
     assert!(core::error::Error::source(&opaque).is_none());
@@ -179,7 +195,7 @@ pub fn helpers() -> ErTest {
     assert_eq!(error.top.to_string(), "port");
 
     let error = read_port("bad")
-        .er_with::<io::Error, _>(|old| er_built(io::Error::other(old.to_string())))
+        .er_with::<io::Error, _>(|err| er_built(io::Error::other(err.to_string())))
         .unwrap_err();
     assert_eq!(error.top.to_string(), "TestError");
     assert!(error.er_contains::<ParseIntError>());
@@ -190,9 +206,9 @@ pub fn helpers() -> ErTest {
     assert!(error.er_contains::<ParseIntError>());
 
     let error = read_port("bad")
-        .er_with_tree::<io::Error, _>(|old| {
+        .er_with_tree::<io::Error, _>(|tree| {
             er_built(io::Error::other(
-                old.er_find::<ParseIntError>().unwrap().to_string(),
+                tree.er_find::<ParseIntError>().unwrap().to_string(),
             ))
         })
         .unwrap_err();

@@ -13,7 +13,7 @@ name = "anyhow-integration"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "er",
+ "er 0.8.0",
 ]
 
 [[package]]
@@ -79,7 +79,15 @@ name = "axum-integration"
 version = "0.0.0"
 dependencies = [
  "axum",
- "er",
+ "er 0.8.0",
+]
+
+[[package]]
+name = "boundary"
+version = "0.0.0"
+dependencies = [
+ "er 0.7.0",
+ "er 0.8.0",
 ]
 
 [[package]]
@@ -92,7 +100,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 name = "compile-tests"
 version = "0.0.0"
 dependencies = [
- "er",
+ "er 0.8.0",
  "trybuild",
 ]
 
@@ -104,9 +112,30 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "er"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b05d3e6ad29a2d930a36942d16f8772bd1595cf2c4cdc87dfef253812b33a85"
+dependencies = [
+ "er-macros 0.7.0",
+]
+
+[[package]]
+name = "er"
 version = "0.8.0"
 dependencies = [
- "er-macros",
+ "er-macros 0.8.0",
+]
+
+[[package]]
+name = "er-macros"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec9fc5f90870584229147ca1ce70092789b92954084b126b2648b2f862f83788"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -123,7 +152,7 @@ dependencies = [
 name = "er-unsync"
 version = "0.8.0"
 dependencies = [
- "er-macros",
+ "er-macros 0.8.0",
 ]
 
 [[package]]
@@ -321,7 +350,7 @@ dependencies = [
 name = "no-std"
 version = "0.0.0"
 dependencies = [
- "er",
+ "er 0.8.0",
 ]
 
 [[package]]
@@ -652,7 +681,7 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 name = "unsync"
 version = "0.0.0"
 dependencies = [
- "er",
+ "er 0.8.0",
  "er-unsync",
 ]
 

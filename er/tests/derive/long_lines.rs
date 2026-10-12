@@ -74,7 +74,7 @@ pub fn long_lines() -> fmt::Result {
 
     let mut lines = Vec::new();
     tree.er_report()
-        .for_each_line(|line| lines.push(line.to_owned()))?;
+        .for_each_line(|l| lines.push(l.to_owned()))?;
 
     assert_eq!(lines, [report]);
 

@@ -11,6 +11,6 @@ macro_rules! er_try {
         $crate::er_all!($top, [])
     }};
     ($top:expr, [$($result:expr),+ $(,)?] $(,)?) => {{
-        $crate::__er_try_results!($crate, $top, [$($result),*])
+        $crate::__er_try_results!($crate, [$($result),*], $top)
     }};
 }

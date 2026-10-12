@@ -56,6 +56,7 @@ pub fn methods(input: &Input<'_>) -> syn::Result<TokenStream> {
 
         methods.push(quote! {
             #[must_use]
+            #[allow(unreachable_code)]
             pub fn #method(#(#parameters),*) -> Self {
                 #body
             }
@@ -182,6 +183,7 @@ pub fn from_fields(input: &Input<'_>) -> TokenStream {
             #shields
 
             impl #impl_generics ::core::convert::From<(#payload,)> for #name #type_generics #where_clause {
+                #[allow(unreachable_code)]
                 fn from((#pattern,): (#payload,)) -> Self {
                     #body
                 }

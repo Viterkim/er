@@ -80,7 +80,7 @@ fn live_and_saved() -> core::fmt::Result {
         assert_eq!(live.to_string(), expected);
         assert_eq!(saved.to_string(), expected);
         let mut lines = Vec::new();
-        live.for_each_line(|line| lines.push(line.to_owned()))?;
+        live.for_each_line(|l| lines.push(l.to_owned()))?;
         assert_eq!(lines, [expected.as_str()]);
     }
     assert_eq!(tree.er_top().to_string(), message);

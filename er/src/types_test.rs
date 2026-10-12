@@ -16,3 +16,6 @@ pub struct ErTestError;
 /// The Option was None.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct ErTestOptionNone;
+
+#[doc(hidden)]
+pub struct ErTestUnit;

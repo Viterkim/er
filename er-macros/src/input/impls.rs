@@ -19,7 +19,11 @@ impl<'a> Case<'a> {
         for item in shape {
             let mut options = attrs::field(&item.attrs)?;
             options.exact |= exact_type(&item.ty, type_names);
-            if options.source && fields.iter().any(|field: &Field<'_>| field.options.source) {
+            if options.source.is_some()
+                && fields
+                    .iter()
+                    .any(|field: &Field<'_>| field.options.source.is_some())
+            {
                 return Err(syn::Error::new_spanned(
                     item,
                     "choose one source field per struct or enum variant",

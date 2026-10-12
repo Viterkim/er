@@ -50,10 +50,10 @@ pub fn save(device: &Rc<RefCell<Device>>) -> ErResult<(), SaveErr> {
 
 pub fn diagnostic(device: &Rc<RefCell<Device>>) -> ErResult<(), AppErr> {
     let result = save(device).map_err(SaveErrWrap::from);
-    let result = result.er_with::<BoundaryErr, _>(|old| old.device.clone());
+    let result = result.er_with::<BoundaryErr, _>(|err| err.device.clone());
     let result = result.map_err(BoundaryErrWrap::from);
 
-    result.er_with_wrap(|old| old.device.clone())
+    result.er_with_wrap(|err| err.device.clone())
 }
 
 #[cfg(test)]
@@ -69,8 +69,7 @@ pub mod tests {
     #[test]
     pub fn chain() {
         let device = Rc::new(RefCell::new(Device { port: 8 }));
-        let value: ErResult<(), DeviceErr> =
-            Err::<(), _>(Rc::clone(&device)).er_val(|device| (device, 85));
+        let value: ErResult<(), DeviceErr> = Err::<(), _>(Rc::clone(&device)).er_val(|v| (v, 85));
 
         assert!(Rc::ptr_eq(&device, &value.unwrap_err().top.device.value));
 
@@ -95,7 +94,7 @@ pub mod tests {
         let saved: Rc<SavedErr> = tree
             .into_er_report()
             .single_line()
-            .er_into(|_| Rc::clone(&device));
+            .er_into(|report| (report, Rc::clone(&device)));
         assert_eq!(saved.report, expected);
         assert_eq!(saved.kind.device.borrow().port, 9);
         assert!(Rc::ptr_eq(&device, &saved.device));
@@ -117,7 +116,7 @@ pub mod tests {
         let expected = wrapped.to_string();
         let mut lines = Vec::new();
         wrapped
-            .for_each_line(|line| lines.push(line.to_string()))
+            .for_each_line(|l| lines.push(l.to_string()))
             .unwrap();
         assert_eq!(lines.join("\n"), expected);
         assert_eq!(
@@ -129,9 +128,9 @@ pub mod tests {
         );
 
         let tree: ErTree<AppErr> = Err::<(), _>(wrapped)
-            .er_with_wrap(|old| {
+            .er_with_wrap(|err| {
                 er_built(AppErr {
-                    device: old.device.clone(),
+                    device: err.device.clone(),
                 })
             })
             .unwrap_err();
@@ -150,8 +149,8 @@ pub mod tests {
         assert_eq!(tree.er_find_all::<DeviceErr>().count(), 2);
         let tree: ErTree<AppErr> = tree
             .into_er_top()
-            .er_with_tree::<AppErr, _>(|old| old.er_find::<DeviceErr>().unwrap().device.clone());
-        let tree: ErTree<AppErr> = tree.into_er_report().er_with(|old| old.device.clone());
+            .er_with_tree::<AppErr, _>(|tree| tree.er_find::<DeviceErr>().unwrap().device.clone());
+        let tree: ErTree<AppErr> = tree.into_er_report().er_with(|err| err.device.clone());
         let node = tree.into_er_part();
         assert!(node.er_error().is::<AppErr>());
 
@@ -182,7 +181,7 @@ pub mod tests {
 
         let tree = threaded::ErTree::new(ThreadErr, [fmt::Error]).er_trace();
         let wrapped = ThreadErrWrap::from(tree);
-        let report: ThreadReport = std::thread::spawn(move || wrapped.er_into(|_| {}))
+        let report: ThreadReport = std::thread::spawn(move || wrapped.er_into(|report| report))
             .join()
             .unwrap();
         assert!(report.report.contains("ThreadErr"));
@@ -218,16 +217,16 @@ pub mod tests {
                 + fmt::Display,
         {
             let result = Err::<(), _>(make());
-            let tree: ErResult<(), AppErr> = result.er_with(|old| {
-                assert_eq!(old.to_string(), fmt::Error.to_string());
+            let tree: ErResult<(), AppErr> = result.er_with(|err| {
+                assert_eq!(err.to_string(), fmt::Error.to_string());
                 device
             });
             assert!(tree.unwrap_err().er_contains::<fmt::Error>());
 
             let tree: ErTree<AppErr> = make().er(|_| device);
             assert!(tree.er_contains::<fmt::Error>());
-            let tree: ErTree<AppErr> = make().er_with(|old| {
-                assert_eq!(old.to_string(), fmt::Error.to_string());
+            let tree: ErTree<AppErr> = make().er_with(|err| {
+                assert_eq!(err.to_string(), fmt::Error.to_string());
                 device
             });
             assert!(tree.er_contains::<fmt::Error>());

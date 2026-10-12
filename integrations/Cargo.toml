@@ -6,6 +6,7 @@ members = [
     "no-std",
     "compile-tests",
     "unsync",
+    "boundary",
 ]
 exclude = ["no-src-locations"]
 

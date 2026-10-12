@@ -151,6 +151,25 @@ pub fn borrowed_results() {
         check(report, &tree, &expected);
         check::<&ErReportRef<'_, _>>(&report, &tree, &expected);
 
+        let mut borrowed = Err::<(), _>(&report);
+        let opaque = borrowed.as_ref().opaque_err().unwrap_err();
+        assert!(ptr::eq(opaque.0.tree, &tree));
+        assert_eq!(opaque.to_string(), expected);
+        assert_eq!(
+            borrowed.as_mut().opaque_err().unwrap_err().to_string(),
+            expected
+        );
+
+        let shared = std::sync::Arc::new(report);
+        let local = std::rc::Rc::new(top);
+        let opaque = Err::<(), _>(&shared).opaque_err().unwrap_err();
+        assert!(ptr::eq(opaque.0.tree, &tree));
+        assert_eq!(opaque.to_string(), expected);
+        assert_eq!(
+            Err::<(), _>(&local).opaque_err().unwrap_err().to_string(),
+            "AppErr"
+        );
+
         let report: ErReportRef<'_, _> = propagate(Err::<(), _>(top)).unwrap_err();
         let top: ErTopRef<'_, _> = propagate(Err::<(), _>(report)).unwrap_err();
         assert!(ptr::eq(top.tree, &tree));
@@ -352,7 +371,7 @@ pub fn display_only() -> fmt::Result {
     assert!(Error::source(&adapter).is_none());
 
     let mut lines = Vec::new();
-    top.for_each_line(|line| lines.push(line.to_owned()))?;
+    top.for_each_line(|l| lines.push(l.to_owned()))?;
 
     assert_eq!(lines, ["first", "second"]);
     assert_eq!(
@@ -363,7 +382,7 @@ pub fn display_only() -> fmt::Result {
     let owned = tree.into_er_top();
     assert_eq!(format!("{owned:?}"), text);
     lines.clear();
-    owned.for_each_line(|line| lines.push(line.to_owned()))?;
+    owned.for_each_line(|l| lines.push(l.to_owned()))?;
 
     assert_eq!(lines, ["first", "second"]);
     assert_eq!(

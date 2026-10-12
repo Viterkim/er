@@ -1,7 +1,8 @@
-use crate::{ErFromTree, ErReport, ErShared, ErTree};
+use crate::{ErFromTree, ErOpaqueErrorExt, ErReport, ErShared, ErSnapshot, ErTree, IntoErSnapshot};
+use alloc::rc::Rc;
 #[cfg(er_unsync)]
 use alloc::rc::Rc as Shared;
-#[cfg(all(er_unsync, target_has_atomic = "ptr"))]
+#[cfg(target_has_atomic = "ptr")]
 use alloc::sync::Arc;
 #[cfg(not(er_unsync))]
 use alloc::sync::Arc as Shared;
@@ -75,6 +76,46 @@ impl<T: fmt::Display + ?Sized> fmt::Display for ErShared<T> {
         fmt::Display::fmt(&**self, formatter)
     }
 }
+
+macro_rules! borrowed_presentation {
+    ($pointer:ident) => {
+        impl<'a, P: ?Sized> IntoErSnapshot for &'a $pointer<P>
+        where
+            &'a P: IntoErSnapshot,
+        {
+            type Top = <&'a P as IntoErSnapshot>::Top;
+            type Report = <&'a P as IntoErSnapshot>::Report;
+
+            fn into_er_snapshot(self) -> ErSnapshot {
+                <&'a P as IntoErSnapshot>::into_er_snapshot(self)
+            }
+
+            fn into_er_top(self) -> Self::Top {
+                <&'a P as IntoErSnapshot>::into_er_top(self)
+            }
+
+            fn into_er_report(self) -> Self::Report {
+                <&'a P as IntoErSnapshot>::into_er_report(self)
+            }
+        }
+
+        impl<'a, P: ?Sized> ErOpaqueErrorExt for &'a $pointer<P>
+        where
+            &'a P: ErOpaqueErrorExt,
+        {
+            type Output = <&'a P as ErOpaqueErrorExt>::Output;
+
+            fn opaque_err(self) -> Self::Output {
+                <&'a P as ErOpaqueErrorExt>::opaque_err(self)
+            }
+        }
+    };
+}
+
+borrowed_presentation!(Rc);
+#[cfg(target_has_atomic = "ptr")]
+borrowed_presentation!(Arc);
+borrowed_presentation!(ErShared);
 
 impl<E, A: ErFromTree<E, Input>, Input> ErFromTree<E, Input> for Shared<A> {
     fn er_from_tree(tree: ErTree<E>, input: Input) -> Self {

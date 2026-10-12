@@ -1,10 +1,48 @@
 use crate::{
-    ErOpaqueErrorExt, ErReport, ErReportRef, ErSnapshot, ErTop, ErTree, IntoErSnapshot, IntoErTree,
-    IntoErTreeRef,
+    ErOpaqueErrorExt, ErPart, ErReport, ErReportRef, ErSnapshot, ErTop, ErTree, IntoErPart,
+    IntoErSnapshot, IntoErTree, IntoErTreeRef,
 };
 #[cfg(feature = "test")]
 use crate::{ErTestError, ErTestFailure};
 use alloc::boxed::Box;
+
+macro_rules! forward_part {
+    ($($view:ident),+ $(,)?) => {
+        $(
+            impl<E> IntoErPart for Box<$view<E>>
+            where
+                $view<E>: IntoErPart,
+            {
+                type Error = <$view<E> as IntoErPart>::Error;
+
+                fn er_error(&self) -> &Self::Error {
+                    <$view<E> as IntoErPart>::er_error(self)
+                }
+
+                #[cfg_attr(feature = "src_locations", track_caller)]
+                fn into_er_part(self) -> ErPart {
+                    <$view<E> as IntoErPart>::into_er_part(*self)
+                }
+            }
+        )+
+    };
+}
+
+forward_part!(ErTree, ErTop, ErReport);
+
+#[cfg(feature = "test")]
+impl IntoErPart for Box<ErTestFailure> {
+    type Error = ErTestError;
+
+    fn er_error(&self) -> &ErTestError {
+        &self.tree.top
+    }
+
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn into_er_part(self) -> ErPart {
+        self.tree.into_er_part()
+    }
+}
 
 impl<E> AsMut<ErTree<E>> for Box<ErReport<E>> {
     fn as_mut(&mut self) -> &mut ErTree<E> {

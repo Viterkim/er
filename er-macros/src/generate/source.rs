@@ -1,6 +1,7 @@
 use crate::{
     input::{
         Input,
+        attrs::SourceMode,
         bounds::{FormatBounds, bound_key, impls::is_self_path},
     },
     names::{binding, plain, shield_bindings},
@@ -16,7 +17,7 @@ pub fn implementation(input: &Input<'_>, formatting: &Generics) -> TokenStream {
         .cases
         .iter()
         .flat_map(|case| &case.fields)
-        .any(|field| field.options.source)
+        .any(|field| field.options.source.is_some())
     {
         let (impl_generics, type_generics, where_clause) = formatting.split_for_impl();
         return quote! {
@@ -58,7 +59,7 @@ pub fn implementation(input: &Input<'_>, formatting: &Generics) -> TokenStream {
             .fields
             .iter()
             .enumerate()
-            .find(|(_, field)| field.options.source)
+            .find(|(_, field)| field.options.source.is_some())
         else {
             let pattern = match case.shape {
                 Fields::Unit => target,
@@ -86,7 +87,15 @@ pub fn implementation(input: &Input<'_>, formatting: &Generics) -> TokenStream {
             }
             Fields::Unit => target,
         };
-        let (ty, value) = value(&field.item.ty, quote!(#source), &source, &source_ref);
+        let mode = field.options.source.unwrap_or(SourceMode::Normal);
+        let (ty, converted, pointer) =
+            value(&field.item.ty, quote!(#source), &source, &source_ref, mode);
+        if let Some(pointer) = pointer {
+            generics
+                .make_where_clause()
+                .predicates
+                .push(parse_quote!(#pointer: ::core::ops::Deref));
+        }
         let bound = if matches!(&ty, Type::Path(path) if path.qself.is_none() && is_self_path(&path.path, &type_name))
         {
             Some(quote!('static))
@@ -104,7 +113,7 @@ pub fn implementation(input: &Input<'_>, formatting: &Generics) -> TokenStream {
                 .predicates
                 .push(parse_quote!(#ty: #bound));
         }
-        arms.push(quote!(#pattern => #value));
+        arms.push(quote!(#pattern => #converted));
     }
 
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
@@ -131,12 +140,19 @@ pub fn value(
     reference: TokenStream,
     source: &syn::Ident,
     source_ref: &syn::Ident,
-) -> (Type, TokenStream) {
+    mode: SourceMode,
+) -> (Type, TokenStream, Option<Type>) {
     match ty {
-        Type::Paren(ty) => return value(&ty.elem, reference, source, source_ref),
-        Type::Group(ty) => return value(&ty.elem, reference, source, source_ref),
+        Type::Paren(ty) => return value(&ty.elem, reference, source, source_ref, mode),
+        Type::Group(ty) => return value(&ty.elem, reference, source, source_ref, mode),
         Type::Reference(ty) => {
-            return value(&ty.elem, quote!(&**#reference), source, source_ref);
+            return value(
+                &ty.elem,
+                quote!(&**#reference),
+                source,
+                source_ref,
+                SourceMode::Normal,
+            );
         }
         _ => (),
     }
@@ -163,10 +179,11 @@ pub fn value(
                     quote!(::core::ops::Deref::deref(#reference)),
                     source,
                     source_ref,
+                    SourceMode::Normal,
                 );
             }
             "Option" => {
-                let (ty, inner) = value(inner, quote!(#source), source, source_ref);
+                let (ty, inner, pointer) = value(inner, quote!(#source), source, source_ref, mode);
                 return (
                     ty,
                     quote! {
@@ -175,10 +192,23 @@ pub fn value(
                             ::core::option::Option::None => ::core::option::Option::None,
                         }
                     },
+                    pointer,
                 );
             }
             _ => (),
         }
+    }
+
+    if mode == SourceMode::Deref {
+        let target = parse_quote!(<#ty as ::core::ops::Deref>::Target);
+        let (ty_target, converted, _) = value(
+            &target,
+            quote!(::core::ops::Deref::deref(#reference)),
+            source,
+            source_ref,
+            SourceMode::Normal,
+        );
+        return (ty_target, converted, Some(ty.clone()));
     }
 
     (
@@ -186,6 +216,7 @@ pub fn value(
         quote!(::core::option::Option::Some(#source_ref::__er_finish(
             (&#source_ref(#reference)).__er_as_source()
         ))),
+        None,
     )
 }
 

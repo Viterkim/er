@@ -112,6 +112,44 @@ impl<'a> IntoErSnapshot for &'a ErSnapshot {
         self.er_report()
     }
 }
+impl<'a, P: ?Sized> IntoErSnapshot for &&'a P
+where
+    &'a P: IntoErSnapshot,
+{
+    type Top = <&'a P as IntoErSnapshot>::Top;
+    type Report = <&'a P as IntoErSnapshot>::Report;
+
+    fn into_er_snapshot(self) -> ErSnapshot {
+        (*self).into_er_snapshot()
+    }
+
+    fn into_er_top(self) -> Self::Top {
+        (*self).into_er_top()
+    }
+
+    fn into_er_report(self) -> Self::Report {
+        (*self).into_er_report()
+    }
+}
+impl<'a, P: ?Sized> IntoErSnapshot for &'a &mut P
+where
+    &'a P: IntoErSnapshot,
+{
+    type Top = <&'a P as IntoErSnapshot>::Top;
+    type Report = <&'a P as IntoErSnapshot>::Report;
+
+    fn into_er_snapshot(self) -> ErSnapshot {
+        <&'a P as IntoErSnapshot>::into_er_snapshot(self)
+    }
+
+    fn into_er_top(self) -> Self::Top {
+        <&'a P as IntoErSnapshot>::into_er_top(self)
+    }
+
+    fn into_er_report(self) -> Self::Report {
+        <&'a P as IntoErSnapshot>::into_er_report(self)
+    }
+}
 impl<'a, P: ?Sized> IntoErSnapshot for &'a mut P
 where
     &'a P: IntoErSnapshot,

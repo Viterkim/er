@@ -44,7 +44,7 @@ pub fn main() {
 
     let mut lines = Vec::new();
     wrapped
-        .for_each_line(|line| lines.push(line.to_owned()))
+        .for_each_line(|l| lines.push(l.to_owned()))
         .unwrap();
     assert_eq!(lines, [wrapped.to_string()]);
     assert_eq!(

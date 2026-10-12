@@ -247,7 +247,7 @@ pub mod composed {
         assert_eq!(result.er_trace().unwrap_err().stack_traces.len(), 1);
 
         let tree = read("bad")
-            .er_with::<JobErr, _>(|old| JobErr::failed(old.path.to_str().unwrap()))
+            .er_with::<JobErr, _>(|err| JobErr::failed(err.path.to_str().unwrap()))
             .er_trace()
             .unwrap_err();
         assert_eq!(tree.stack_traces.len(), 2);
@@ -255,7 +255,7 @@ pub mod composed {
         assert_eq!(tree.stack_traces[1].error_index, ErErrorIndex(0));
 
         let tree = Err::<(), _>("raw value")
-            .er_val::<ReadErr, _>(|value| value)
+            .er_val::<ReadErr, _>(|v| v)
             .er_trace()
             .unwrap_err();
         assert_eq!(tree.stack_traces.len(), 1);

@@ -3,8 +3,8 @@ use crate::ErBoxedInput;
 use crate::lines;
 use crate::{
     ErAsError, ErInput, ErLineError, ErMake, ErOpaqueErrorExt, ErPart, ErReportRef, ErTest,
-    ErTestError, ErTestExt, ErTestFailure, ErTestOptionNone, ErTree, ErTreeContextExt, IntoErPart,
-    IntoErTree,
+    ErTestError, ErTestExt, ErTestFailure, ErTestInput, ErTestOptionNone, ErTestUnit, ErTree,
+    ErTreeContextExt, IntoErPart, IntoErTree,
 };
 #[cfg(feature = "macros")]
 use crate::{ErBail, ErFields};
@@ -158,14 +158,27 @@ impl<T> ErTestExt for Option<T> {
         }
     }
 }
-impl<T, E: ErInput<Input>, Input> ErTestExt<Input> for Result<T, E> {
+impl<E: ErInput<Input>, Input> ErTestInput<Input> for E {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn into_er_test_failure(self) -> ErTestFailure {
+        ErTestFailure::new(self)
+    }
+}
+impl ErTestInput<ErTestUnit> for () {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn into_er_test_failure(self) -> ErTestFailure {
+        ErTestFailure::new(ErTestError)
+    }
+}
+
+impl<T, E: ErTestInput<Input>, Input> ErTestExt<Input> for Result<T, E> {
     type Ok = T;
 
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er_test(self) -> ErTest<T> {
         match self {
             Ok(value) => Ok(value),
-            Err(error) => Err(ErTestFailure::new(error)),
+            Err(error) => Err(error.into_er_test_failure()),
         }
     }
 }

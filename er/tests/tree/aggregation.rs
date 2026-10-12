@@ -1,5 +1,5 @@
 use er::*;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::io;
 
 #[derive(Er)]
@@ -110,16 +110,17 @@ pub fn append_mixed() {
 #[test]
 pub fn every_result() {
     let parents = Cell::new(0);
-    let visited = Cell::new(0);
+    let mut visited = 0;
     let results = [Ok(7), Err(Item(1)), Ok(8), Err(Item(2))]
         .into_iter()
         .inspect(|_| {
-            visited.set(visited.get() + 1);
+            visited += 1;
         });
 
     let expected = line!() + 1;
     let tree: ErTree<Batch> = er_all!(
         || {
+            assert_eq!(visited, 4);
             parents.set(parents.get() + 1);
             Batch
         },
@@ -128,7 +129,7 @@ pub fn every_result() {
     .unwrap_err();
 
     assert_eq!(parents.get(), 1);
-    assert_eq!(visited.get(), 4);
+    assert_eq!(visited, 4);
 
     let items: Vec<_> = tree
         .nodes
@@ -371,7 +372,11 @@ pub fn collect_all() {
     });
 
     let _line = line!() + 1;
-    let result: ErResult<Vec<_>, Batch> = input.er_collect_all(context);
+    let result: ErResult<Vec<_>, Batch> = input.er_collect_all(|| {
+        assert_eq!(visited.get(), 5);
+        assert_eq!(drops.get(), 3);
+        context()
+    });
     let tree = result.unwrap_err();
 
     assert_eq!(visited.get(), 5);
@@ -395,6 +400,14 @@ pub fn collect_all() {
         assert_eq!(tree.stack_traces[0].error_index, ErErrorIndex(1));
         assert_eq!(tree.stack_traces[1].error_index, ErErrorIndex(3));
     }
+
+    let state = RefCell::new(7);
+    let results = [Ok(state.borrow()), Err(io::Error::other("failed"))];
+    let result: ErResult<Vec<_>, Batch> = results.into_iter().er_collect_all(|| {
+        assert!(state.try_borrow_mut().is_ok());
+        Batch
+    });
+    assert!(result.is_err());
 }
 
 #[test]

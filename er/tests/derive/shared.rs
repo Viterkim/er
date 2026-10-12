@@ -36,7 +36,7 @@ pub fn shared_context() {
     let result: ErResult<(), ReadErr> = Err(io::Error::other("failed to read")).er(context);
     assert_eq!(calls.get(), 1);
     let tree: ErTree<ConfigErr> = result
-        .er_with(|old| (old.context.clone(), "ComputerKatten"))
+        .er_with(|err| (err.context.clone(), "ComputerKatten"))
         .unwrap_err();
     let old = tree.er_find::<ReadErr>().unwrap();
 
