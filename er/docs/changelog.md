@@ -2,7 +2,7 @@
 
 Also use the tuple helpers with `.er_val()` like `.er_val(|v| (path, v))`, same for `aggregate::collect()` but just use `er_all!()`.
 
-Snapshot Results get the printing and unwrap helpers too. `ErSnapshotReport` and `ErSnapshotTop` now own the snapshot, the borrowed forms end in `Ref`, same as the tree views.
+Snapshot Results get the printing and unwrap helpers, `ErSnapshotReport` and `ErSnapshotTop` now own the snapshot, the borrowed forms end in `Ref`.
 
 Add the missing 'helper functions' on ref/mut variants.
 

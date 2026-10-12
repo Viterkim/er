@@ -1,7 +1,9 @@
-use crate::{er_all::expression_span, names::binding};
+use crate::{
+    er_all::expression_span,
+    names::{binding, identifiers, shield_bindings},
+};
 use proc_macro2::{TokenStream, TokenTree};
 use quote::{quote, quote_spanned};
-use std::collections::HashSet;
 use syn::{Path, Token, parse::Parse, parse::ParseStream};
 
 pub struct Input {
@@ -37,11 +39,12 @@ pub fn expand(
         results,
     }: Input,
 ) -> TokenStream {
-    let reserved = HashSet::new();
+    let reserved = identifiers(quote!(#top #(#results)*));
     let values: Vec<_> = (0..results.len())
         .map(|index| binding(&reserved, &format!("__er_value_{index}")))
         .collect();
     let errors = binding(&reserved, "__er_errors");
+    let shields = shield_bindings(values.iter().chain([&errors]));
     let item = binding(&reserved, "__ErTryItem");
     let items = results.iter().map(|result| {
         let span = expression_span(result);
@@ -55,7 +58,8 @@ pub fn expand(
         }
     });
 
-    quote! {
+    quote! {{
+        #shields
         match (#(#items,)*) {
             (#(::core::result::Result::Ok(#values),)*) =>
                 ::core::result::Result::Ok((#(#values,)*)),
@@ -67,5 +71,5 @@ pub fn expand(
                 ))
             }
         }
-    }
+    }}
 }

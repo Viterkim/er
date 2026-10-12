@@ -102,6 +102,11 @@ pub fn borrowed_results() {
         result.as_mut().opaque_err().unwrap_err()
     }
 
+    fn local_boxed(tree: &ErTree<AppErr>) -> ErReportRef<'_, AppErr> {
+        let boxed = Box::new(tree.er_top().single_line());
+        Err::<(), _>(&boxed).er_report().unwrap_err()
+    }
+
     fn check<'a, P: Clone + IntoErTreeRef<'a, Error = AppErr>>(
         error: P,
         tree: &ErTree<AppErr>,
@@ -159,6 +164,7 @@ pub fn borrowed_results() {
     let tree = result.as_mut().er_tree().unwrap_err();
     assert!(ptr::eq(local_view(tree).tree, tree));
     assert!(ptr::eq(local_opaque(tree).0.tree, tree));
+    assert!(ptr::eq(local_boxed(tree).tree, tree));
 
     let result = result.er_report();
     let mut result = Err::<(), _>(result.unwrap_err().single_line());
@@ -297,6 +303,19 @@ pub fn results() -> Result<(), ErReport<AppErr>> {
     let top = failing().er_top().unwrap_err().single_line();
     let report = Err::<(), _>(top).er_report().unwrap_err();
     assert_eq!(report.er_report_string(), expected);
+
+    let nodes = report.tree.nodes.as_ptr();
+    let mut boxed = Err::<(), _>(Box::new(report));
+    assert_eq!(boxed.as_ref().er_report_string().unwrap_err(), expected);
+    assert_eq!(boxed.as_mut().er_report_string().unwrap_err(), expected);
+    assert_eq!(
+        boxed.as_mut().opaque_err().unwrap_err().to_string(),
+        expected
+    );
+
+    let report = boxed.er_top().er_report().unwrap_err();
+    assert_eq!(report.tree.nodes.as_ptr(), nodes);
+    assert_eq!(report.layout, Layout::SingleLine);
 
     Ok(())
 }

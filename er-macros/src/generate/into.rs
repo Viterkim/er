@@ -1,11 +1,11 @@
 use super::construct::{field_inputs, tuple_input};
 use crate::{
     fields::with_fields,
-    input::{Case, Field, Input, attrs::IntoField},
-    names::{binding, identifiers},
+    input::{Case, Field, Input, attrs::IntoField, bounds::bound_key},
+    names::{binding, shield_bindings},
 };
 use proc_macro2::TokenStream;
-use quote::{ToTokens as _, quote};
+use quote::quote;
 use std::collections::HashSet;
 use syn::{Error, Ident, Path, Type, parse_quote};
 
@@ -74,26 +74,36 @@ pub fn implementation(input: &Input<'_>, path: &Path) -> syn::Result<TokenStream
     }
 
     let item = input.item;
-    let reserved = identifiers(quote!(#item));
-    let source = binding(&reserved, "__ErSource");
-    let tree = binding(&reserved, "__er_tree");
-    let report = binding(&reserved, "__er_report");
-    let saved_report = binding(&reserved, "__er_saved_report");
-    let single_line = binding(&reserved, "__er_single_line");
-    let snapshot = binding(&reserved, "__er_snapshot");
-    let extra = binding(&reserved, "__er_extra");
+    let reserved = &input.names;
+    let source = binding(reserved, "__ErSource");
+    let tree = binding(reserved, "__er_tree");
+    let report = binding(reserved, "__er_report");
+    let saved_report = binding(reserved, "__er_saved_report");
+    let single_line = binding(reserved, "__er_single_line");
+    let snapshot = binding(reserved, "__er_snapshot");
+    let extra = binding(reserved, "__er_extra");
     let name = &item.ident;
     let (_, type_generics, _) = item.generics.split_for_impl();
     let mut sources = HashSet::new();
     let mut implementations = Vec::new();
+    let mut bindings = vec![tree.clone(), report.clone(), extra.clone()];
 
     for case in &cases {
         let fields = converted_fields(case)?;
+        if fields.last_report.is_some() {
+            bindings.push(saved_report.clone());
+        }
+        if fields.last_single_line.is_some() {
+            bindings.push(single_line.clone());
+        }
+        if fields.last_snapshot.is_some() {
+            bindings.push(snapshot.clone());
+        }
         let mut generics = item.generics.clone();
         let ty: Type = match fields.top {
             Some(field) => {
                 let ty = &field.item.ty;
-                if !sources.insert(ty.to_token_stream().to_string()) {
+                if bound_key(ty).is_some_and(|key| !sources.insert(key)) {
                     return Err(Error::new_spanned(
                         field.item,
                         "these variants accept the same top type, so `.er_into()` cannot choose between them",
@@ -116,7 +126,8 @@ pub fn implementation(input: &Input<'_>, path: &Path) -> syn::Result<TokenStream
             #ty: ::core::error::Error + 'static
         ));
 
-        let inputs = field_inputs(fields.extra.iter().copied(), &mut generics, &reserved);
+        let inputs = field_inputs(fields.extra.iter().copied(), &mut generics, reserved);
+        bindings.extend(inputs.bindings.iter().cloned());
         let payload = tuple_input(&inputs.types);
         let pattern = tuple_input(&inputs.bindings);
         let (impl_generics, _, where_clause) = generics.split_for_impl();
@@ -186,7 +197,14 @@ pub fn implementation(input: &Input<'_>, path: &Path) -> syn::Result<TokenStream
         });
     }
 
-    Ok(quote!(#(#implementations)*))
+    let shields = shield_bindings(&bindings);
+    Ok(quote! {
+        const _: () = {
+            #shields
+
+            #(#implementations)*
+        };
+    })
 }
 
 pub fn saved_value(name: &Ident, last: bool) -> TokenStream {

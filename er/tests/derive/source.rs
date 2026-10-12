@@ -1,7 +1,7 @@
 #![allow(non_upper_case_globals)]
 
 use er::*;
-use std::{error::Error, io, marker::PhantomData, sync::Arc};
+use std::{error::Error, fmt, io, marker::PhantomData, sync::Arc};
 
 #[derive(Er)]
 pub struct FileError {
@@ -44,18 +44,34 @@ pub struct MutableError<'a, E: ?Sized> {
 
 pub type Cause = Box<io::Error>;
 pub type SharedCause = Arc<io::Error>;
+pub type BorrowedCause = &'static MethodSource;
 
 #[derive(Er)]
 pub enum AliasedError {
     Boxed(#[er(source)] BoxError),
     File(#[er(source)] Cause),
     Shared(#[er(source)] SharedCause),
+    Borrowed(#[er(source)] BorrowedCause),
 }
 
 #[derive(Er)]
 pub struct BoxedError<E: ?Sized> {
     #[er(source)]
     pub cause: ::std::boxed::r#Box<E>,
+}
+
+#[derive(Er)]
+pub struct MethodSource;
+impl MethodSource {
+    pub fn __er_as_source(self: &&Self) -> &'static dyn Error {
+        panic!("source conversion called an inherent method")
+    }
+}
+
+#[derive(Er)]
+pub struct MethodError {
+    #[er(source)]
+    pub cause: MethodSource,
 }
 
 pub trait __ErAsDynError {}
@@ -76,8 +92,56 @@ where
     pub tag: PhantomData<T>,
 }
 
+pub trait LineBound<const N: u32> {}
+impl<const N: u32> LineBound<N> for () {}
+
+pub struct LineSource<T, const N: u32>(pub PhantomData<T>);
+impl<T: LineBound<N>, const N: u32> fmt::Display for LineSource<T, N> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{N}")
+    }
+}
+impl<T: LineBound<N>, const N: u32> fmt::Debug for LineSource<T, N> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, formatter)
+    }
+}
+impl<T: LineBound<N> + 'static, const N: u32> Error for LineSource<T, N> {}
+
+macro_rules! line_source {
+    ($t:ty) => { LineSource<$t, { line!() }> };
+}
+
+#[derive(Er)]
+pub enum TypeMacroError<T> {
+    First(#[er(source)] line_source!(T)),
+    Second(#[er(source)] line_source!(T)),
+}
+
+#[test]
+pub fn type_macros() {
+    let first = TypeMacroError::<()>::First(LineSource(PhantomData));
+    let second = TypeMacroError::<()>::Second(LineSource(PhantomData));
+
+    assert_ne!(
+        first.source().unwrap().to_string(),
+        second.source().unwrap().to_string()
+    );
+}
+
 #[test]
 pub fn sources() {
+    for error in [
+        &MethodError::new(MethodSource) as &dyn Error,
+        &AliasedError::borrowed(&MethodSource),
+    ] {
+        assert!(
+            error
+                .source()
+                .is_some_and(|cause| cause.is::<MethodSource>())
+        );
+    }
+
     let error = FileError::new("katten.txt", io::Error::other("file"));
     assert!(error.source().is_some_and(|cause| cause.is::<io::Error>()));
 

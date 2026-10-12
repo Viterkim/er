@@ -255,11 +255,14 @@ impl<'a, E> IntoErTreeRef<'a> for &'a ErTree<E> {
         self.er_report()
     }
 }
-impl<'a, E: 'a, P: Deref<Target = ErTree<E>>> IntoErTreeRef<'a> for &'a P {
-    type Error = E;
+impl<'a, 'b, P: Deref + ?Sized> IntoErTreeRef<'a> for &'b P
+where
+    &'b P::Target: IntoErTreeRef<'a>,
+{
+    type Error = <&'b P::Target as IntoErTreeRef<'a>>::Error;
 
-    fn into_er_report_ref(self) -> ErReportRef<'a, E> {
-        self.er_report()
+    fn into_er_report_ref(self) -> ErReportRef<'a, Self::Error> {
+        <&'b P::Target as IntoErTreeRef<'a>>::into_er_report_ref(self)
     }
 }
 impl<'a, 'b, P: ?Sized> IntoErTreeRef<'a> for &'b mut P

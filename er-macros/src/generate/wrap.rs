@@ -1,6 +1,6 @@
 use super::replace_self::ReplaceSelf;
 use crate::input::attrs::{WrapOptions, WrapOutput};
-use crate::names::{binding, identifiers};
+use crate::names::{binding, identifiers, shield_bindings};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::HashSet;
@@ -19,6 +19,7 @@ pub fn expand(
     let report = binding(reserved, "report");
     let top = binding(reserved, "top");
     let wrapped = binding(reserved, "wrapped");
+    let shields = shield_bindings([&tree, &value, &report, &top, &wrapped]);
 
     let error = &input.ident;
     let wrap = match &options.name {
@@ -123,8 +124,6 @@ pub fn expand(
     let presentation = options.std_error.then(|| {
         quote! {
             const _: () = {
-                extern crate alloc as #alloc;
-
                 impl #root_impl #wrap #type_generics #root_where {
                     /// The whole report as text.
                     pub fn er_report_string(&self) -> #alloc::string::String {
@@ -154,82 +153,92 @@ pub fn expand(
         #visibility struct #wrap #declaration #where_clause {
             pub tree: #inner,
         }
-        impl #impl_generics ::core::ops::Deref for #wrap #type_generics #where_clause {
-            type Target = #inner;
+        const _: () = {
+            #shields
+            extern crate alloc as #alloc;
 
-            fn deref(&self) -> &Self::Target {
-                &self.tree
-            }
-        }
-        impl #impl_generics ::core::convert::AsMut<#inner> for #wrap #type_generics #where_clause {
-            fn as_mut(&mut self) -> &mut #inner {
-                &mut self.tree
-            }
-        }
-        impl #impl_generics ::core::convert::From<#inner> for #wrap #type_generics #where_clause {
-            fn from(#tree: #inner) -> Self {
-                Self { tree: #tree }
-            }
-        }
-        impl #impl_generics ::core::convert::From<#er_path::ErReport<#stored>> for #wrap #type_generics #where_clause {
-            fn from(#report: #er_path::ErReport<#stored>) -> Self {
-                Self { tree: #report.tree }
-            }
-        }
-        impl #impl_generics ::core::convert::From<#er_path::ErTop<#stored>> for #wrap #type_generics #where_clause {
-            fn from(#top: #er_path::ErTop<#stored>) -> Self {
-                Self { tree: #top.tree }
-            }
-        }
-        impl #impl_generics ::core::convert::From<#wrap #type_generics> for #inner #where_clause {
-            fn from(#wrapped: #wrap #type_generics) -> Self {
-                #wrapped.tree
-            }
-        }
-        impl #impl_generics ::core::convert::From<#wrap #type_generics> for #er_path::ErReport<#stored> #where_clause {
-            fn from(#wrapped: #wrap #type_generics) -> Self {
-                #wrapped.tree.into_er_report()
-            }
-        }
-        impl #impl_generics ::core::convert::From<#wrap #type_generics> for #er_path::ErTop<#stored> #where_clause {
-            fn from(#wrapped: #wrap #type_generics) -> Self {
-                #wrapped.tree.into_er_top()
-            }
-        }
-        impl #impl_generics #er_path::IntoErTree for #wrap #type_generics #where_clause {
-            type Error = #stored;
+            impl #impl_generics ::core::ops::Deref for #wrap #type_generics #where_clause {
+                type Target = #inner;
 
-            fn into_er_tree(self) -> #inner {
-                self.tree
+                fn deref(&self) -> &Self::Target {
+                    &self.tree
+                }
             }
-        }
-        #conversion
-        impl #node_impl #wrap #type_generics #node_where {
-            /// Build the new top from fields taken from the old top.
-            #[track_caller]
-            pub fn er_with<#new_top, #mode>(self, #top: impl #er_path::ErWithFields<#node_root, #new_top, #mode>) -> #er_path::ErTree<#new_top>
-            where
-                #new_top: ::core::error::Error + 'static,
-            {
-                #er_path::IntoErTree::er_with(self, #top)
+            impl #impl_generics ::core::convert::AsMut<#inner> for #wrap #type_generics #where_clause {
+                fn as_mut(&mut self) -> &mut #inner {
+                    &mut self.tree
+                }
             }
-        }
-        impl #root_impl ::core::convert::From<#stored> for #wrap #type_generics #root_where {
-            #[track_caller]
-            fn from(#value: #stored) -> Self {
-                let #tree = #er_path::ErTree::from(#value);
-                Self { tree: #tree }
+            impl #impl_generics ::core::convert::AsMut<#inner> for #alloc::boxed::Box<#wrap #type_generics> #where_clause {
+                fn as_mut(&mut self) -> &mut #inner {
+                    &mut self.tree
+                }
             }
-        }
-        #presentation
-        impl #root_impl #stored #root_where {
-            /// Put this error in its Wrap.
-            #[track_caller]
-            pub fn er_wrap(self) -> #wrap #type_generics {
-                ::core::convert::From::from(self)
+            impl #impl_generics ::core::convert::From<#inner> for #wrap #type_generics #where_clause {
+                fn from(#tree: #inner) -> Self {
+                    Self { tree: #tree }
+                }
             }
-        }
-        #formatting
+            impl #impl_generics ::core::convert::From<#er_path::ErReport<#stored>> for #wrap #type_generics #where_clause {
+                fn from(#report: #er_path::ErReport<#stored>) -> Self {
+                    Self { tree: #report.tree }
+                }
+            }
+            impl #impl_generics ::core::convert::From<#er_path::ErTop<#stored>> for #wrap #type_generics #where_clause {
+                fn from(#top: #er_path::ErTop<#stored>) -> Self {
+                    Self { tree: #top.tree }
+                }
+            }
+            impl #impl_generics ::core::convert::From<#wrap #type_generics> for #inner #where_clause {
+                fn from(#wrapped: #wrap #type_generics) -> Self {
+                    #wrapped.tree
+                }
+            }
+            impl #impl_generics ::core::convert::From<#wrap #type_generics> for #er_path::ErReport<#stored> #where_clause {
+                fn from(#wrapped: #wrap #type_generics) -> Self {
+                    #wrapped.tree.into_er_report()
+                }
+            }
+            impl #impl_generics ::core::convert::From<#wrap #type_generics> for #er_path::ErTop<#stored> #where_clause {
+                fn from(#wrapped: #wrap #type_generics) -> Self {
+                    #wrapped.tree.into_er_top()
+                }
+            }
+            impl #impl_generics #er_path::IntoErTree for #wrap #type_generics #where_clause {
+                type Error = #stored;
+
+                fn into_er_tree(self) -> #inner {
+                    self.tree
+                }
+            }
+            #conversion
+            impl #node_impl #wrap #type_generics #node_where {
+                /// Build the new top from fields taken from the old top.
+                #[track_caller]
+                pub fn er_with<#new_top, #mode>(self, #top: impl #er_path::ErWithFields<#node_root, #new_top, #mode>) -> #er_path::ErTree<#new_top>
+                where
+                    #new_top: ::core::error::Error + 'static,
+                {
+                    #er_path::IntoErTree::er_with(self, #top)
+                }
+            }
+            impl #root_impl ::core::convert::From<#stored> for #wrap #type_generics #root_where {
+                #[track_caller]
+                fn from(#value: #stored) -> Self {
+                    let #tree = #er_path::ErTree::from(#value);
+                    Self { tree: #tree }
+                }
+            }
+            #presentation
+            impl #root_impl #stored #root_where {
+                /// Put this error in its Wrap.
+                #[track_caller]
+                pub fn er_wrap(self) -> #wrap #type_generics {
+                    ::core::convert::From::from(self)
+                }
+            }
+            #formatting
+        };
     }
 }
 
@@ -244,6 +253,7 @@ fn formatting(
     let reserved = identifiers(quote!(#generics #wrap #er_path));
     let failure = binding(&reserved, "__ErLineFailure");
     let emit = binding(&reserved, "__er_emit");
+    let shields = shield_bindings([formatter, &emit]);
     let borrow = Lifetime::new(
         &format!("'{}", binding(&reserved, "__er_view")),
         formatter.span(),
@@ -253,43 +263,47 @@ fn formatting(
     let (borrowed_impl, _, borrowed_where) = borrowed_generics.split_for_impl();
 
     quote! {
-        impl #impl_generics #wrap #type_generics #where_clause {
-            /// Only formats once, no line endings.
-            pub fn for_each_line(&self, #emit: impl ::core::ops::FnMut(&str)) -> ::core::fmt::Result {
-                #er_path::lines::for_each_line(self, #emit)
-            }
+        const _: () = {
+            #shields
 
-            /// Like `for_each_line()`, but the callback can fail.
-            pub fn try_for_each_line<#failure>(
-                &self,
-                #emit: impl ::core::ops::FnMut(&str) -> ::core::result::Result<(), #failure>,
-            ) -> ::core::result::Result<(), #er_path::ErLineError<#failure>> {
-                #er_path::lines::try_for_each_line(self, #emit)
-            }
-        }
-        impl #impl_generics ::core::fmt::Display for #wrap #type_generics #where_clause {
-            fn fmt(&self, #formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                ::core::fmt::Display::fmt(&self.tree.#view(), #formatter)
-            }
-        }
-        impl #impl_generics ::core::fmt::Debug for #wrap #type_generics #where_clause {
-            fn fmt(&self, #formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                ::core::fmt::Display::fmt(self, #formatter)
-            }
-        }
-        impl #impl_generics #er_path::ErOpaqueErrorExt for #wrap #type_generics #where_clause {
-            type Output = #er_path::ErAsError<Self>;
+            impl #impl_generics #wrap #type_generics #where_clause {
+                /// Only formats once, no line endings.
+                pub fn for_each_line(&self, #emit: impl ::core::ops::FnMut(&str)) -> ::core::fmt::Result {
+                    #er_path::lines::for_each_line(self, #emit)
+                }
 
-            fn opaque_err(self) -> Self::Output {
-                #er_path::ErAsError(self)
+                /// Like `for_each_line()`, but the callback can fail.
+                pub fn try_for_each_line<#failure>(
+                    &self,
+                    #emit: impl ::core::ops::FnMut(&str) -> ::core::result::Result<(), #failure>,
+                ) -> ::core::result::Result<(), #er_path::ErLineError<#failure>> {
+                    #er_path::lines::try_for_each_line(self, #emit)
+                }
             }
-        }
-        impl #borrowed_impl #er_path::ErOpaqueErrorExt for &#borrow #wrap #type_generics #borrowed_where {
-            type Output = #er_path::ErAsError<Self>;
+            impl #impl_generics ::core::fmt::Display for #wrap #type_generics #where_clause {
+                fn fmt(&self, #formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                    ::core::fmt::Display::fmt(&self.tree.#view(), #formatter)
+                }
+            }
+            impl #impl_generics ::core::fmt::Debug for #wrap #type_generics #where_clause {
+                fn fmt(&self, #formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                    ::core::fmt::Display::fmt(self, #formatter)
+                }
+            }
+            impl #impl_generics #er_path::ErOpaqueErrorExt for #wrap #type_generics #where_clause {
+                type Output = #er_path::ErAsError<Self>;
 
-            fn opaque_err(self) -> Self::Output {
-                #er_path::ErAsError(self)
+                fn opaque_err(self) -> Self::Output {
+                    #er_path::ErAsError(self)
+                }
             }
-        }
+            impl #borrowed_impl #er_path::ErOpaqueErrorExt for &#borrow #wrap #type_generics #borrowed_where {
+                type Output = #er_path::ErAsError<Self>;
+
+                fn opaque_err(self) -> Self::Output {
+                    #er_path::ErAsError(self)
+                }
+            }
+        };
     }
 }

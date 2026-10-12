@@ -1,4 +1,5 @@
 use proc_macro2::{Span, TokenStream, TokenTree};
+use quote::quote;
 use std::collections::HashSet;
 use syn::Ident;
 
@@ -33,6 +34,23 @@ pub fn binding(reserved: &HashSet<String>, name: &str) -> Ident {
         name.insert(0, '_');
     }
     Ident::new(&name, Span::mixed_site())
+}
+
+pub fn shield_bindings<'a>(bindings: impl IntoIterator<Item = &'a Ident>) -> TokenStream {
+    let mut seen = HashSet::new();
+    let bindings: Vec<_> = bindings
+        .into_iter()
+        .filter(|binding| seen.insert(plain(binding)))
+        .collect();
+    if bindings.is_empty() {
+        return TokenStream::new();
+    }
+
+    // Mixed-site hygiene still resolves constants in patterns. Functions can be shadowed.
+    quote! {
+        #[allow(unused_imports)]
+        use ::core::mem::{#(drop as #bindings),*};
+    }
 }
 
 pub fn snake_case(name: &str) -> String {

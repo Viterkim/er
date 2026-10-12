@@ -1,0 +1,17 @@
+error[E0308]: mismatched types
+  --> tests/fail/source_dispatch.rs:11:10
+   |
+11 | #[derive(Er)]
+   |          ^^
+   |          |
+   |          expected `__ErSourceRef<'_, dyn Error>`, found `&dyn Error`
+   |          arguments to this function are incorrect
+   |
+   = note: expected struct `__ErSourceRef<'_, (dyn std::error::Error + 'static)>`
+           found reference `&'static (dyn std::error::Error + 'static)`
+note: method defined here
+  --> tests/fail/source_dispatch.rs:11:10
+   |
+11 | #[derive(Er)]
+   |          ^^
+   = note: this error originates in the derive macro `Er` (in Nightly builds, run with -Z macro-backtrace for more info)

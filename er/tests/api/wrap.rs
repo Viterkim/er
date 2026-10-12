@@ -331,7 +331,7 @@ pub fn std_error() {
     );
 
     let _line = line!() + 1;
-    let result = Err::<(), _>(wrapped).er_with_wrap::<HandlerErr, _>(|old| {
+    let result = Err::<(), _>(Box::new(wrapped)).er_with_wrap::<HandlerErr, _>(|old| {
         assert_eq!(old.0, 85);
     });
     let tree = result.unwrap_err();

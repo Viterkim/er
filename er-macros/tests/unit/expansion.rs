@@ -3,6 +3,21 @@ use quote::quote;
 use std::collections::HashSet;
 
 #[test]
+pub fn crate_paths() -> syn::Result<()> {
+    for (name, expected) in [
+        ("er", "er"),
+        ("renamed_er", "renamed_er"),
+        ("type", "r#type"),
+        ("gen", "r#gen"),
+    ] {
+        let path = crate::generate::crate_path(name)?;
+        assert_eq!(path.segments[0].ident.to_string(), expected);
+    }
+
+    Ok(())
+}
+
+#[test]
 pub fn primitive_paths() -> syn::Result<()> {
     let type_names = HashSet::new();
     for path in [

@@ -51,7 +51,7 @@ pub fn case_body(
     for (index, field) in case.fields.iter().enumerate() {
         let used = !field.formats.is_empty() || field.sets_width_or_precision;
         let pattern = if used && field.options.mode == FieldMode::Normal {
-            let local = binding(&input.const_names, &format!("__er_{index}"));
+            let local = binding(&input.names, &format!("__er_{index}"));
             quote!(#local)
         } else {
             quote!(_)
@@ -116,7 +116,7 @@ pub fn field_value(input: &Input<'_>, case: &Case<'_>, index: usize) -> TokenStr
     }
 
     let value = if case.variant.is_some() {
-        let local = binding(&input.const_names, &format!("__er_{index}"));
+        let local = binding(&input.names, &format!("__er_{index}"));
         quote_spanned!(field.item.ty.span()=> *#local)
     } else {
         let member = match &field.item.ident {

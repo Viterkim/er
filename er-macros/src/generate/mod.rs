@@ -21,7 +21,7 @@ pub fn expand(item: &DeriveInput) -> syn::Result<TokenStream> {
 pub fn expand_for(item: &DeriveInput, package: &str) -> syn::Result<TokenStream> {
     let input = Input::parse(item)?;
     let generics = format_generics(&input);
-    let formatter = binding(&input.const_names, "__er_f");
+    let formatter = binding(&input.names, "__er_f");
     let formatting = format::implementations(&input, &generics, &formatter);
     let constructors = construct::methods(&input)?;
 
@@ -40,7 +40,7 @@ pub fn expand_for(item: &DeriveInput, package: &str) -> syn::Result<TokenStream>
         };
         let into = into::implementation(&input, &path)?;
         let wrap = match &input.options.wrap {
-            Some(options) => wrap::expand(item, &path, options, &input.const_names, &formatter),
+            Some(options) => wrap::expand(item, &path, options, &input.names, &formatter),
             None => TokenStream::new(),
         };
 
@@ -62,7 +62,16 @@ pub fn expand_for(item: &DeriveInput, package: &str) -> syn::Result<TokenStream>
 pub fn runtime_path(package: &str) -> syn::Result<Path> {
     match crate_name(package) {
         Ok(FoundCrate::Itself) => Ok(parse_quote!(crate)),
-        Ok(FoundCrate::Name(name)) => syn::parse_str(&format!("::{name}")),
-        Err(_) => syn::parse_str(&format!("::{}", package.replace('-', "_"))),
+        Ok(FoundCrate::Name(name)) => crate_path(&name),
+        Err(_) => crate_path(&package.replace('-', "_")),
     }
+}
+
+pub fn crate_path(name: &str) -> syn::Result<Path> {
+    // syn accepts this as an identifier, but Rust 2024 reserves it.
+    if name == "gen" {
+        return syn::parse_str("::r#gen");
+    }
+
+    syn::parse_str(&format!("::{name}")).or_else(|_| syn::parse_str(&format!("::r#{name}")))
 }

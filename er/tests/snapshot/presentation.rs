@@ -50,9 +50,27 @@ pub fn layouts() {
             assert_eq!(owned.er_snapshot(), snapshot);
             assert_eq!(owned.er_report().layout, layout);
             assert_eq!(owned.into_er_report().layout, layout);
+
+            let boxed = Box::new(snapshot.clone().into_er_report().layout(layout));
+            assert_eq!(boxed.er_snapshot(), snapshot);
+            assert_eq!(boxed.er_top_string(), top.er_top_string());
+            assert_eq!(boxed.er_report_string(), report.er_report_string());
+            assert!(std::error::Error::source(&boxed.opaque_err()).is_none());
         }
         assert_eq!(snapshot.er_report_string(), tree.er_report_string());
         assert_eq!(snapshot.er_top_string(), tree.er_top_string());
+
+        let mut renumbered = snapshot.clone();
+        for entry in &mut renumbered.entries {
+            entry.index += 85;
+            entry.parent = entry.parent.map(|parent| parent + 85);
+        }
+        for layout in [Layout::Multiline, Layout::SingleLine] {
+            assert_eq!(
+                renumbered.er_report().layout(layout).to_string(),
+                snapshot.er_report().layout(layout).to_string(),
+            );
+        }
     }
 }
 
@@ -207,6 +225,18 @@ pub fn results() {
         result.as_mut().er_report().unwrap_err().er_report_string(),
         expected
     );
+
+    let entries = result.as_ref().unwrap_err().snapshot.entries.as_ptr();
+    let mut boxed = Err::<(), _>(Box::new(result.unwrap_err()));
+    assert_eq!(boxed.as_ref().er_report_string().unwrap_err(), expected);
+    assert_eq!(boxed.as_mut().er_report_string().unwrap_err(), expected);
+    assert_eq!(
+        boxed.as_mut().opaque_err().unwrap_err().to_string(),
+        expected
+    );
+
+    let snapshot = boxed.er_top().er_report().er_snapshot().unwrap_err();
+    assert_eq!(snapshot.entries.as_ptr(), entries);
 
     let mut success = Ok::<_, ErSnapshot>(String::from("kept"));
     success

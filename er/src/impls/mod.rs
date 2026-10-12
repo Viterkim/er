@@ -1,3 +1,4 @@
+pub mod boxed;
 pub mod construct;
 pub mod error;
 pub mod iterator;

@@ -343,3 +343,71 @@ pub fn failed_construction_is_lazy() {
         .unwrap_err();
     assert_eq!((closure_calls.get(), conversions.get()), (1, 1));
 }
+
+pub mod constants {
+    use er::*;
+    use std::io;
+
+    #[expect(non_upper_case_globals, reason = "derive binding collisions")]
+    pub mod names {
+        pub const value: u8 = 85;
+        pub const __er_f: u8 = 86;
+        pub const __er_d: u8 = 87;
+        pub const __er_0: u8 = 88;
+        pub const __er_source: u8 = 89;
+        pub const __er_value_0: u8 = 90;
+        pub const __er_tree: u8 = 91;
+        pub const __er_report: u8 = 92;
+        pub const __er_extra: u8 = 93;
+        pub const __er_saved_report: u8 = 94;
+        pub const __er_emit: u8 = 95;
+        pub const tree: u8 = 96;
+        pub const error: u8 = 97;
+        pub const report: u8 = 98;
+        pub const top: u8 = 99;
+        pub const wrapped: u8 = 100;
+    }
+    use names::*;
+
+    #[derive(Er)]
+    #[er(wrap(output = report, std_error))]
+    pub struct Root(pub String);
+
+    #[derive(Er)]
+    pub enum Boundary {
+        Saved {
+            #[er(into_report_string)]
+            diagnostics: String,
+            tag: u8,
+        },
+        Source(#[er(source)] io::Error),
+    }
+
+    #[derive(ErFormat)]
+    pub struct Data(pub u8);
+
+    #[test]
+    pub fn bindings() -> Result<(), BoxError> {
+        let result: ErResult<(), Root> = Err::<(), _>(io::Error::other("stopped")).er(|_| "task");
+        let wrapped_error = RootWrap::from(result.unwrap_err());
+        let mut lines = Vec::new();
+        wrapped_error.for_each_line(|line| lines.push(line.to_owned()))?;
+        assert!(lines.iter().any(|line| line.contains("stopped")));
+
+        let saved: Boundary = wrapped_error.er_into(|_| value);
+        match saved {
+            Boundary::Saved { diagnostics, tag } => {
+                assert!(diagnostics.contains("stopped"));
+                assert_eq!(tag, 85);
+            }
+            Boundary::Source(_) => panic!("wrong variant"),
+        }
+
+        let source = Boundary::source(io::Error::other("source"));
+        assert_eq!(source.er_snapshot().entries.len(), 2);
+        assert_eq!(Data::new(value).to_string(), "Data(85)");
+        assert_eq!(Root::new("task").0, "task");
+
+        Ok(())
+    }
+}

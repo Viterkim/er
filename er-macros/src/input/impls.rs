@@ -1,11 +1,12 @@
 use super::{
-    Case, Field, Input, attrs,
+    Case, Field, IdentifierNames, Input, attrs,
     attrs::FieldMode,
     format::{Format, FormatTrait},
 };
-use crate::names::plain;
+use crate::names::{identifiers, plain};
+use proc_macro2::TokenStream;
 use std::collections::HashSet;
-use syn::{Data, DeriveInput, Ident, Type};
+use syn::{Data, DeriveInput, Ident, Type, visit::Visit as _};
 
 impl<'a> Case<'a> {
     pub fn parse(
@@ -141,13 +142,27 @@ impl<'a> Input<'a> {
             }
         }
 
+        let mut names = IdentifierNames::default();
+        names.visit_derive_input(item);
+
         Ok(Self {
             item,
             options,
             cases,
             const_names,
             type_names,
+            names: names.names,
         })
+    }
+}
+
+impl<'a> syn::visit::Visit<'a> for IdentifierNames {
+    fn visit_ident(&mut self, ident: &'a Ident) {
+        self.names.insert(plain(ident));
+    }
+
+    fn visit_token_stream(&mut self, tokens: &'a TokenStream) {
+        self.names.extend(identifiers(tokens.clone()));
     }
 }
 

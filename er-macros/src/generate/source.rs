@@ -3,7 +3,7 @@ use crate::{
         Input,
         bounds::{FormatBounds, bound_key, impls::is_self_path},
     },
-    names::{binding, identifiers, plain},
+    names::{binding, plain, shield_bindings},
 };
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -25,13 +25,15 @@ pub fn implementation(input: &Input<'_>, formatting: &Generics) -> TokenStream {
     }
 
     let type_name = plain(name);
-    let source = binding(&input.const_names, "__er_source");
-    let item = input.item;
-    let mut reserved = identifiers(quote!(#item));
+    let mut reserved = input.names.clone();
+    let source = binding(&reserved, "__er_source");
+    let shields = shield_bindings([&source]);
     let as_dyn = binding(&reserved, "__ErAsDynError");
     reserved.insert(plain(&as_dyn));
     let as_source = binding(&reserved, "__ErAsSource");
     reserved.insert(plain(&as_source));
+    let source_ref = binding(&reserved, "__ErSourceRef");
+    reserved.insert(plain(&source_ref));
     let alloc = binding(&reserved, "__er_alloc");
 
     let mut parameters = input.type_names.clone();
@@ -84,7 +86,7 @@ pub fn implementation(input: &Input<'_>, formatting: &Generics) -> TokenStream {
             }
             Fields::Unit => target,
         };
-        let (ty, value) = value(&field.item.ty, quote!(#source), &source);
+        let (ty, value) = value(&field.item.ty, quote!(#source), &source, &source_ref);
         let bound = if matches!(&ty, Type::Path(path) if path.qself.is_none() && is_self_path(&path.path, &type_name))
         {
             Some(quote!('static))
@@ -114,20 +116,28 @@ pub fn implementation(input: &Input<'_>, formatting: &Generics) -> TokenStream {
         }
     };
 
-    let conversion = conversion(&as_dyn, &as_source, &alloc);
+    let conversion = conversion(&as_dyn, &as_source, &source_ref, &alloc);
     quote! {
         const _: () = {
+            #shields
             #conversion
             #implementation
         };
     }
 }
 
-pub fn value(ty: &Type, reference: TokenStream, source: &syn::Ident) -> (Type, TokenStream) {
+pub fn value(
+    ty: &Type,
+    reference: TokenStream,
+    source: &syn::Ident,
+    source_ref: &syn::Ident,
+) -> (Type, TokenStream) {
     match ty {
-        Type::Paren(ty) => return value(&ty.elem, reference, source),
-        Type::Group(ty) => return value(&ty.elem, reference, source),
-        Type::Reference(ty) => return value(&ty.elem, quote!(&**#reference), source),
+        Type::Paren(ty) => return value(&ty.elem, reference, source, source_ref),
+        Type::Group(ty) => return value(&ty.elem, reference, source, source_ref),
+        Type::Reference(ty) => {
+            return value(&ty.elem, quote!(&**#reference), source, source_ref);
+        }
         _ => (),
     }
 
@@ -148,10 +158,15 @@ pub fn value(ty: &Type, reference: TokenStream, source: &syn::Ident) -> (Type, T
     {
         match plain(&segment.ident).as_str() {
             "Box" | "Rc" | "Arc" => {
-                return value(inner, quote!(::core::ops::Deref::deref(#reference)), source);
+                return value(
+                    inner,
+                    quote!(::core::ops::Deref::deref(#reference)),
+                    source,
+                    source_ref,
+                );
             }
             "Option" => {
-                let (ty, inner) = value(inner, quote!(#source), source);
+                let (ty, inner) = value(inner, quote!(#source), source, source_ref);
                 return (
                     ty,
                     quote! {
@@ -168,11 +183,18 @@ pub fn value(ty: &Type, reference: TokenStream, source: &syn::Ident) -> (Type, T
 
     (
         ty.clone(),
-        quote!(::core::option::Option::Some((#reference).__er_as_source())),
+        quote!(::core::option::Option::Some(#source_ref::__er_finish(
+            (&#source_ref(#reference)).__er_as_source()
+        ))),
     )
 }
 
-pub fn conversion(as_dyn: &syn::Ident, as_source: &syn::Ident, alloc: &syn::Ident) -> TokenStream {
+pub fn conversion(
+    as_dyn: &syn::Ident,
+    as_source: &syn::Ident,
+    source_ref: &syn::Ident,
+    alloc: &syn::Ident,
+) -> TokenStream {
     let objects = [
         quote!(),
         quote!(+ ::core::marker::Send),
@@ -201,9 +223,9 @@ pub fn conversion(as_dyn: &syn::Ident, as_source: &syn::Ident, alloc: &syn::Iden
     .map(|(pointer, attributes)| {
         quote! {
             #attributes
-            impl<'a, T: #as_dyn + ?Sized> #as_source<'a> for &'a #pointer<T> {
-                fn __er_as_source(self) -> &'a (dyn ::core::error::Error + 'static) {
-                    #as_dyn::__er_as_dyn(&**self)
+            impl<'a, T: #as_dyn + ?Sized> #as_source<'a> for &#source_ref<'a, #pointer<T>> {
+                fn __er_as_source(self) -> #source_ref<'a, dyn ::core::error::Error> {
+                    #source_ref(#as_dyn::__er_as_dyn(&**self.0))
                 }
             }
         }
@@ -222,12 +244,31 @@ pub fn conversion(as_dyn: &syn::Ident, as_source: &syn::Ident, alloc: &syn::Iden
         }
         #(#objects)*
 
-        trait #as_source<'a> {
-            fn __er_as_source(self) -> &'a (dyn ::core::error::Error + 'static);
+        // Dispatch on our own receiver, so an error's inherent methods can't win.
+        // Keep the result private too, so a foreign blanket method can't replace it.
+        struct #source_ref<'a, T: ?Sized>(&'a T);
+        impl<'a> #source_ref<'a, dyn ::core::error::Error> {
+            fn __er_finish(self) -> &'a (dyn ::core::error::Error + 'static) {
+                self.0
+            }
         }
-        impl<'a, T: #as_dyn + ?Sized> #as_source<'a> for &&'a T {
-            fn __er_as_source(self) -> &'a (dyn ::core::error::Error + 'static) {
-                #as_dyn::__er_as_dyn(*self)
+
+        trait #as_source<'a> {
+            fn __er_as_source(self) -> #source_ref<'a, dyn ::core::error::Error>;
+        }
+        impl<'a, T: #as_dyn + ?Sized> #as_source<'a> for &&#source_ref<'a, T> {
+            fn __er_as_source(self) -> #source_ref<'a, dyn ::core::error::Error> {
+                #source_ref(#as_dyn::__er_as_dyn(self.0))
+            }
+        }
+        impl<'a, T: #as_dyn + ?Sized> #as_source<'a> for &#source_ref<'a, &T> {
+            fn __er_as_source(self) -> #source_ref<'a, dyn ::core::error::Error> {
+                #source_ref(#as_dyn::__er_as_dyn(&**self.0))
+            }
+        }
+        impl<'a, T: #as_dyn + ?Sized> #as_source<'a> for &#source_ref<'a, &mut T> {
+            fn __er_as_source(self) -> #source_ref<'a, dyn ::core::error::Error> {
+                #source_ref(#as_dyn::__er_as_dyn(&**self.0))
             }
         }
         #(#pointers)*

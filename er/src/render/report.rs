@@ -188,7 +188,7 @@ pub fn write_single_line<'a, W: fmt::Write + ?Sized>(
         hide_repeated_location(&mut entry, &mut locations);
         if entry.depth > depth {
             writer.write_str(" [")?;
-        } else if entry.index > 0 {
+        } else if entry.depth > 0 {
             for _ in entry.depth..depth {
                 writer.write_char(']')?;
             }

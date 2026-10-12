@@ -60,6 +60,29 @@ pub fn capture() {
     let top = report.into_er_top().single_line().er_trace();
     assert_eq!(top.layout, Layout::SingleLine);
     assert_eq!(top.tree.stack_traces.len(), 2);
+
+    let boxed = Box::new(top);
+    let address = &*boxed as *const ErTop<fmt::Error>;
+    let line = line!() + 1;
+    let boxed: Box<ErTop<fmt::Error>> = Err::<(), _>(boxed).er_trace().unwrap_err();
+    assert!(core::ptr::eq(&*boxed, address));
+    assert_eq!(boxed.tree.stack_traces[2].trace_location.line(), line);
+    assert_eq!(boxed.layout, Layout::SingleLine);
+
+    let boxed = Box::new(boxed.into_er_report());
+    let address = &*boxed as *const ErReport<fmt::Error>;
+    let boxed: Box<ErReport<fmt::Error>> = boxed.er_trace();
+    assert!(core::ptr::eq(&*boxed, address));
+    assert_eq!(boxed.tree.stack_traces.len(), 4);
+
+    #[cfg(feature = "test")]
+    {
+        let failure = Box::new(None::<()>.er_test().unwrap_err());
+        let address = &*failure as *const ErTestFailure;
+        let failure: Box<ErTestFailure> = Err::<(), _>(failure).er_trace().unwrap_err();
+        assert!(core::ptr::eq(&*failure, address));
+        assert_eq!(failure.tree.stack_traces.len(), 1);
+    }
 }
 
 #[cfg(feature = "macros")]
@@ -212,6 +235,12 @@ pub mod composed {
         assert_eq!(wrapped.tree.stack_traces.len(), 2);
         let wrapped = Err::<(), _>(wrapped).er_trace().unwrap_err();
         assert_eq!(wrapped.tree.stack_traces.len(), 3);
+
+        let wrapped = Box::new(wrapped);
+        let address = &*wrapped as *const ReadErrWrap;
+        let wrapped: Box<ReadErrWrap> = Err::<(), _>(wrapped).er_trace().unwrap_err();
+        assert!(core::ptr::eq(&*wrapped, address));
+        assert_eq!(wrapped.tree.stack_traces.len(), 4);
 
         let result: ErResult<(), ReadErr> = Err::<(), _>(std::fmt::Error).er(|_| "fields");
         assert!(result.as_ref().unwrap_err().stack_traces.is_empty());

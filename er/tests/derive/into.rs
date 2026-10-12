@@ -244,3 +244,49 @@ pub fn variants() {
         _ => panic!("wrong variant"),
     }
 }
+
+pub mod type_macros {
+    use er::*;
+
+    #[derive(Er)]
+    pub struct Top<const LINE: u32>;
+
+    macro_rules! selected {
+        () => { Top<{ line!() }> };
+    }
+
+    #[derive(Er)]
+    pub enum Boundary {
+        First {
+            #[er(into_top)]
+            top: selected!(),
+            #[er(into_report_string)]
+            report: String,
+        },
+        Second {
+            #[er(into_top)]
+            top: selected!(),
+            #[er(into_report_string)]
+            report: String,
+        },
+    }
+
+    #[test]
+    pub fn distinct_types() {
+        let first = Boundary::first(Top::new(), "first");
+        let second = Boundary::second(Top::new(), "second");
+
+        for (error, is_first) in [(first, true), (second, false)] {
+            let converted: Boundary = match error {
+                Boundary::First { top, .. } => ErTree::from(top).er_into(|_| ()),
+                Boundary::Second { top, .. } => ErTree::from(top).er_into(|_| ()),
+            };
+
+            let converted_first = match converted {
+                Boundary::First { .. } => true,
+                Boundary::Second { .. } => false,
+            };
+            assert_eq!(converted_first, is_first);
+        }
+    }
+}

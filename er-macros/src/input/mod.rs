@@ -28,4 +28,10 @@ pub struct Input<'a> {
     pub cases: Vec<Case<'a>>,
     pub const_names: HashSet<String>,
     pub type_names: HashSet<String>,
+    pub names: HashSet<String>,
+}
+
+#[derive(Default)]
+pub struct IdentifierNames {
+    pub names: HashSet<String>,
 }

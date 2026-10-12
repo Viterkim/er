@@ -441,6 +441,7 @@ pub fn try_results() {
 
         let result = er_try!(
             || {
+                assert_eq!(drops.get(), 2 - failures.count_ones() as usize);
                 parents.set(parents.get() + 1);
                 Batch
             },
@@ -486,6 +487,71 @@ pub fn try_results() {
         }
 
         assert_eq!(drops.get(), 2 - failures.count_ones() as usize);
+    }
+}
+
+pub mod constants {
+    use super::Batch;
+    use er::*;
+
+    #[expect(non_upper_case_globals, reason = "macro binding collisions")]
+    pub mod names {
+        pub const __er_value_0: u8 = 85;
+        pub const __er_value_1: u8 = 86;
+        pub const __er_errors: u8 = 87;
+        pub const __er_results: u8 = 88;
+        pub const __er_tree: u8 = 89;
+        pub const __er_item: u8 = 90;
+        pub const __er_make: u8 = 91;
+    }
+    use names::*;
+
+    #[test]
+    pub fn bindings() -> Result<(), ErReport<Batch>> {
+        macro_rules! hidden {
+            () => {
+                __er_results + __er_make
+            };
+        }
+
+        let values: ErResult<_, Batch> = er_try!(
+            (),
+            [Ok::<_, Batch>(__er_value_0), Ok::<_, Batch>(__er_value_1)]
+        );
+        assert_eq!(values.unwrap_report(), (85, 86));
+
+        let mut number = 7;
+        let failed: ErResult<_, Batch> = er_try!(
+            || {
+                assert_eq!(number, 7);
+                Batch
+            },
+            [Ok::<_, Batch>(&mut number), Err::<(), _>(Batch)]
+        );
+        assert!(failed.is_err());
+
+        let result: ErResult<(), Batch> = er_all!(
+            || {
+                assert_eq!(number, 7);
+                Batch
+            },
+            [Ok::<_, Batch>(&mut number), Err::<&mut u8, _>(Batch)]
+        );
+        assert!(result.is_err());
+
+        let result: ErResult<(), Batch> = er_all!((), [Ok::<_, Batch>(__er_results)]);
+        result?;
+        let failed: ErResult<(), super::Item> = er_all!(|_| hidden!(), [Err::<(), _>(Batch)]);
+        assert_eq!(failed.unwrap_err().top.0, 179);
+        let result: ErResult<(), Batch> = er_all!((), [Ok::<_, Batch>(__er_item)].into_iter());
+        result?;
+
+        let tree = er_add!(ErTree::from(Batch), [Ok::<_, Batch>(__er_tree)]);
+        let tree = er_add!(tree, [Ok::<_, Batch>(__er_item)].into_iter());
+        assert!(tree.nodes.is_empty());
+        assert_eq!(__er_errors, 87);
+
+        Ok(())
     }
 }
 

@@ -14,7 +14,7 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use core::{error::Error, fmt, ops::Deref, slice};
+use core::{fmt, ops::Deref, slice};
 
 impl ErSnapshot {
     /// Copy the saved entries.
@@ -263,7 +263,6 @@ impl fmt::Debug for ErSnapshotReportRef<'_> {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl Error for ErSnapshotReportRef<'_> {}
 impl ErOpaqueErrorExt for ErSnapshotReportRef<'_> {
     type Output = ErAsError<Self>;
 
@@ -408,7 +407,6 @@ impl fmt::Debug for ErSnapshotTopRef<'_> {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl Error for ErSnapshotTopRef<'_> {}
 impl ErOpaqueErrorExt for ErSnapshotTopRef<'_> {
     type Output = ErAsError<Self>;
 
@@ -538,7 +536,6 @@ impl fmt::Debug for ErSnapshotReport {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl Error for ErSnapshotReport {}
 impl ErOpaqueErrorExt for ErSnapshotReport {
     type Output = ErAsError<Self>;
 
@@ -686,7 +683,6 @@ impl fmt::Debug for ErSnapshotTop {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl Error for ErSnapshotTop {}
 impl ErOpaqueErrorExt for ErSnapshotTop {
     type Output = ErAsError<Self>;
 
