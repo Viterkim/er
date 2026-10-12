@@ -1,7 +1,7 @@
 use super::{
     Case, Field, IdentifierNames, Input, attrs,
     attrs::FieldMode,
-    format::{Format, FormatTrait},
+    format::{FormatBody, FormatTrait, Formats, Output},
 };
 use crate::names::{identifiers, plain};
 use proc_macro2::TokenStream;
@@ -12,7 +12,7 @@ impl<'a> Case<'a> {
     pub fn parse(
         variant: Option<&'a Ident>,
         shape: &'a syn::Fields,
-        format: Option<&syn::LitStr>,
+        format: &attrs::FormatOptions,
         type_names: &HashSet<String>,
     ) -> syn::Result<Self> {
         let mut fields = Vec::with_capacity(shape.len());
@@ -33,28 +33,55 @@ impl<'a> Case<'a> {
                 item,
                 options,
                 formats: Vec::new(),
-                sets_width_or_precision: false,
+                used_in_format: false,
             });
         }
 
-        let format = match format {
-            Some(literal) => Some(Format::parse(literal, &mut fields)?),
-            None => {
-                for field in &mut fields {
-                    if field.options.mode != FieldMode::Skip {
-                        field.formats.push(FormatTrait::Debug);
+        if variant.is_some()
+            && !fields.iter().any(|field| field.options.into.is_some())
+            && let Some(field) = fields.iter().find(|field| field.options.default.is_some())
+        {
+            return Err(syn::Error::new_spanned(
+                field.item,
+                "default fields on enum variants need an `into_*` conversion; variant constructors take every field",
+            ));
+        }
+
+        let formats = Formats::parse(format, &fields)?;
+        for output in [Output::Display, Output::DisplayAlt, Output::Debug] {
+            if matches!(output, Output::DisplayAlt) && formats.display_alt.is_none() {
+                continue;
+            }
+            match formats.get(output) {
+                Some(FormatBody::Template(format)) => {
+                    for (argument, requirement) in &format.requirements {
+                        let index = argument.field;
+                        if !fields[index].formats.contains(requirement) {
+                            fields[index].formats.push(*requirement);
+                        }
+                    }
+                    for argument in &format.arguments {
+                        fields[argument.field].used_in_format = true;
                     }
                 }
-
-                None
+                Some(FormatBody::Function(_)) => (),
+                None => {
+                    for field in &mut fields {
+                        if field.options.mode != FieldMode::Skip
+                            && !field.formats.contains(&FormatTrait::Debug)
+                        {
+                            field.formats.push(FormatTrait::Debug);
+                        }
+                    }
+                }
             }
-        };
+        }
 
         Ok(Self {
             variant,
             shape,
             fields,
-            format,
+            formats,
         })
     }
 }
@@ -82,26 +109,30 @@ impl<'a> Input<'a> {
             Data::Struct(data) => vec![Case::parse(
                 None,
                 &data.fields,
-                options.format.as_ref(),
+                &options.format,
                 &type_names,
             )?],
             Data::Enum(data) => {
-                if let Some(format) = &options.format {
+                if let Some(attrs::FormatValue::Literal(literal)) = &options.format.shared {
                     return Err(syn::Error::new_spanned(
-                        format,
+                        literal,
                         "put `format = \"...\"` on each enum variant that needs it",
                     ));
                 }
 
                 let mut cases = Vec::with_capacity(data.variants.len());
                 for variant in &data.variants {
-                    let format = attrs::variant(&variant.attrs)?;
-                    let case = Case::parse(
-                        Some(&variant.ident),
-                        &variant.fields,
-                        format.as_ref(),
-                        &type_names,
-                    )?;
+                    let mut format = attrs::variant(&variant.attrs)?;
+                    if format.shared.is_none() {
+                        format.display = format.display.or_else(|| options.format.display.clone());
+                        format.debug = format.debug.or_else(|| options.format.debug.clone());
+                        format.shared = options.format.shared.clone();
+                    }
+                    format.display_alt = format
+                        .display_alt
+                        .or_else(|| options.format.display_alt.clone());
+                    let case =
+                        Case::parse(Some(&variant.ident), &variant.fields, &format, &type_names)?;
                     cases.push(case);
                 }
 

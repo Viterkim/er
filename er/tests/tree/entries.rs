@@ -381,7 +381,7 @@ pub fn public_data() {
 pub fn src_locations() {
     let line = line!() + 1;
     let direct = ErTree::from(Leaf(0));
-    let src: SrcLocation = direct.src_location;
+    let src: ErSrcLocation = direct.src_location;
 
     assert_eq!((src.file(), src.line()), (file!(), line));
 

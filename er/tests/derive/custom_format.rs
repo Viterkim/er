@@ -50,6 +50,305 @@ pub fn named_fields() {
     assert_eq!(format!("{error:?}"), expected);
 }
 
+#[test]
+pub fn field_access() {
+    struct Revision(u64);
+
+    #[derive(Er)]
+    #[er(format = "history from {oldest.0} to {latest.0:04x}")]
+    struct History {
+        oldest: Revision,
+        latest: Revision,
+    }
+
+    let err = History::new(Revision(7), Revision(85));
+    assert_eq!(err.to_string(), "history from 7 to 0055");
+    assert_eq!(format!("{err:?}"), err.to_string());
+    assert_eq!(err.latest.0, 85);
+
+    struct Details {
+        text: String,
+    }
+
+    #[derive(Er)]
+    enum Nested<T> {
+        #[er(format = "{details.text}: {values.0.0}")]
+        Named {
+            details: Details,
+            values: ((T,), NotPrintable),
+        },
+        #[er(format = "{0.text}: {1.0}")]
+        Tuple(Details, (T, NotPrintable)),
+    }
+
+    let err = Nested::named(
+        Details {
+            text: "oldest".into(),
+        },
+        ((OnlyDisplay(7),), NotPrintable),
+    );
+    assert_eq!(err.to_string(), "oldest: 7");
+    let _: &dyn std::error::Error = &err;
+
+    let err = Nested::tuple(
+        Details {
+            text: "latest".into(),
+        },
+        (OnlyDisplay(85), NotPrintable),
+    );
+    assert_eq!(format!("{err:?}"), "latest: 85");
+
+    #[derive(ErFormat)]
+    #[er(format = "hidden", display_alt = "{secret.0.text}")]
+    struct Secret {
+        #[er(censor)]
+        secret: (Details,),
+    }
+
+    let secret = Secret::new((Details {
+        text: "sentinel".into(),
+    },));
+    assert_eq!(format!("{secret:#}"), "*CENSORED*");
+    assert_eq!(secret.secret.0.text, "sentinel");
+}
+
+#[test]
+pub fn overrides() {
+    #[derive(Er)]
+    #[er(display = "failed {label}")]
+    struct DisplayErr<T> {
+        label: String,
+        data: T,
+    }
+
+    let err = DisplayErr::new("read", 85);
+    assert_eq!(err.to_string(), "failed read");
+    assert_eq!(
+        format!("{err:?}"),
+        "DisplayErr { label: \"read\", data: 85 }"
+    );
+    assert_eq!(
+        DisplayErr::new("read", NotPrintable).to_string(),
+        "failed read"
+    );
+
+    #[derive(ErFormat)]
+    #[er(debug = "debug {label}")]
+    struct DebugData<T> {
+        label: String,
+        data: T,
+    }
+
+    let data = DebugData::new("read", 85);
+    assert_eq!(format!("{data:?}"), "debug read");
+    assert_eq!(data.to_string(), "DebugData { label: \"read\", data: 85 }");
+    assert_eq!(
+        format!("{:?}", DebugData::new("read", NotPrintable)),
+        "debug read"
+    );
+
+    #[derive(Er)]
+    #[er(
+        display = "display {label}",
+        format = "shared {data:?}",
+        debug = "debug {label}"
+    )]
+    pub struct OverrideErr<T> {
+        pub label: String,
+        pub data: T,
+    }
+
+    let err = OverrideErr::new("read", NotPrintable);
+    assert_eq!(err.to_string(), "display read");
+    assert_eq!(format!("{err:?}"), "debug read");
+    let _: &dyn std::error::Error = &err;
+    let NotPrintable = err.data;
+
+    #[derive(Er)]
+    #[er(display = "status failed")]
+    enum StatusErr {
+        #[er(display = "missing", debug = "debug missing")]
+        Missing,
+        #[er(format = "shared {0}", debug = "debug {0}")]
+        Failed(String),
+        Other(u8),
+    }
+
+    assert_eq!(StatusErr::missing().to_string(), "missing");
+    assert_eq!(format!("{:?}", StatusErr::missing()), "debug missing");
+    assert_eq!(StatusErr::failed("read").to_string(), "shared read");
+    assert_eq!(format!("{:?}", StatusErr::failed("read")), "debug read");
+    assert_eq!(StatusErr::other(85).to_string(), "status failed");
+    assert_eq!(
+        format!("{:?}", StatusErr::other(85)),
+        "StatusErr::Other(85)"
+    );
+}
+
+#[test]
+pub fn alternate_output() {
+    #[derive(Er)]
+    #[er(format = "lifecycle failed", display_alt = "{diagnostics}")]
+    struct Saved<T> {
+        diagnostics: String,
+        data: T,
+    }
+
+    let err = Saved::new("first failure\nsecond failure", NotPrintable);
+    assert_eq!(err.to_string(), "lifecycle failed");
+    assert_eq!(format!("{err:#}"), err.diagnostics);
+    assert_eq!(format!("{err:?}"), "lifecycle failed");
+    assert_eq!(format!("{err:#?}"), "lifecycle failed");
+    assert_eq!(format!("{:#}", Saved::new("", NotPrintable)), "");
+    let tree = ErTree::from(err);
+    assert!(!tree.er_report_string().contains("first failure"));
+    let NotPrintable = tree.top.data;
+
+    struct DisplayOnly;
+    impl fmt::Display for DisplayOnly {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("details")
+        }
+    }
+
+    #[derive(Er)]
+    #[er(format = "failed", display_alt = "{data}")]
+    struct Generic<T> {
+        data: T,
+    }
+
+    assert_eq!(format!("{:#}", Generic::new(DisplayOnly)), "details");
+    assert_eq!(format!("{:?}", Generic::new(NotPrintable)), "failed");
+    let err = Generic::new(DisplayOnly);
+    let _: &dyn std::error::Error = &err;
+
+    #[derive(ErFormat)]
+    #[er(display_alt = Self::details)]
+    enum Phase {
+        #[er(format = "start")]
+        Start,
+        #[er(display_alt = "stop details")]
+        Stop,
+    }
+    impl Phase {
+        fn details(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            assert!(f.alternate());
+            f.write_str("phase details")
+        }
+    }
+
+    assert_eq!(Phase::start().to_string(), "start");
+    assert_eq!(format!("{:#}", Phase::start()), "phase details");
+    assert_eq!(format!("{:?}", Phase::start()), "start");
+    assert_eq!(Phase::stop().to_string(), "Phase::Stop");
+    assert_eq!(format!("{:#}", Phase::stop()), "stop details");
+    assert_eq!(format!("{:#?}", Phase::stop()), "Phase::Stop");
+
+    #[derive(Er)]
+    enum Mixed {
+        #[er(display = "failed", display_alt = "details {0}", debug = "hidden")]
+        Failed(String),
+        Ordinary(u8),
+    }
+
+    assert_eq!(
+        format!("{:#}", Mixed::failed("sentinel")),
+        "details sentinel"
+    );
+    assert_eq!(format!("{:?}", Mixed::failed("sentinel")), "hidden");
+    assert_eq!(
+        format!("{:#}", Mixed::ordinary(85)),
+        "Mixed::Ordinary(\n    85,\n)"
+    );
+
+    #[derive(ErFormat)]
+    #[er(format = "hidden", display_alt = "{secret}")]
+    struct Secret {
+        #[er(censor)]
+        secret: String,
+    }
+
+    let secret = Secret::new("stored");
+    assert_eq!(format!("{secret:#}"), "*CENSORED*");
+    assert_eq!(secret.secret, "stored");
+}
+
+#[test]
+pub fn formatter_functions() {
+    #[derive(Er)]
+    #[er(display = Self::display, debug = Self::debug)]
+    pub struct LifecycleErr<T> {
+        pub diagnostics: String,
+        pub data: T,
+    }
+    impl<T> LifecycleErr<T> {
+        fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("lifecycle failed")?;
+
+            if f.alternate() && !self.diagnostics.is_empty() {
+                write!(f, ": {}", self.diagnostics)?;
+            }
+
+            Ok(())
+        }
+
+        fn debug(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{self:#}")
+        }
+    }
+
+    let err = LifecycleErr::new("sentinel", NotPrintable);
+    assert_eq!(err.to_string(), "lifecycle failed");
+    for detailed in [format!("{err:#}"), format!("{err:?}"), format!("{err:#?}")] {
+        assert_eq!(detailed, "lifecycle failed: sentinel");
+    }
+    assert_eq!(
+        format!("{:#}", LifecycleErr::new("", NotPrintable)),
+        "lifecycle failed"
+    );
+    let tree = ErTree::from(err);
+    assert!(!tree.er_report_string().contains("sentinel"));
+    let NotPrintable = tree.top.data;
+
+    fn shared(err: &NumberErr, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "number {}", err.0)
+    }
+
+    #[derive(ErFormat)]
+    #[er(format = shared)]
+    struct NumberErr(u8);
+
+    let number = NumberErr::new(85);
+    assert_eq!(number.to_string(), "number 85");
+    assert_eq!(format!("{number:?}"), "number 85");
+
+    #[derive(Er)]
+    #[er(display = Self::display)]
+    enum PhaseErr {
+        Start,
+        Stop,
+    }
+    impl PhaseErr {
+        fn display(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let phase = match self {
+                Self::Start => "start",
+                Self::Stop => "stop",
+            };
+            write!(f, "couldn't {phase}")
+        }
+    }
+
+    assert_eq!(PhaseErr::start().to_string(), "couldn't start");
+    assert_eq!(PhaseErr::stop().to_string(), "couldn't stop");
+    assert_eq!(format!("{:?}", PhaseErr::stop()), "PhaseErr::Stop");
+
+    #[derive(ErFormat)]
+    #[er(display = <Self as fmt::Debug>::fmt)]
+    struct Qualified(u8);
+
+    assert_eq!(Qualified::new(85).to_string(), "Qualified(85)");
+}
+
 #[derive(Er)]
 pub enum AccountErr<T> {
     #[er(format = "account {account} wasn't found")]

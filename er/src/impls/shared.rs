@@ -1,4 +1,8 @@
-use crate::{ErFromTree, ErOpaqueErrorExt, ErReport, ErShared, ErSnapshot, ErTree, IntoErSnapshot};
+#[cfg(er_unsync)]
+use crate::ErSavedArc;
+use crate::{
+    ErDefaults, ErReport, ErSavedShared, ErShared, ErSnapshot, ErValFields, IntoErSnapshot,
+};
 use alloc::rc::Rc;
 #[cfg(er_unsync)]
 use alloc::rc::Rc as Shared;
@@ -98,17 +102,6 @@ macro_rules! borrowed_presentation {
                 <&'a P as IntoErSnapshot>::into_er_report(self)
             }
         }
-
-        impl<'a, P: ?Sized> ErOpaqueErrorExt for &'a $pointer<P>
-        where
-            &'a P: ErOpaqueErrorExt,
-        {
-            type Output = <&'a P as ErOpaqueErrorExt>::Output;
-
-            fn opaque_err(self) -> Self::Output {
-                <&'a P as ErOpaqueErrorExt>::opaque_err(self)
-            }
-        }
     };
 }
 
@@ -117,23 +110,7 @@ borrowed_presentation!(Rc);
 borrowed_presentation!(Arc);
 borrowed_presentation!(ErShared);
 
-impl<E, A: ErFromTree<E, Input>, Input> ErFromTree<E, Input> for Shared<A> {
-    fn er_from_tree(tree: ErTree<E>, input: Input) -> Self {
-        Self::new(A::er_from_tree(tree, input))
-    }
-
-    fn er_from_report(report: ErReport<E>, input: Input) -> Self {
-        Self::new(A::er_from_report(report, input))
-    }
-}
+crate::impls::construct::saved_outputs!(ErSavedShared, Shared<A>, Shared::new);
 
 #[cfg(all(er_unsync, target_has_atomic = "ptr"))]
-impl<E, A: ErFromTree<E, Input>, Input> ErFromTree<E, Input> for Arc<A> {
-    fn er_from_tree(tree: ErTree<E>, input: Input) -> Self {
-        Self::new(A::er_from_tree(tree, input))
-    }
-
-    fn er_from_report(report: ErReport<E>, input: Input) -> Self {
-        Self::new(A::er_from_report(report, input))
-    }
-}
+crate::impls::construct::saved_outputs!(ErSavedArc, Arc<A>, Arc::new);

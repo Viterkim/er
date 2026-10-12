@@ -17,7 +17,7 @@ impl CollectedErrors {
         self.nodes.is_empty()
     }
 
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     pub fn into_tree<A: Error + 'static>(self, top: A) -> ErTree<A> {
         ErTree {
             nodes: self.nodes,
@@ -27,7 +27,7 @@ impl CollectedErrors {
         }
     }
 
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     pub fn finish<A, Mode>(self, top: impl ErMake<A, Mode>) -> ErResult<(), A>
     where
         A: Error + 'static,
@@ -41,7 +41,7 @@ impl CollectedErrors {
 }
 
 #[doc(hidden)]
-#[cfg_attr(feature = "src_locations", track_caller)]
+#[track_caller]
 pub fn gather<E, T, Input>(results: impl IntoIterator<Item = Result<T, E>>) -> CollectedErrors
 where
     E: ErInput<Input>,
@@ -84,7 +84,7 @@ where
 }
 
 /// The collection loop behind `er_all!`.
-#[cfg_attr(feature = "src_locations", track_caller)]
+#[track_caller]
 pub fn collect<A, E, T, Input, Mode>(
     top: impl ErMake<A, Mode>,
     results: impl IntoIterator<Item = Result<T, E>>,

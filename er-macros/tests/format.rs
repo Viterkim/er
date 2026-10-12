@@ -1,4 +1,4 @@
-use er_macros::ErFormat;
+use er_macros::{Er, ErFormat};
 use std::{fmt, marker::PhantomData};
 
 pub struct NotPrintable;
@@ -90,4 +90,54 @@ pub struct Tuple(pub String);
 pub fn unit_and_tuple() {
     assert_eq!(Unit::new().to_string(), "Unit");
     assert_eq!(Tuple::new("hi").to_string(), "\"hi\"");
+}
+
+#[derive(Er)]
+#[er(display = "failed {name}", display_alt = Self::details, debug = Self::details)]
+pub struct Failure<T> {
+    pub name: String,
+    pub data: T,
+}
+impl<T> Failure<T> {
+    fn details(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "diagnostics for {}", self.name)
+    }
+}
+#[test]
+pub fn independent_output() {
+    let failure = Failure::new("read", NotPrintable);
+    assert_eq!(failure.to_string(), "failed read");
+    assert_eq!(format!("{failure:#}"), "diagnostics for read");
+    assert_eq!(format!("{failure:?}"), "diagnostics for read");
+    let _: &dyn std::error::Error = &failure;
+}
+
+#[test]
+#[deny(clippy::too_many_arguments)]
+pub fn wide_constructors() {
+    #[derive(Er)]
+    struct Fields {
+        a: u8,
+        b: u8,
+        c: u8,
+        d: u8,
+        e: u8,
+        f: u8,
+        g: u8,
+        h: u8,
+    }
+
+    #[derive(ErFormat)]
+    enum Data {
+        Fields(u8, u8, u8, u8, u8, u8, u8, u8),
+    }
+
+    let fields = Fields::new(1, 2, 3, 4, 5, 6, 7, 8);
+    assert_eq!(
+        fields.to_string(),
+        "Fields { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8 }"
+    );
+
+    let fields = Data::fields(1, 2, 3, 4, 5, 6, 7, 8);
+    assert_eq!(fields.to_string(), "Data::Fields(1, 2, 3, 4, 5, 6, 7, 8)");
 }

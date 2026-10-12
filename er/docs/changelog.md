@@ -1,12 +1,25 @@
 # 0.8.0
 
-`.er_into()` now gets the owned report and accepts field builders, like `.er_into(|report| report.er_report_string())`. Return `report` for automatic `into_*` filling, or `(report, fields)` for extra fields. Finished errors use `er_built(...)`, same as `.er_with()` and `.er_val()`. Foreign destinations need no Er conversion trait.
+Removed `.opaque_err()` and `ErAsError`. Instead export your saved diagnostics with `.er_into()` (or use an explicit Wrap to keep a live tree on the external trait cases).
 
-Also use the tuple helpers with `.er_val()` like `.er_val(|v| (path, v))`, same for `aggregate::collect()` but just use `er_all!()`.
+For your error types where you maybe don't use the tree, you can now use `#[er(src_location)]` which captures a location on your type instead of on the tree (and leaves the field out of constructor args). You can use it above a `pub some_name: ErSrcLocation` field (which is just an alias for `&'static core::panic::Location<'static>`).
 
-Snapshot Results get the printing and unwrap helpers, `ErSnapshotReport` and `ErSnapshotTop` now own the snapshot, the borrowed forms end in `Ref`.
+Added `#[er(display = "...")]` and `#[er(debug = "...")]` which override each output, `format` still does both. Also now `display_alt` for `{:#}` (each can also take a formatting functions).
 
-Add the missing 'helper functions' on ref/mut variants.
+`#[er(default)]` lets tuple helpers omit fields. Use `#[er(default = make_data())]` for your own fallback. Supplying those fields still works.
+
+`.er_val()` now takes the same field and tuple helpers as `.er()`, like `.er_val(|v| (path, v))` (for old finished struct there's `er_built(...)`, same as `.er_with()`, but just use the new pattern like on `.er()`).
+Replace `.er_val(DeviceErr::new)` with `.er_val(|v| v)` for a single field.
+
+`.er_into()` now gets the owned report and uses those helpers too, like `.er_into(|report| report.er_report_string())`. You can build another library's error without caring about 'er' or the version.
+
+Automatic report saving now uses ordinary field conversions. `ErFromTree` is gone, use `.er_into()` to finish the conversion.
+
+For automatic `into_*` filling, change `.er_into(|_| ())` to `.er_into(|report| report)`. With extra fields, change `.er_into(|_| fields)` to `.er_into(|report| (report, fields))`.
+
+Snapshot Results get the printing and unwrap helpers. `ErSnapshotReport` and `ErSnapshotTop` now own the snapshot, rename the old borrowed types to `ErSnapshotReportRef` and `ErSnapshotTopRef`. Snapshot report/top views no longer implement `Error`. Save their diagnostics in an ordinary error when a foreign API requires one.
+
+`.er_test()?` now also handles `Result<T, ()>`.
 
 # 0.7.0
 

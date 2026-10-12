@@ -96,7 +96,9 @@ pub fn implementation(input: &Input<'_>, formatting: &Generics) -> TokenStream {
                 .predicates
                 .push(parse_quote!(#pointer: ::core::ops::Deref));
         }
-        let bound = if matches!(&ty, Type::Path(path) if path.qself.is_none() && is_self_path(&path.path, &type_name))
+        let bound = if matches!(&ty, Type::TraitObject(_)) {
+            None
+        } else if matches!(&ty, Type::Path(path) if path.qself.is_none() && is_self_path(&path.path, &type_name))
         {
             Some(quote!('static))
         } else {
@@ -143,6 +145,13 @@ pub fn value(
     mode: SourceMode,
 ) -> (Type, TokenStream, Option<Type>) {
     match ty {
+        Type::TraitObject(_) => {
+            return (
+                ty.clone(),
+                quote!(::core::option::Option::Some(#reference)),
+                None,
+            );
+        }
         Type::Paren(ty) => return value(&ty.elem, reference, source, source_ref, mode),
         Type::Group(ty) => return value(&ty.elem, reference, source, source_ref, mode),
         Type::Reference(ty) => {

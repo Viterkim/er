@@ -86,6 +86,13 @@ pub fn callback_failure() {
         Ok(())
     });
 
+    let failure =
+        lines::try_for_each_line(&"report", |_| Err(std::io::Error::other("sink closed")))
+            .unwrap_err();
+    let tree = ErTree::from(failure);
+    assert_eq!(tree.er_report_string().matches("sink closed").count(), 1);
+    assert!(tree.er_contains::<std::io::Error>());
+
     assert_eq!(result, Err(ErLineError::Callback(17)));
     assert_eq!(lines, ["first", "second"]);
 

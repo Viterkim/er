@@ -1128,7 +1128,7 @@ We already made `ListenErr` with the cases and fields we want to give them, so w
 
 ```rust
 #[derive(Er)]
-#[er(format = "{report}")]
+#[er(format = "listen failed", display_alt = "{report}")]
 pub struct ListenError {
     pub kind: ListenErr,
     pub report: String,

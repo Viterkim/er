@@ -15,4 +15,16 @@ pub fn skip_hook() -> Result<(), PublicError> {
     Ok(())
 }
 
+#[derive(Er)]
+pub struct TextError {
+    #[er(into_report_string)]
+    pub diagnostics: String,
+    #[er(default)]
+    pub data: (),
+}
+pub fn skip_text_hook() -> Result<(), TextError> {
+    Err::<(), _>(String::from("plain text"))?;
+    Ok(())
+}
+
 pub fn main() {}

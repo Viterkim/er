@@ -1,9 +1,9 @@
 use crate::lines;
 use crate::render::{format_string, report::write_entries};
 use crate::{
-    BoxError, ErAsError, ErEntries, ErEntry, ErErrorIndex, ErFindAll, ErLineError, ErMake, ErNodes,
-    ErOpaqueErrorExt, ErReport, ErReportRef, ErSnapshot, ErSources, ErTop, ErTopRef, ErTree,
-    ErTreeContextExt, IntoErPart, IntoErTree, IntoErTreeRef, Layout,
+    BoxError, ErEntries, ErEntry, ErErrorIndex, ErFindAll, ErLineError, ErMake, ErNodes, ErReport,
+    ErReportRef, ErSnapshot, ErSources, ErTop, ErTopRef, ErTree, ErTreeContextExt, IntoErPart,
+    IntoErTree, IntoErTreeRef, Layout,
 };
 use alloc::string::String;
 use core::{error::Error, fmt};
@@ -151,20 +151,6 @@ impl<E: Error + 'static> fmt::Debug for ErReportRef<'_, E> {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl<E: Error + 'static> ErOpaqueErrorExt for ErReportRef<'_, E> {
-    type Output = ErAsError<Self>;
-
-    fn opaque_err(self) -> Self::Output {
-        ErAsError(self)
-    }
-}
-impl<'a, E: Error + 'static> ErOpaqueErrorExt for &ErReportRef<'a, E> {
-    type Output = ErAsError<ErReportRef<'a, E>>;
-
-    fn opaque_err(self) -> Self::Output {
-        self.er_report().opaque_err()
-    }
-}
 
 impl<E> ErReport<E> {
     /// Borrow the same report, keeping its layout.
@@ -204,7 +190,7 @@ impl<E> ErReport<E> {
     }
 }
 impl<E: Error + 'static> From<E> for ErReport<E> {
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn from(error: E) -> Self {
         ErTree::from(error).into_er_report()
     }
@@ -243,7 +229,7 @@ impl<'a, E> IntoErTreeRef<'a> for &'a ErReport<E> {
     }
 }
 impl<E: Error + Into<BoxError> + 'static, Mode> ErTreeContextExt<Mode> for ErReport<E> {
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er<A>(self, top: impl ErMake<A, Mode>) -> ErTree<A>
     where
         A: Error + 'static,
@@ -340,19 +326,5 @@ impl<E: Error + Into<BoxError> + 'static> IntoErPart for ErReport<E> {
 
     fn into_er_part(self) -> crate::ErPart {
         self.tree.into_er_part()
-    }
-}
-impl<E: Error + 'static> ErOpaqueErrorExt for ErReport<E> {
-    type Output = ErAsError<Self>;
-
-    fn opaque_err(self) -> Self::Output {
-        ErAsError(self)
-    }
-}
-impl<'a, E: Error + 'static> ErOpaqueErrorExt for &'a ErReport<E> {
-    type Output = ErAsError<ErReportRef<'a, E>>;
-
-    fn opaque_err(self) -> Self::Output {
-        self.er_report().opaque_err()
     }
 }

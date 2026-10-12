@@ -10,7 +10,7 @@ pinned_toolchain=$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)
 cargo +"$pinned_toolchain" test --manifest-path integrations/Cargo.toml -p compile-tests
 
 cargo +1.89.0 test --manifest-path integrations/Cargo.toml -p compile-tests --test compile accept -- --exact
-cargo +1.89.0 test --manifest-path integrations/Cargo.toml -p boundary
+cargo +1.89.0 test --manifest-path integrations/Cargo.toml -p boundary -p boundary-consumer
 cargo check --manifest-path integrations/Cargo.toml -p unsync --target thumbv6m-none-eabi
 
 cargo fmt --manifest-path integrations/no-src-locations/Cargo.toml --all --check

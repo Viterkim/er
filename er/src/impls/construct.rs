@@ -1,20 +1,23 @@
 use crate::{
-    ErBuilt, ErFields, ErFromTree, ErMake, ErReady, ErReport, ErSaved, ErTree, ErValFields,
+    ErBuilt, ErDefaults, ErFields, ErMake, ErReady, ErReport, ErSaved, ErSavedBox, ErValFields,
     ErWithFields,
 };
 use alloc::boxed::Box;
 
 impl<A, F: FnOnce() -> A> ErMake<A, ErReady> for F {
+    #[track_caller]
     fn er_make(self) -> A {
         self()
     }
 }
 impl<A: From<(P,)>, P, F: FnOnce(()) -> P> ErMake<A, ErFields> for F {
+    #[track_caller]
     fn er_make(self) -> A {
         A::from((self(()),))
     }
 }
 impl<A: From<()>> ErMake<A, ErFields> for () {
+    #[track_caller]
     fn er_make(self) -> A {
         A::from(())
     }
@@ -26,6 +29,7 @@ where
 {
     type Input = Input;
 
+    #[track_caller]
     fn er_with_fields(self, error: &E) -> A {
         A::from((self(error),))
     }
@@ -36,6 +40,7 @@ where
 {
     type Input = ErBuilt<A>;
 
+    #[track_caller]
     fn er_with_fields(self, error: &E) -> A {
         self(error).0
     }
@@ -47,6 +52,7 @@ where
 {
     type Input = Input;
 
+    #[track_caller]
     fn er_val_fields(self, value: E) -> A {
         A::from((self(value),))
     }
@@ -57,39 +63,203 @@ where
 {
     type Input = ErBuilt<A>;
 
+    #[track_caller]
     fn er_val_fields(self, value: E) -> A {
         self(value).0
     }
 }
-impl<E, A, F> ErValFields<ErReport<E>, A, ErSaved> for F
+
+impl<A: From<(P, [(); 1])>, P, F: FnOnce(()) -> P> ErMake<A, ErDefaults> for F {
+    #[track_caller]
+    fn er_make(self) -> A {
+        A::from((self(()), [()]))
+    }
+}
+impl<E: ?Sized, A, Input, F> ErWithFields<E, A, ErDefaults> for F
 where
-    F: FnOnce(ErReport<E>) -> ErReport<E>,
-    A: ErFromTree<E>,
+    F: FnOnce(&E) -> Input,
+    A: From<(Input, [(); 1])>,
 {
-    type Input = ErReport<E>;
+    type Input = Input;
 
-    fn er_val_fields(self, report: ErReport<E>) -> A {
-        A::er_from_report(self(report), ())
+    #[track_caller]
+    fn er_with_fields(self, error: &E) -> A {
+        A::from((self(error), [()]))
     }
 }
-impl<E, A, Input, F> ErValFields<ErReport<E>, A, (ErSaved, Input)> for F
+impl<E, A, Input, F> ErValFields<E, A, ErDefaults> for F
 where
-    F: FnOnce(ErReport<E>) -> (ErReport<E>, Input),
-    A: ErFromTree<E, Input>,
+    F: FnOnce(E) -> Input,
+    A: From<(Input, [(); 1])>,
 {
-    type Input = (ErReport<E>, Input);
+    type Input = Input;
 
-    fn er_val_fields(self, report: ErReport<E>) -> A {
-        let (report, fields) = self(report);
-        A::er_from_report(report, fields)
+    #[track_caller]
+    fn er_val_fields(self, value: E) -> A {
+        A::from((self(value), [()]))
     }
 }
-impl<E, A: ErFromTree<E, Input>, Input> ErFromTree<E, Input> for Box<A> {
-    fn er_from_tree(tree: ErTree<E>, input: Input) -> Self {
-        Self::new(A::er_from_tree(tree, input))
-    }
 
-    fn er_from_report(report: ErReport<E>, input: Input) -> Self {
-        Self::new(A::er_from_report(report, input))
-    }
+macro_rules! saved_output {
+    ($fields:ty, $tag:literal, $mode:ident, $target:ty, $build:expr) => {
+        impl<E, A, F> ErValFields<ErReport<E>, $target, $mode<$fields, $tag>> for F
+        where
+            F: FnOnce(ErReport<E>) -> ErReport<E>,
+            ErReport<E>: Into<($fields, [(); $tag])>,
+            A: From<($fields, [(); $tag])>,
+        {
+            type Input = ErReport<E>;
+
+            #[track_caller]
+            fn er_val_fields(self, report: ErReport<E>) -> $target {
+                $build(A::from(self(report).into()))
+            }
+        }
+
+        impl<E, A, Input, F> ErValFields<ErReport<E>, $target, ($mode<$fields, $tag>, Input)> for F
+        where
+            F: FnOnce(ErReport<E>) -> (ErReport<E>, Input),
+            ErReport<E>: Into<($fields, [(); $tag])>,
+            A: From<(($fields, Input), [(); $tag])>,
+        {
+            type Input = (ErReport<E>, Input);
+
+            #[track_caller]
+            fn er_val_fields(self, report: ErReport<E>) -> $target {
+                let (report, input) = self(report);
+                let (fields, tag) = report.into();
+                $build(A::from(((fields, input), tag)))
+            }
+        }
+
+        impl<E, A, Input, F>
+            ErValFields<ErReport<E>, $target, ($mode<$fields, $tag>, ErDefaults, Input)> for F
+        where
+            F: FnOnce(ErReport<E>) -> (ErReport<E>, Input),
+            ErReport<E>: Into<($fields, [(); $tag])>,
+            A: From<(($fields, ((Input, [(); 1]),)), [(); $tag])>,
+        {
+            type Input = (ErReport<E>, Input);
+
+            #[track_caller]
+            fn er_val_fields(self, report: ErReport<E>) -> $target {
+                let (report, input) = self(report);
+                let (fields, tag) = report.into();
+                $build(A::from(((fields, ((input, [()]),)), tag)))
+            }
+        }
+    };
 }
+
+pub(crate) use saved_output;
+
+macro_rules! saved_outputs {
+    ($mode:ident, $target:ty, $build:expr) => {
+        $crate::impls::construct::saved_output!(
+            (alloc::string::String,),
+            4,
+            $mode,
+            $target,
+            $build
+        );
+        $crate::impls::construct::saved_output!(
+            (E, alloc::string::String,),
+            5,
+            $mode,
+            $target,
+            $build
+        );
+        $crate::impls::construct::saved_output!(
+            (alloc::string::String,),
+            6,
+            $mode,
+            $target,
+            $build
+        );
+        $crate::impls::construct::saved_output!(
+            (E, alloc::string::String,),
+            7,
+            $mode,
+            $target,
+            $build
+        );
+        $crate::impls::construct::saved_output!(
+            (alloc::string::String, alloc::string::String,),
+            8,
+            $mode,
+            $target,
+            $build
+        );
+        $crate::impls::construct::saved_output!(
+            (E, alloc::string::String, alloc::string::String,),
+            9,
+            $mode,
+            $target,
+            $build
+        );
+        $crate::impls::construct::saved_output!((crate::ErSnapshot,), 10, $mode, $target, $build);
+        $crate::impls::construct::saved_output!(
+            (E, crate::ErSnapshot,),
+            11,
+            $mode,
+            $target,
+            $build
+        );
+        $crate::impls::construct::saved_output!(
+            (alloc::string::String, crate::ErSnapshot,),
+            12,
+            $mode,
+            $target,
+            $build
+        );
+        $crate::impls::construct::saved_output!(
+            (E, alloc::string::String, crate::ErSnapshot,),
+            13,
+            $mode,
+            $target,
+            $build
+        );
+        $crate::impls::construct::saved_output!(
+            (alloc::string::String, crate::ErSnapshot,),
+            14,
+            $mode,
+            $target,
+            $build
+        );
+        $crate::impls::construct::saved_output!(
+            (E, alloc::string::String, crate::ErSnapshot,),
+            15,
+            $mode,
+            $target,
+            $build
+        );
+        $crate::impls::construct::saved_output!(
+            (
+                alloc::string::String,
+                alloc::string::String,
+                crate::ErSnapshot,
+            ),
+            16,
+            $mode,
+            $target,
+            $build
+        );
+        $crate::impls::construct::saved_output!(
+            (
+                E,
+                alloc::string::String,
+                alloc::string::String,
+                crate::ErSnapshot,
+            ),
+            17,
+            $mode,
+            $target,
+            $build
+        );
+    };
+}
+
+pub(crate) use saved_outputs;
+
+saved_outputs!(ErSaved, A, core::convert::identity);
+saved_outputs!(ErSavedBox, Box<A>, Box::new);

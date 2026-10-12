@@ -86,8 +86,24 @@ dependencies = [
 name = "boundary"
 version = "0.0.0"
 dependencies = [
+ "boundary-provider",
  "er 0.7.0",
  "er 0.8.0",
+]
+
+[[package]]
+name = "boundary-consumer"
+version = "0.0.0"
+dependencies = [
+ "boundary-provider",
+]
+
+[[package]]
+name = "boundary-provider"
+version = "0.0.0"
+dependencies = [
+ "er 0.7.0",
+ "er-macros 0.8.0",
 ]
 
 [[package]]

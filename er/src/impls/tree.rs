@@ -12,7 +12,7 @@ use core::{error::Error, fmt, ops::Deref};
 
 impl<E: Error + 'static> ErTree<E> {
     /// Put existing errors below this one, even if the list is empty.
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     pub fn new<Input>(error: E, nodes: impl IntoIterator<Item = impl ErInput<Input>>) -> Self {
         Self::from(error).er_add(nodes)
     }
@@ -20,7 +20,7 @@ impl<E: Error + 'static> ErTree<E> {
     /// Build the new top from fields taken from the old top.
     ///
     /// `let error = error.er_with(|err| err.code);`
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     pub fn er_with<A, Mode>(self, fields: impl ErWithFields<E, A, Mode>) -> ErTree<A>
     where
         E: Into<BoxError>,
@@ -31,7 +31,7 @@ impl<E: Error + 'static> ErTree<E> {
     }
 
     /// Like `.er_with()`, but the closure gets the whole tree.
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     pub fn er_with_tree<A, Mode>(self, fields: impl ErWithFields<Self, A, Mode>) -> ErTree<A>
     where
         E: Into<BoxError>,
@@ -150,7 +150,7 @@ impl<E: Error + 'static> ErTree<E> {
     }
 }
 impl<E: Error + Into<BoxError> + 'static, Mode> ErTreeContextExt<Mode> for ErTree<E> {
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er<A>(self, top: impl ErMake<A, Mode>) -> ErTree<A>
     where
         A: Error + 'static,
@@ -161,7 +161,7 @@ impl<E: Error + Into<BoxError> + 'static, Mode> ErTreeContextExt<Mode> for ErTre
 impl<E> ErTree<E> {
     /// Add errors or subtrees below the current top.
     /// Use `er_add!(tree, [first, second])` for different types.
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     pub fn er_add<Input>(mut self, nodes: impl IntoIterator<Item = impl ErInput<Input>>) -> Self {
         let nodes = nodes.into_iter();
         if self.nodes.capacity() == 0 {
@@ -291,7 +291,7 @@ impl<E> From<ErReport<E>> for ErTree<E> {
     }
 }
 impl<E: Error + 'static> From<E> for ErTree<E> {
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn from(error: E) -> Self {
         Self {
             top: error,
@@ -318,7 +318,7 @@ impl<E: Error + Into<BoxError> + 'static> IntoErPart for ErTree<E> {
 // Keep the Vec work out of the caller's success path.
 #[cold]
 #[inline(never)]
-#[cfg_attr(feature = "src_locations", track_caller)]
+#[track_caller]
 pub fn with_source<E, Input>(error: E, source: impl ErInput<Input>) -> ErTree<E>
 where
     E: Error + 'static,

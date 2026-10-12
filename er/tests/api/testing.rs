@@ -59,12 +59,12 @@ pub fn nested_helpers() {
         Err(ErLineError::Callback(&failure))
     );
     assert_eq!(
-        Err::<(), _>(&error).opaque_err().unwrap_err().to_string(),
+        Err::<(), _>(&error).er_report().unwrap_err().to_string(),
         report
     );
-    let opaque = Err::<(), _>(&mut error).opaque_err().unwrap_err();
-    assert_eq!(opaque.to_string(), report);
-    assert!(std::ptr::eq(opaque.0.tree, &error.tree));
+    let view = Err::<(), _>(&mut error).er_report().unwrap_err();
+    assert_eq!(view.to_string(), report);
+    assert!(std::ptr::eq(view.tree, &error.tree));
 
     let snapshot = error.er_snapshot();
     assert_eq!(Err::<(), _>(&error).er_snapshot().unwrap_err(), snapshot);
@@ -74,10 +74,9 @@ pub fn nested_helpers() {
     );
     let error = Err::<(), _>(error.into_er_tree()).er_test().unwrap_err();
     let error = Err::<(), _>(Box::new(error)).er_test().unwrap_err();
-    let opaque = Err::<(), _>(error).opaque_err().unwrap_err();
-    assert_eq!(opaque.to_string(), report);
-    assert!(core::error::Error::source(&opaque).is_none());
-    let error = opaque.0;
+    let view = Err::<(), _>(error).er_report().unwrap_err();
+    assert_eq!(view.to_string(), report);
+    let error = view;
     assert_eq!(error.er_snapshot(), snapshot);
 
     #[cfg(feature = "stack_traces")]

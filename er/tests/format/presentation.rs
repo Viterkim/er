@@ -1,6 +1,6 @@
 #[cfg(feature = "src_locations")]
 use core::panic::Location;
-use core::{error::Error, fmt, ptr};
+use core::{fmt, ptr};
 use er::*;
 
 #[derive(Er)]
@@ -25,8 +25,6 @@ pub fn views() -> fmt::Result {
     assert!(report.to_string().contains("InnerErr"));
     assert_eq!(format!("{top}"), format!("{top:?}"));
     assert_eq!(format!("{report}"), format!("{report:?}"));
-    assert!(Error::source(&top.opaque_err()).is_none());
-    assert!(Error::source(&report.opaque_err()).is_none());
 
     assert_eq!(top.single_line().layout, Layout::SingleLine);
     assert_eq!(report.single_line().layout, Layout::SingleLine);
@@ -70,19 +68,8 @@ pub fn views() -> fmt::Result {
     assert_eq!(owned.to_string(), expected);
     assert_eq!(owned.layout, Layout::Multiline);
 
-    let error = owned.opaque_err();
-    assert_eq!(error.to_string(), expected);
-    assert_eq!(format!("{error:?}"), expected);
-    assert!(error.source().is_none());
-    let outer = Err::<(), _>(error)
-        .er(OuterErr::new)
-        .err()
-        .ok_or(fmt::Error)?;
-    assert_eq!(outer.nodes[0].error.to_string(), expected);
-    let adapter = outer
-        .er_find::<ErAsError<ErReport<AppErr>>>()
-        .ok_or(fmt::Error)?;
-    assert!(adapter.0.er_contains::<InnerErr>());
+    let outer = Err::<(), _>(owned).er(OuterErr::new).unwrap_err();
+    assert!(outer.er_contains::<InnerErr>());
     Ok(())
 }
 
@@ -97,9 +84,9 @@ pub fn borrowed_results() {
         result.as_mut().er_report().unwrap_err()
     }
 
-    fn local_opaque(tree: &ErTree<AppErr>) -> ErAsError<ErReportRef<'_, AppErr>> {
+    fn local_report(tree: &ErTree<AppErr>) -> ErReportRef<'_, AppErr> {
         let mut result = Err::<(), _>(tree.er_report().single_line());
-        result.as_mut().opaque_err().unwrap_err()
+        result.as_mut().er_report().unwrap_err()
     }
 
     fn local_boxed(tree: &ErTree<AppErr>) -> ErReportRef<'_, AppErr> {
@@ -152,21 +139,21 @@ pub fn borrowed_results() {
         check::<&ErReportRef<'_, _>>(&report, &tree, &expected);
 
         let mut borrowed = Err::<(), _>(&report);
-        let opaque = borrowed.as_ref().opaque_err().unwrap_err();
-        assert!(ptr::eq(opaque.0.tree, &tree));
-        assert_eq!(opaque.to_string(), expected);
+        let view = borrowed.as_ref().er_report().unwrap_err();
+        assert!(ptr::eq(view.tree, &tree));
+        assert_eq!(view.to_string(), expected);
         assert_eq!(
-            borrowed.as_mut().opaque_err().unwrap_err().to_string(),
+            borrowed.as_mut().er_report().unwrap_err().to_string(),
             expected
         );
 
         let shared = std::sync::Arc::new(report);
         let local = std::rc::Rc::new(top);
-        let opaque = Err::<(), _>(&shared).opaque_err().unwrap_err();
-        assert!(ptr::eq(opaque.0.tree, &tree));
-        assert_eq!(opaque.to_string(), expected);
+        let view = Err::<(), _>(&shared).er_report().unwrap_err();
+        assert!(ptr::eq(view.tree, &tree));
+        assert_eq!(view.to_string(), expected);
         assert_eq!(
-            Err::<(), _>(&local).opaque_err().unwrap_err().to_string(),
+            Err::<(), _>(&local).er_top().unwrap_err().to_string(),
             "AppErr"
         );
 
@@ -182,7 +169,7 @@ pub fn borrowed_results() {
 
     let tree = result.as_mut().er_tree().unwrap_err();
     assert!(ptr::eq(local_view(tree).tree, tree));
-    assert!(ptr::eq(local_opaque(tree).0.tree, tree));
+    assert!(ptr::eq(local_report(tree).tree, tree));
     assert!(ptr::eq(local_boxed(tree).tree, tree));
 
     let result = result.er_report();
@@ -193,11 +180,11 @@ pub fn borrowed_results() {
     assert_eq!(result.as_ref().er_report_string().unwrap_err(), expected);
     assert_eq!(result.as_mut().er_report_string().unwrap_err(), expected);
     assert_eq!(
-        result.as_ref().opaque_err().unwrap_err().to_string(),
+        result.as_ref().er_report().unwrap_err().to_string(),
         expected
     );
     assert_eq!(
-        result.as_mut().opaque_err().unwrap_err().to_string(),
+        result.as_mut().er_report().unwrap_err().to_string(),
         expected
     );
 
@@ -208,9 +195,9 @@ pub fn borrowed_results() {
         expected
     );
 
-    let opaque = result.as_mut().opaque_err().unwrap_err();
-    assert_eq!(opaque.to_string(), "AppErr");
-    assert_eq!(opaque.0.layout, Layout::SingleLine);
+    let view = result.as_mut().er_top().unwrap_err();
+    assert_eq!(view.to_string(), "AppErr");
+    assert_eq!(view.layout, Layout::SingleLine);
 
     let mut success = Ok::<_, ErReport<AppErr>>(String::from("kept"));
     assert!(ptr::eq(
@@ -328,7 +315,7 @@ pub fn results() -> Result<(), ErReport<AppErr>> {
     assert_eq!(boxed.as_ref().er_report_string().unwrap_err(), expected);
     assert_eq!(boxed.as_mut().er_report_string().unwrap_err(), expected);
     assert_eq!(
-        boxed.as_mut().opaque_err().unwrap_err().to_string(),
+        boxed.as_mut().er_report().unwrap_err().to_string(),
         expected
     );
 
@@ -366,9 +353,8 @@ pub fn display_only() -> fmt::Result {
     );
 
     assert_eq!(format!("{:?}", top.single_line()), "first second");
-    let adapter = top.single_line().opaque_err();
-    assert_eq!(adapter.to_string(), "first second");
-    assert!(Error::source(&adapter).is_none());
+    let view = top.single_line();
+    assert_eq!(view.to_string(), "first second");
 
     let mut lines = Vec::new();
     top.for_each_line(|l| lines.push(l.to_owned()))?;

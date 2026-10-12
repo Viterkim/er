@@ -7,6 +7,8 @@ members = [
     "compile-tests",
     "unsync",
     "boundary",
+    "boundary/provider",
+    "boundary/consumer",
 ]
 exclude = ["no-src-locations"]
 

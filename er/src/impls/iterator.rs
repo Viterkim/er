@@ -9,7 +9,7 @@ where
 {
     type Ok = T;
 
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er_collect<C, A>(self, error: impl ErMake<A, Mode>) -> ErResult<C, A>
     where
         C: FromIterator<T>,
@@ -18,7 +18,7 @@ where
         self.collect::<Result<C, E>>().er(error)
     }
 
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er_collect_all<C, A>(self, error: impl ErMake<A, Mode>) -> ErResult<C, A>
     where
         C: FromIterator<T>,

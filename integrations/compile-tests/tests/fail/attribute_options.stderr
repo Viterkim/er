@@ -16,7 +16,7 @@ error: `wrap` is set more than once
 14 | #[er(wrap, wrap)]
    |            ^^^^
 
-error: empty `#[er(...)]`; expected `#[er(format = "...")]`, `#[er(crate = ...)]`, `#[er(wrap)]`, or `#[er(no_constructors)]`
+error: empty `#[er(...)]`; expected `#[er(format = "...")]`, `#[er(display = "...")]`, `#[er(display_alt = "...")]`, `#[er(debug = "...")]`, `#[er(crate = ...)]`, `#[er(wrap)]`, or `#[er(no_constructors)]`
   --> tests/fail/attribute_options.rs:18:1
    |
 18 | #[er()]
@@ -34,19 +34,19 @@ error: put `skip`, `censor`, `exact`, or `source` on a field
 28 | #[er(skip)]
    |      ^^^^
 
-error: expected `#[er(format = "...")]`, `#[er(crate = ...)]`, `#[er(wrap)]`, or `#[er(no_constructors)]`
+error: expected `#[er(format = "...")]`, `#[er(display = "...")]`, `#[er(display_alt = "...")]`, `#[er(debug = "...")]`, `#[er(crate = ...)]`, `#[er(wrap)]`, or `#[er(no_constructors)]`
   --> tests/fail/attribute_options.rs:34:6
    |
 34 | #[er(wrapp)]
    |      ^^^^^
 
-error: expected `format = "..."`; put `skip`, `censor`, `exact`, or `source` on a field, or `wrap`/`crate` on the enum
+error: expected `format = "..."`, `display = "..."`, `display_alt = "..."`, or `debug = "..."`; put `skip`, `censor`, `exact`, or `source` on a field, or `wrap`/`crate` on the enum
   --> tests/fail/attribute_options.rs:40:10
    |
 40 |     #[er(censor)]
    |          ^^^^^^
 
-error: expected `format = "..."`; put `skip`, `censor`, `exact`, or `source` on a field, or `wrap`/`crate` on the enum
+error: expected `format = "..."`, `display = "..."`, `display_alt = "..."`, or `debug = "..."`; put `skip`, `censor`, `exact`, or `source` on a field, or `wrap`/`crate` on the enum
   --> tests/fail/attribute_options.rs:47:10
    |
 47 |     #[er(bogus)]

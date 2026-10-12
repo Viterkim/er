@@ -2,15 +2,16 @@ use crate::fields::with_fields;
 use crate::input::{
     Case, Input,
     attrs::{FieldMode, IntoField},
+    format::{FormatBody, Output},
 };
 use crate::names::{binding, plain};
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
 use syn::{Data, Fields, Ident, Index, LitStr, Member, spanned::Spanned as _};
 
-pub fn debug_body(input: &Input<'_>, formatter: &Ident, debug: &Ident) -> TokenStream {
+pub fn body(input: &Input<'_>, output: Output, formatter: &Ident, debug: &Ident) -> TokenStream {
     if let Data::Struct(_) = &input.item.data {
-        return case_body(input, &input.cases[0], formatter, debug);
+        return case_body(input, &input.cases[0], output, formatter, debug);
     }
 
     if input.cases.is_empty() {
@@ -19,7 +20,7 @@ pub fn debug_body(input: &Input<'_>, formatter: &Ident, debug: &Ident) -> TokenS
 
     let mut arms = Vec::with_capacity(input.cases.len());
     for case in &input.cases {
-        arms.push(case_body(input, case, formatter, debug));
+        arms.push(case_body(input, case, output, formatter, debug));
     }
 
     quote!(match self { #(#arms),* })
@@ -28,18 +29,27 @@ pub fn debug_body(input: &Input<'_>, formatter: &Ident, debug: &Ident) -> TokenS
 pub fn case_body(
     input: &Input<'_>,
     case: &Case<'_>,
+    output: Output,
     formatter: &Ident,
     debug: &Ident,
 ) -> TokenStream {
-    let body = match &case.format {
-        Some(format) => {
+    let body = match case.formats.get(output) {
+        Some(FormatBody::Template(format)) => {
             let literal = &format.literal;
-            let arguments = format
-                .arguments
-                .iter()
-                .map(|index| field_value(input, case, *index));
+            let arguments = format.arguments.iter().map(|argument| {
+                let value = field_value(input, case, argument.field);
+                if argument.members.is_empty()
+                    || case.fields[argument.field].options.mode == FieldMode::Censor
+                {
+                    value
+                } else {
+                    let members = &argument.members;
+                    quote_spanned!(case.fields[argument.field].item.ty.span()=> (#value)#(.#members)*)
+                }
+            });
             quote!(#formatter.write_fmt(::core::format_args!(#literal, #(#arguments),*)))
         }
+        Some(FormatBody::Function(path)) => quote!(#path(self, #formatter)),
         None => default_body(input, case, formatter, debug),
     };
 
@@ -49,7 +59,7 @@ pub fn case_body(
 
     let mut patterns = Vec::new();
     for (index, field) in case.fields.iter().enumerate() {
-        let used = !field.formats.is_empty() || field.sets_width_or_precision;
+        let used = !field.formats.is_empty() || field.used_in_format;
         let pattern = if used && field.options.mode == FieldMode::Normal {
             let local = binding(&input.names, &format!("__er_{index}"));
             quote!(#local)

@@ -5,7 +5,7 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::HashSet;
 use syn::fold::Fold as _;
-use syn::{DeriveInput, Generics, Ident, Lifetime, Path, Type, parse_quote};
+use syn::{DeriveInput, Generics, Ident, Path, Type, parse_quote};
 
 pub fn expand(
     input: &DeriveInput,
@@ -266,13 +266,6 @@ fn formatting(
     let failure = binding(&reserved, "__ErLineFailure");
     let emit = binding(&reserved, "__er_emit");
     let shields = shield_bindings([formatter, &emit]);
-    let borrow = Lifetime::new(
-        &format!("'{}", binding(&reserved, "__er_view")),
-        formatter.span(),
-    );
-    let mut borrowed_generics = generics.clone();
-    borrowed_generics.params.insert(0, parse_quote!(#borrow));
-    let (borrowed_impl, _, borrowed_where) = borrowed_generics.split_for_impl();
 
     quote! {
         const _: () = {
@@ -302,20 +295,8 @@ fn formatting(
                     ::core::fmt::Display::fmt(self, #formatter)
                 }
             }
-            impl #impl_generics #er_path::ErOpaqueErrorExt for #wrap #type_generics #where_clause {
-                type Output = #er_path::ErAsError<Self>;
 
-                fn opaque_err(self) -> Self::Output {
-                    #er_path::ErAsError(self)
-                }
-            }
-            impl #borrowed_impl #er_path::ErOpaqueErrorExt for &#borrow #wrap #type_generics #borrowed_where {
-                type Output = #er_path::ErAsError<Self>;
 
-                fn opaque_err(self) -> Self::Output {
-                    #er_path::ErAsError(self)
-                }
-            }
         };
     }
 }

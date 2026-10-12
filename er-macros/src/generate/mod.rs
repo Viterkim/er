@@ -27,26 +27,16 @@ pub fn expand_for(item: &DeriveInput, package: &str) -> syn::Result<TokenStream>
 
     let fields = construct::from_fields(&input);
     let error = source::implementation(&input, &generics);
-    let (into, wrap) = if input.options.wrap.is_some()
-        || input
-            .cases
-            .iter()
-            .flat_map(|case| &case.fields)
-            .any(|field| field.options.into.is_some())
-    {
-        let path = match &input.options.er_path {
-            Some(path) => path.clone(),
-            None => runtime_path(package)?,
-        };
-        let into = into::implementation(&input, &path)?;
-        let wrap = match &input.options.wrap {
-            Some(options) => wrap::expand(item, &path, options, &input.names, &formatter),
-            None => TokenStream::new(),
-        };
-
-        (into, wrap)
-    } else {
-        (TokenStream::new(), TokenStream::new())
+    let into = into::implementation(&input)?;
+    let wrap = match &input.options.wrap {
+        Some(options) => {
+            let path = match &input.options.er_path {
+                Some(path) => path.clone(),
+                None => runtime_path(package)?,
+            };
+            wrap::expand(item, &path, options, &input.names, &formatter)
+        }
+        None => TokenStream::new(),
     };
 
     Ok(quote! {

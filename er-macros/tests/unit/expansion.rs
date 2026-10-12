@@ -34,8 +34,41 @@ pub fn primitive_paths() -> syn::Result<()> {
 }
 
 #[test]
+pub fn format_options() -> syn::Result<()> {
+    for options in [
+        quote!(display = "first", display = "second"),
+        quote!(display_alt = "first", display_alt = "second"),
+        quote!(debug = "first", debug = "second"),
+        quote!(format = "first", format = "second"),
+        quote!(display =),
+        quote!(display_alt =),
+        quote!(display_alt = 85),
+        quote!(debug = 85),
+        quote!(display = "{unknown}"),
+        quote!(display_alt = "{unknown}"),
+        quote!(debug = "{unknown}"),
+    ] {
+        let item = syn::parse2(quote! {
+            #[er(#options)]
+            struct Example;
+        })?;
+        assert!(crate::generate::expand(&item).is_err(), "{options}");
+        assert!(crate::format::expand(&item).is_err(), "{options}");
+    }
+    Ok(())
+}
+
+#[test]
 pub fn named_positions() -> syn::Result<()> {
-    for format in ["{}", "{0}", "{00}", "{value:0$}"] {
+    for format in [
+        "{}",
+        "{0}",
+        "{00}",
+        "{value:0$}",
+        "{value..0}",
+        "{value.}",
+        "{value.0 + 1}",
+    ] {
         let item = syn::parse2(quote! {
             #[er(format = #format)]
             struct Named { value: u8 }
@@ -112,6 +145,24 @@ pub fn no_constructors_options() -> syn::Result<()> {
                 "{source}"
             );
         }
+    }
+    Ok(())
+}
+
+#[test]
+pub fn default_options() -> syn::Result<()> {
+    for source in [
+        "#[er(default)] struct Data;",
+        "struct Data { #[er(default, default)] value: u8 }",
+        "struct Data { #[er(default =)] value: u8 }",
+        "struct Data { #[er(default())] value: u8 }",
+        "struct Data { #[er(default, into_report_string)] value: String }",
+        "struct Data { #[er(into_report_string, default)] value: String }",
+        "enum Data { Value(#[er(default)] u8) }",
+    ] {
+        let item = syn::parse_str(source)?;
+        assert!(crate::generate::expand(&item).is_err(), "{source}");
+        assert!(crate::format::expand(&item).is_err(), "{source}");
     }
     Ok(())
 }

@@ -1,5 +1,5 @@
 use crate::fields::with_fields;
-use crate::input::{Case, Field, IdentifierNames, Input};
+use crate::input::{Case, Field, IdentifierNames, Input, attrs::FieldDefault};
 use crate::names::{binding, plain, shield_bindings, snake_case};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, format_ident, quote};
@@ -10,7 +10,6 @@ pub fn methods(input: &Input<'_>) -> syn::Result<TokenStream> {
     if input.options.no_constructors {
         return Ok(TokenStream::new());
     }
-
     let name = &input.item.ident;
     let (impl_generics, type_generics, where_clause) = input.item.generics.split_for_impl();
     let variants: HashSet<_> = input
@@ -52,32 +51,21 @@ pub fn methods(input: &Input<'_>) -> syn::Result<TokenStream> {
             .map(|argument| argument.value.clone())
             .collect();
         bindings.extend(arguments.iter().map(|argument| argument.binding.clone()));
+        let values = located_values(case, values);
+        let tracking = caller_tracking(case);
         let body = with_fields(case, target, &values);
 
         methods.push(quote! {
             #[must_use]
-            #[allow(unreachable_code)]
+            #tracking
+            #[allow(clippy::too_many_arguments, unreachable_code)]
             pub fn #method(#(#parameters),*) -> Self {
                 #body
             }
         });
     }
 
-    let empty_from = if input.cases.len() == 1
-        && input.cases[0].variant.is_none()
-        && input.cases[0].fields.is_empty()
-    {
-        let body = with_fields(&input.cases[0], quote!(Self), &[]);
-        quote! {
-            impl #impl_generics ::core::convert::From<()> for #name #type_generics #where_clause {
-                fn from(_: ()) -> Self {
-                    #body
-                }
-            }
-        }
-    } else {
-        TokenStream::new()
-    };
+    let empty_from = empty_from(input);
 
     let implementation = quote! {
         impl #impl_generics #name #type_generics #where_clause {
@@ -99,6 +87,33 @@ pub fn methods(input: &Input<'_>) -> syn::Result<TokenStream> {
     })
 }
 
+pub fn empty_from(input: &Input<'_>) -> TokenStream {
+    if input.cases.len() != 1
+        || input.cases[0].variant.is_some()
+        || input.cases[0]
+            .fields
+            .iter()
+            .any(|field| !field.options.src_location)
+    {
+        return TokenStream::new();
+    }
+
+    let name = &input.item.ident;
+    let (impl_generics, type_generics, where_clause) = input.item.generics.split_for_impl();
+    let case = &input.cases[0];
+    let values = located_values(case, Vec::new());
+    let tracking = caller_tracking(case);
+    let body = with_fields(case, quote!(Self), &values);
+    quote! {
+        impl #impl_generics ::core::convert::From<()> for #name #type_generics #where_clause {
+            #tracking
+            fn from(_: ()) -> Self {
+                #body
+            }
+        }
+    }
+}
+
 pub struct ConstructorArgument {
     pub parameter: TokenStream,
     pub value: TokenStream,
@@ -115,6 +130,10 @@ pub fn constructor_arguments(input: &Input<'_>, case: &Case<'_>) -> Vec<Construc
 
     let mut arguments = Vec::with_capacity(case.fields.len());
     for (index, field) in case.fields.iter().enumerate() {
+        if field.options.src_location {
+            continue;
+        }
+
         let ty = &field.item.ty;
         let mut argument = match &field.item.ident {
             Some(name) => name.clone(),
@@ -170,20 +189,33 @@ pub fn from_fields(input: &Input<'_>) -> TokenStream {
     }
 
     let case = &input.cases[0];
-    let inputs = field_inputs(case.fields.iter().enumerate(), &mut generics, &input.names);
+    let inputs = field_inputs(
+        case.fields
+            .iter()
+            .enumerate()
+            .filter(|(_, field)| !field.options.src_location),
+        &mut generics,
+        &input.names,
+    );
     let payload = tuple_input(&inputs.types);
     let pattern = tuple_input(&inputs.bindings);
-    let body = with_fields(case, quote!(Self), &inputs.values);
+    let values = located_values(case, inputs.values);
+    let tracking = caller_tracking(case);
+    let body = with_fields(case, quote!(Self), &values);
     let (impl_generics, _, where_clause) = generics.split_for_impl();
     let shields = shield_bindings(&inputs.bindings);
 
+    let defaults = from_defaults(input, case);
+
     // The extra tuple keeps this clear of From<T> for T, even for boxed fields.
     quote! {
+        #defaults
         const _: () = {
             #shields
 
             impl #impl_generics ::core::convert::From<(#payload,)> for #name #type_generics #where_clause {
                 #[allow(unreachable_code)]
+                #tracking
                 fn from((#pattern,): (#payload,)) -> Self {
                     #body
                 }
@@ -242,4 +274,112 @@ pub fn tuple_input<T: ToTokens>(items: &[T]) -> TokenStream {
         [item] => quote!(#item),
         _ => quote!((#(#items),*)),
     }
+}
+
+pub fn default_value(field: &Field<'_>, generics: &mut Generics) -> Option<TokenStream> {
+    if field.options.src_location {
+        return Some(quote!(::core::panic::Location::caller()));
+    }
+
+    match &field.options.default {
+        Some(FieldDefault::Trait) => {
+            let ty = &field.item.ty;
+            generics
+                .make_where_clause()
+                .predicates
+                .push(syn::parse_quote!(
+                    #ty: ::core::default::Default
+                ));
+            Some(quote!(<#ty as ::core::default::Default>::default()))
+        }
+        Some(FieldDefault::Expression(expression)) => Some(quote!(#expression)),
+        None => None,
+    }
+}
+
+pub fn from_defaults(input: &Input<'_>, case: &Case<'_>) -> TokenStream {
+    if !case
+        .fields
+        .iter()
+        .any(|field| field.options.default.is_some())
+    {
+        return TokenStream::new();
+    }
+
+    let name = &input.item.ident;
+    let mut generics = input.item.generics.clone();
+    let (_, type_generics, _) = input.item.generics.split_for_impl();
+    let required: Vec<_> = case
+        .fields
+        .iter()
+        .enumerate()
+        .filter(|(_, field)| field.options.default.is_none() && !field.options.src_location)
+        .collect();
+    let inputs = field_inputs(required.iter().copied(), &mut generics, &input.names);
+    let mut values = vec![TokenStream::new(); case.fields.len()];
+    for ((index, _), value) in required.iter().zip(inputs.values) {
+        values[*index] = value;
+    }
+    for (index, field) in case.fields.iter().enumerate() {
+        if let Some(value) = default_value(field, &mut generics) {
+            values[index] = value;
+        }
+    }
+
+    let body = with_fields(case, quote!(Self), &values);
+    let (impl_generics, _, where_clause) = generics.split_for_impl();
+    let tracking = caller_tracking(case);
+    let empty = if required.is_empty() {
+        quote! {
+            impl #impl_generics ::core::convert::From<()> for #name #type_generics #where_clause {
+                #tracking
+                fn from(_: ()) -> Self {
+                    #body
+                }
+            }
+        }
+    } else {
+        TokenStream::new()
+    };
+
+    let shields = shield_bindings(&inputs.bindings);
+    let payload = tuple_input(&inputs.types);
+    let pattern = tuple_input(&inputs.bindings);
+
+    // A distinct source shape keeps the shortened and full conversions disjoint.
+    quote! {
+        #empty
+        const _: () = {
+            #shields
+
+            impl #impl_generics ::core::convert::From<(#payload, [(); 1])> for #name #type_generics #where_clause {
+                #tracking
+                fn from((#pattern, _): (#payload, [(); 1])) -> Self {
+                    #body
+                }
+            }
+        };
+    }
+}
+
+pub fn caller_tracking(case: &Case<'_>) -> TokenStream {
+    if case.fields.iter().any(|field| field.options.src_location) {
+        quote!(#[track_caller])
+    } else {
+        TokenStream::new()
+    }
+}
+
+pub fn located_values(case: &Case<'_>, values: Vec<TokenStream>) -> Vec<TokenStream> {
+    let mut values = values.into_iter();
+    case.fields
+        .iter()
+        .map(|field| {
+            if field.options.src_location {
+                quote!(::core::panic::Location::caller())
+            } else {
+                values.next().unwrap_or_default()
+            }
+        })
+        .collect()
 }

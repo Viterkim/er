@@ -8,6 +8,8 @@ er = { package = "er-unsync", version = "0.8" }
 
 ## Links
 
+[What pattern should I use?](https://github.com/Viterkim/er/blob/main/er/docs/cases.md)
+
 [GitHub Repo](https://github.com/Viterkim/er)
 
 [Docs.rs](https://docs.rs/er/0.8.0/er/)

@@ -279,7 +279,7 @@ For main you can write: `pub fn main() -> Result<(), ErReport<AppErr>>`, and for
 
 When you (as a library) want to give your consumer an error, don't give them an `ErReport` or an `ErTree`, give them a boring normal error (with `#[derive(Er)]`).
 
-Use `.er_into(|report| ...)` to construct your public error, you can print the report there before saving it on your type. Look at the [public error example](er/docs/examples.md#public-error).
+Use `.er_into(|report| ...)` to construct your public error, you can manually print the report there or mark a report field with `#[er(into_report_string)]` and return `.er_into(|report| report)` to have it saved for you. `#[er(default)]` can auto fill a field, the [public error example](er/docs/examples.md#public-error) shows both ways, keeping ordinary Display and Debug small and the full report available through `{err:#}`.
 
 You should still print / show your error in your applications of course, and I'll even argue that as a library, if you at least give a string report to your consumer, you're gonna have great bug reports from users and a much easier time fixing bugs. Printing a report is often times more valuable than a friendly message you made up. Don't destroy your type. Include the message in the type itself next to the other data instead.
 
@@ -306,6 +306,8 @@ er = { package = "er-unsync", version = "0.8" }
 ### Repo links (from `./er/docs/`)
 
 [Examples / Patterns](er/docs/examples.md)
+
+[What pattern should I use?](er/docs/cases.md)
 
 [Changelog](er/docs/changelog.md)
 

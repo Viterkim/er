@@ -307,3 +307,47 @@ pub fn optional() {
     assert!(error.source().is_some_and(|cause| cause.is::<io::Error>()));
     assert!(!error.to_string().contains("boxed"));
 }
+
+#[test]
+pub fn custom_trait() {
+    trait DriverFailure<T = ()>: Error {}
+    impl<T> DriverFailure<T> for io::Error {}
+
+    #[derive(Er)]
+    #[er(format = "driver failed")]
+    struct Driver {
+        #[er(source)]
+        cause: Box<dyn DriverFailure + Send + Sync>,
+    }
+
+    #[derive(Er)]
+    #[er(format = "driver failed")]
+    struct OptionalDriver {
+        #[er(source)]
+        cause: Option<Arc<dyn DriverFailure + Send + Sync>>,
+    }
+
+    #[derive(Er)]
+    #[er(format = "driver failed")]
+    struct GenericDriver<T> {
+        #[er(source)]
+        cause: Box<dyn DriverFailure<T> + Send + Sync>,
+    }
+
+    let error = GenericDriver::<u8>::new(Box::new(io::Error::other("generic driver sentinel"))
+        as Box<dyn DriverFailure<u8> + Send + Sync>);
+    assert!(error.source().unwrap().is::<io::Error>());
+
+    let cause: Box<dyn DriverFailure + Send + Sync> = Box::new(io::Error::other("driver sentinel"));
+    let error = Driver::new(cause);
+    assert!(error.source().unwrap().is::<io::Error>());
+
+    let cause = Arc::new(io::Error::other("shared driver sentinel"));
+    let shared: Arc<dyn DriverFailure + Send + Sync> = cause.clone();
+    let error = OptionalDriver::new(Some(shared));
+    assert!(std::ptr::eq(
+        error.source().unwrap().downcast_ref::<io::Error>().unwrap(),
+        &*cause
+    ));
+    assert!(OptionalDriver::new(None).source().is_none());
+}

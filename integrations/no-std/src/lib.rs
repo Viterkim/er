@@ -99,7 +99,7 @@ pub mod tests {
         );
         assert_eq!(
             Err::<(), _>(&mut report)
-                .opaque_err()
+                .er_report()
                 .unwrap_err()
                 .to_string(),
             saved.report

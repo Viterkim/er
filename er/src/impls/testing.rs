@@ -1,13 +1,12 @@
 #[cfg(all(feature = "macros", er_unsync))]
 use crate::ErBoxedInput;
 use crate::lines;
-use crate::{
-    ErAsError, ErInput, ErLineError, ErMake, ErOpaqueErrorExt, ErPart, ErReportRef, ErTest,
-    ErTestError, ErTestExt, ErTestFailure, ErTestInput, ErTestOptionNone, ErTestUnit, ErTree,
-    ErTreeContextExt, IntoErPart, IntoErTree,
-};
 #[cfg(feature = "macros")]
 use crate::{ErBail, ErFields};
+use crate::{
+    ErInput, ErLineError, ErMake, ErPart, ErTest, ErTestError, ErTestExt, ErTestFailure,
+    ErTestInput, ErTestOptionNone, ErTestUnit, ErTree, ErTreeContextExt, IntoErPart, IntoErTree,
+};
 use core::{error::Error, fmt, mem, ops::Deref};
 
 impl ErTestFailure {
@@ -59,20 +58,7 @@ impl fmt::Debug for ErTestFailure {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl ErOpaqueErrorExt for ErTestFailure {
-    type Output = ErAsError<Self>;
 
-    fn opaque_err(self) -> Self::Output {
-        ErAsError(self)
-    }
-}
-impl<'a> ErOpaqueErrorExt for &'a ErTestFailure {
-    type Output = ErAsError<ErReportRef<'a, ErTestError>>;
-
-    fn opaque_err(self) -> Self::Output {
-        self.er_report().opaque_err()
-    }
-}
 impl Deref for ErTestFailure {
     type Target = ErTree<ErTestError>;
 

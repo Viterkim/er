@@ -7,8 +7,8 @@ use crate::render::{
     write_top,
 };
 use crate::{
-    ErAsError, ErEntries, ErEntryKind, ErLineError, ErOpaqueErrorExt, ErSnapshot, ErSnapshotEntry,
-    ErSnapshotReport, ErSnapshotReportRef, ErSnapshotTop, ErSnapshotTopRef, IntoErSnapshot, Layout,
+    ErEntries, ErEntryKind, ErLineError, ErSnapshot, ErSnapshotEntry, ErSnapshotReport,
+    ErSnapshotReportRef, ErSnapshotTop, ErSnapshotTopRef, IntoErSnapshot, Layout,
 };
 use alloc::{
     string::{String, ToString},
@@ -301,20 +301,7 @@ impl fmt::Debug for ErSnapshotReportRef<'_> {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl ErOpaqueErrorExt for ErSnapshotReportRef<'_> {
-    type Output = ErAsError<Self>;
 
-    fn opaque_err(self) -> Self::Output {
-        ErAsError(self)
-    }
-}
-impl<'a> ErOpaqueErrorExt for &ErSnapshotReportRef<'a> {
-    type Output = ErAsError<ErSnapshotReportRef<'a>>;
-
-    fn opaque_err(self) -> Self::Output {
-        self.er_report().opaque_err()
-    }
-}
 impl<'a> IntoErSnapshot for ErSnapshotReportRef<'a> {
     type Top = ErSnapshotTopRef<'a>;
     type Report = Self;
@@ -445,20 +432,7 @@ impl fmt::Debug for ErSnapshotTopRef<'_> {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl ErOpaqueErrorExt for ErSnapshotTopRef<'_> {
-    type Output = ErAsError<Self>;
 
-    fn opaque_err(self) -> Self::Output {
-        ErAsError(self)
-    }
-}
-impl<'a> ErOpaqueErrorExt for &ErSnapshotTopRef<'a> {
-    type Output = ErAsError<ErSnapshotTopRef<'a>>;
-
-    fn opaque_err(self) -> Self::Output {
-        self.er_top().opaque_err()
-    }
-}
 impl<'a> IntoErSnapshot for ErSnapshotTopRef<'a> {
     type Top = Self;
     type Report = ErSnapshotReportRef<'a>;
@@ -574,20 +548,7 @@ impl fmt::Debug for ErSnapshotReport {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl ErOpaqueErrorExt for ErSnapshotReport {
-    type Output = ErAsError<Self>;
 
-    fn opaque_err(self) -> Self::Output {
-        ErAsError(self)
-    }
-}
-impl<'a> ErOpaqueErrorExt for &'a ErSnapshotReport {
-    type Output = ErAsError<ErSnapshotReportRef<'a>>;
-
-    fn opaque_err(self) -> Self::Output {
-        self.er_report().opaque_err()
-    }
-}
 impl IntoErSnapshot for ErSnapshotReport {
     type Top = ErSnapshotTop;
     type Report = Self;
@@ -721,20 +682,7 @@ impl fmt::Debug for ErSnapshotTop {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl ErOpaqueErrorExt for ErSnapshotTop {
-    type Output = ErAsError<Self>;
 
-    fn opaque_err(self) -> Self::Output {
-        ErAsError(self)
-    }
-}
-impl<'a> ErOpaqueErrorExt for &'a ErSnapshotTop {
-    type Output = ErAsError<ErSnapshotTopRef<'a>>;
-
-    fn opaque_err(self) -> Self::Output {
-        self.er_top().opaque_err()
-    }
-}
 impl IntoErSnapshot for ErSnapshotTop {
     type Top = Self;
     type Report = ErSnapshotReport;

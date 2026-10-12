@@ -6,8 +6,15 @@ pub fn ingest<T>(result: anyhow::Result<T>) -> ErResult<T, BackendErr> {
     result.er(())
 }
 
+#[derive(Er)]
+#[er(format = "{diagnostics}")]
+pub struct SavedErr {
+    #[er(into_report_string)]
+    pub diagnostics: String,
+}
+
 pub fn outward(result: ErResult<(), BackendErr>) -> anyhow::Result<()> {
-    result.er_report().opaque_err()?;
+    result.er_into::<SavedErr, _>(|report| report)?;
     Ok(())
 }
 

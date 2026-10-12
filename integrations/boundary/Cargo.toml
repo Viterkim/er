@@ -7,3 +7,5 @@ publish.workspace = true
 [dependencies]
 er.workspace = true
 old-er = { package = "er", version = "=0.7.0", default-features = false, features = ["macros"] }
+
+boundary-provider = { path = "provider" }

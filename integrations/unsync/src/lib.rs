@@ -121,7 +121,7 @@ pub mod tests {
         assert_eq!(lines.join("\n"), expected);
         assert_eq!(
             Err::<(), _>(&mut wrapped)
-                .opaque_err()
+                .er_report()
                 .unwrap_err()
                 .to_string(),
             expected

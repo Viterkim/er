@@ -1,4 +1,4 @@
-use super::construct::{field_inputs, tuple_input};
+use super::construct::{caller_tracking, default_value, field_inputs, tuple_input};
 use crate::{
     fields::with_fields,
     input::{Case, Field, Input, attrs::IntoField, bounds::bound_key},
@@ -7,7 +7,7 @@ use crate::{
 use proc_macro2::TokenStream;
 use quote::quote;
 use std::collections::HashSet;
-use syn::{Error, Ident, Path, Type, parse_quote};
+use syn::{Error, Ident};
 
 pub struct ConvertedFields<'a, 'item> {
     pub top: Option<&'a Field<'item>>,
@@ -46,7 +46,8 @@ pub fn converted_fields<'a, 'item>(
                 fields.last_single_line = Some(index)
             }
             Some(IntoField::Snapshot) => fields.last_snapshot = Some(index),
-            None => fields.extra.push((index, field)),
+            None if !field.options.src_location => fields.extra.push((index, field)),
+            None => (),
         }
     }
 
@@ -63,145 +64,154 @@ pub fn converted_fields<'a, 'item>(
     Ok(fields)
 }
 
-pub fn implementation(input: &Input<'_>, path: &Path) -> syn::Result<TokenStream> {
+pub fn implementation(input: &Input<'_>) -> syn::Result<TokenStream> {
     let cases: Vec<_> = input
         .cases
         .iter()
         .filter(|case| case.fields.iter().any(|field| field.options.into.is_some()))
         .collect();
-    if cases.is_empty() {
-        return Ok(TokenStream::new());
-    }
-
+    let case_count = cases.len();
     let item = input.item;
-    let reserved = &input.names;
-    let source = binding(reserved, "__ErSource");
-    let tree = binding(reserved, "__er_tree");
-    let report = binding(reserved, "__er_report");
-    let saved_report = binding(reserved, "__er_saved_report");
-    let single_line = binding(reserved, "__er_single_line");
-    let snapshot = binding(reserved, "__er_snapshot");
-    let extra = binding(reserved, "__er_extra");
     let name = &item.ident;
     let (_, type_generics, _) = item.generics.split_for_impl();
+    let reserved = &input.names;
     let mut sources = HashSet::new();
     let mut implementations = Vec::new();
-    let mut bindings = vec![tree.clone(), report.clone(), extra.clone()];
+    let mut bindings = Vec::new();
 
-    for case in &cases {
+    for case in cases {
         let fields = converted_fields(case)?;
-        if fields.last_report.is_some() {
-            bindings.push(saved_report.clone());
-        }
-        if fields.last_single_line.is_some() {
-            bindings.push(single_line.clone());
-        }
-        if fields.last_snapshot.is_some() {
-            bindings.push(snapshot.clone());
-        }
-        let mut generics = item.generics.clone();
-        let ty: Type = match fields.top {
-            Some(field) => {
-                let ty = &field.item.ty;
-                if bound_key(ty).is_some_and(|key| !sources.insert(key)) {
-                    return Err(Error::new_spanned(
-                        field.item,
-                        "these converted variants accept the same top type",
-                    ));
-                }
-                ty.clone()
+        if let Some(field) = fields.top {
+            if bound_key(&field.item.ty).is_some_and(|key| !sources.insert(key)) {
+                return Err(Error::new_spanned(
+                    field.item,
+                    "these converted variants accept the same top type",
+                ));
             }
-            None => {
-                if cases.len() > 1 {
-                    return Err(Error::new_spanned(
-                        case.shape,
-                        "multiple converted variants need distinct `into_top` types",
-                    ));
-                }
-                generics.params.push(parse_quote!(#source));
-                parse_quote!(#source)
-            }
-        };
-        generics.make_where_clause().predicates.push(parse_quote!(
-            #ty: ::core::error::Error + 'static
-        ));
-
-        let inputs = field_inputs(fields.extra.iter().copied(), &mut generics, reserved);
-        bindings.extend(inputs.bindings.iter().cloned());
-        let payload = tuple_input(&inputs.types);
-        let pattern = tuple_input(&inputs.bindings);
-        let (impl_generics, _, where_clause) = generics.split_for_impl();
-        let mut values = vec![TokenStream::new(); case.fields.len()];
-        for ((index, _), value) in fields.extra.iter().zip(inputs.values) {
-            values[*index] = value;
+        } else if case_count > 1 {
+            return Err(Error::new_spanned(
+                case.shape,
+                "multiple converted variants need distinct `into_top` types",
+            ));
         }
 
-        for (index, field) in case.fields.iter().enumerate() {
-            values[index] = match field.options.into {
-                Some(IntoField::Top) => quote!(#report.tree.top),
-                Some(IntoField::ReportString { single_line: false }) => {
-                    saved_value(&saved_report, fields.last_report == Some(index))
-                }
-                Some(IntoField::ReportString { single_line: true }) => {
-                    saved_value(&single_line, fields.last_single_line == Some(index))
-                }
-                Some(IntoField::Snapshot) => {
-                    saved_value(&snapshot, fields.last_snapshot == Some(index))
-                }
-                None => continue,
-            };
-        }
-
-        let save_report = fields.last_report.map(|_| {
-            quote! {
-                let #saved_report = #report.tree.er_report().layout(#report.layout).er_report_string();
+        // These standard tuple shapes must match the report's saved fields across versions.
+        let tag = 2
+            + usize::from(fields.top.is_some())
+            + 2 * usize::from(fields.last_report.is_some())
+            + 4 * usize::from(fields.last_single_line.is_some())
+            + 8 * usize::from(fields.last_snapshot.is_some());
+        let mut saved_types = Vec::new();
+        let mut saved_bindings = Vec::new();
+        let top = binding(reserved, "__er_top");
+        let report = binding(reserved, "__er_saved_report");
+        let single = binding(reserved, "__er_single_line");
+        let snapshot = binding(reserved, "__er_snapshot");
+        for (field, saved) in [
+            (fields.top, &top),
+            (fields.last_report.map(|index| &case.fields[index]), &report),
+            (
+                fields.last_single_line.map(|index| &case.fields[index]),
+                &single,
+            ),
+            (
+                fields.last_snapshot.map(|index| &case.fields[index]),
+                &snapshot,
+            ),
+        ] {
+            if let Some(field) = field {
+                saved_types.push(&field.item.ty);
+                saved_bindings.push(saved);
+                bindings.push(saved.clone());
             }
-        });
-        let save_single_line = fields.last_single_line.map(|_| {
-            let value = if fields.last_report.is_some() {
-                quote! {
-                    match #report.layout {
-                        #path::Layout::SingleLine => ::core::clone::Clone::clone(&#saved_report),
-                        #path::Layout::Multiline => #report.tree.er_report().single_line().er_report_string(),
-                    }
-                }
-            } else {
-                quote!(#report.tree.er_report().single_line().er_report_string())
-            };
-
-            quote!(let #single_line = #value;)
-        });
-        let save_snapshot = fields
-            .last_snapshot
-            .map(|_| quote!(let #snapshot = #report.tree.er_snapshot();));
+        }
+        let projection = quote!((#(#saved_types,)*));
+        let saved_pattern = quote!((#(#saved_bindings,)*));
         let target = match case.variant {
             Some(variant) => quote!(Self::#variant),
             None => quote!(Self),
         };
-        let body = with_fields(case, target, &values);
 
-        implementations.push(quote! {
-            impl #impl_generics #path::ErFromTree<#ty, #payload> for #name #type_generics #where_clause {
-                fn er_from_tree(#tree: #path::ErTree<#ty>, #extra: #payload) -> Self {
-                    <Self as #path::ErFromTree<#ty, #payload>>::er_from_report(#tree.into_er_report(), #extra)
-                }
-
-                fn er_from_report(#report: #path::ErReport<#ty>, #extra: #payload) -> Self {
-                    let #pattern = #extra;
-                    #save_report
-                    #save_single_line
-                    #save_snapshot
-                    #body
-                }
+        for defaulted in [false, true] {
+            if defaulted
+                && !fields
+                    .extra
+                    .iter()
+                    .any(|(_, field)| field.options.default.is_some())
+            {
+                continue;
             }
-        });
+            let mut generics = item.generics.clone();
+            let selected: Vec<_> = fields
+                .extra
+                .iter()
+                .copied()
+                .filter(|(_, field)| !defaulted || field.options.default.is_none())
+                .collect();
+            let inputs = field_inputs(selected.iter().copied(), &mut generics, reserved);
+            bindings.extend(inputs.bindings.iter().cloned());
+            let mut payload = tuple_input(&inputs.types);
+            let mut pattern = tuple_input(&inputs.bindings);
+            if defaulted && !selected.is_empty() {
+                payload = quote!(((#payload, [(); 1]),));
+                pattern = quote!(((#pattern, _),));
+            }
+            let (source, pattern) = if selected.is_empty() {
+                (
+                    quote!((#projection, [(); #tag])),
+                    quote!((#saved_pattern, _)),
+                )
+            } else {
+                (
+                    quote!(((#projection, #payload), [(); #tag])),
+                    quote!(((#saved_pattern, #pattern), _)),
+                )
+            };
+            let mut values = vec![TokenStream::new(); case.fields.len()];
+            for ((index, _), value) in selected.iter().zip(inputs.values) {
+                values[*index] = value;
+            }
+            for (index, field) in case.fields.iter().enumerate() {
+                if field.options.src_location {
+                    values[index] = quote!(::core::panic::Location::caller());
+                    continue;
+                }
+
+                values[index] = match field.options.into {
+                    Some(IntoField::Top) => quote!(#top),
+                    Some(IntoField::ReportString { single_line: false }) => {
+                        saved_value(&report, fields.last_report == Some(index))
+                    }
+                    Some(IntoField::ReportString { single_line: true }) => {
+                        saved_value(&single, fields.last_single_line == Some(index))
+                    }
+                    Some(IntoField::Snapshot) => {
+                        saved_value(&snapshot, fields.last_snapshot == Some(index))
+                    }
+                    None if defaulted => {
+                        default_value(field, &mut generics).unwrap_or_else(|| values[index].clone())
+                    }
+                    None => continue,
+                };
+            }
+            let tracking = caller_tracking(case);
+            let body = with_fields(case, target.clone(), &values);
+            let (impl_generics, _, where_clause) = generics.split_for_impl();
+            implementations.push(quote! {
+                impl #impl_generics ::core::convert::From<#source> for #name #type_generics #where_clause {
+                    #tracking
+                    fn from(#pattern: #source) -> Self {
+                        #body
+                    }
+                }
+            });
+        }
     }
 
     let shields = shield_bindings(&bindings);
     Ok(quote! {
         const _: () = {
             #shields
-
             #(#implementations)*
         };
     })

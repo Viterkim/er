@@ -55,7 +55,6 @@ pub fn layouts() {
             assert_eq!(boxed.er_snapshot(), snapshot);
             assert_eq!(boxed.er_top_string(), top.er_top_string());
             assert_eq!(boxed.er_report_string(), report.er_report_string());
-            assert!(std::error::Error::source(&boxed.opaque_err()).is_none());
         }
         assert_eq!(snapshot.er_report_string(), tree.er_report_string());
         assert_eq!(snapshot.er_top_string(), tree.er_top_string());
@@ -85,9 +84,9 @@ pub fn results() {
         result.as_mut().er_report().unwrap_err()
     }
 
-    fn local_opaque(snapshot: &ErSnapshot) -> ErAsError<ErSnapshotReportRef<'_>> {
+    fn local_report(snapshot: &ErSnapshot) -> ErSnapshotReportRef<'_> {
         let mut result = Err::<(), _>(snapshot.er_report().single_line());
-        result.as_mut().opaque_err().unwrap_err()
+        result.as_mut().er_report().unwrap_err()
     }
 
     fn check<E: Clone + IntoErSnapshot>(error: E, snapshot: &ErSnapshot, report: &str, top: &str) {
@@ -130,7 +129,7 @@ pub fn results() {
     check(snapshot.clone(), &snapshot, &report, &top);
     check(&snapshot, &snapshot, &report, &top);
     assert!(std::ptr::eq(local_view(&snapshot).snapshot, &snapshot));
-    assert!(std::ptr::eq(local_opaque(&snapshot).0.snapshot, &snapshot));
+    assert!(std::ptr::eq(local_report(&snapshot).snapshot, &snapshot));
 
     let mut result = Err::<(), _>(snapshot.clone());
     assert_eq!(result.as_mut().er_snapshot().unwrap_err(), snapshot);
@@ -170,13 +169,8 @@ pub fn results() {
             &top.to_string(),
         );
 
-        let error = Err::<(), _>(report)
-            .er_top()
-            .er_report()
-            .opaque_err()
-            .unwrap_err();
+        let error = Err::<(), _>(report).er_top().er_report().unwrap_err();
         assert_eq!(error.to_string(), report.to_string());
-        assert!(std::error::Error::source(&error).is_none());
 
         let report: ErSnapshotReportRef<'_> = propagate(Err::<(), _>(top)).unwrap_err();
         let top: ErSnapshotTopRef<'_> = propagate(Err::<(), _>(report)).unwrap_err();
@@ -203,8 +197,8 @@ pub fn results() {
     let mut result = Err::<(), _>(snapshot.into_er_top().single_line());
     let expected = result.as_ref().unwrap_err().er_report_string();
     let top = result.as_ref().unwrap_err().er_top_string();
-    assert_eq!(result.as_ref().opaque_err().unwrap_err().to_string(), top);
-    assert_eq!(result.as_mut().opaque_err().unwrap_err().to_string(), top);
+    assert_eq!(result.as_ref().er_top().unwrap_err().to_string(), top);
+    assert_eq!(result.as_mut().er_top().unwrap_err().to_string(), top);
     assert_eq!(result.as_ref().er_report_string().unwrap_err(), expected);
     assert_eq!(result.as_mut().er_report_string().unwrap_err(), expected);
     assert_eq!(
@@ -214,11 +208,11 @@ pub fn results() {
 
     let mut result = result.er_report();
     assert_eq!(
-        result.as_ref().opaque_err().unwrap_err().to_string(),
+        result.as_ref().er_report().unwrap_err().to_string(),
         expected
     );
     assert_eq!(
-        result.as_mut().opaque_err().unwrap_err().to_string(),
+        result.as_mut().er_report().unwrap_err().to_string(),
         expected
     );
     assert_eq!(
@@ -231,7 +225,7 @@ pub fn results() {
     assert_eq!(boxed.as_ref().er_report_string().unwrap_err(), expected);
     assert_eq!(boxed.as_mut().er_report_string().unwrap_err(), expected);
     assert_eq!(
-        boxed.as_mut().opaque_err().unwrap_err().to_string(),
+        boxed.as_mut().er_report().unwrap_err().to_string(),
         expected
     );
 
@@ -308,11 +302,11 @@ pub fn borrows() {
         check!(&top, &snapshot, &expected, &expected_top);
 
         let mut borrowed = Err::<(), _>(&report);
-        let opaque = borrowed.as_ref().opaque_err().unwrap_err();
-        assert!(std::ptr::eq(opaque.0.snapshot, &snapshot));
-        assert_eq!(opaque.to_string(), expected);
+        let view = borrowed.as_ref().er_report().unwrap_err();
+        assert!(std::ptr::eq(view.snapshot, &snapshot));
+        assert_eq!(view.to_string(), expected);
         assert_eq!(
-            borrowed.as_mut().opaque_err().unwrap_err().to_string(),
+            borrowed.as_mut().er_report().unwrap_err().to_string(),
             expected
         );
 
@@ -325,11 +319,11 @@ pub fn borrows() {
         check!(&local, &snapshot, &expected, &expected_top);
         check!(&field, &snapshot, &expected, &expected_top);
         assert_eq!(
-            Err::<(), _>(&shared).opaque_err().unwrap_err().to_string(),
+            Err::<(), _>(&shared).er_report().unwrap_err().to_string(),
             expected
         );
         assert_eq!(
-            Err::<(), _>(&local).opaque_err().unwrap_err().to_string(),
+            Err::<(), _>(&local).er_top().unwrap_err().to_string(),
             expected_top
         );
 
@@ -348,7 +342,7 @@ pub fn borrows() {
         ));
         assert_eq!(view.layout, layout);
         assert_eq!(
-            result.as_ref().opaque_err().unwrap_err().to_string(),
+            result.as_ref().er_report().unwrap_err().to_string(),
             expected
         );
         assert_eq!(result.as_mut().er_report_string().unwrap_err(), expected);

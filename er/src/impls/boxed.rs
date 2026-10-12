@@ -1,6 +1,6 @@
 use crate::{
-    ErOpaqueErrorExt, ErPart, ErReport, ErReportRef, ErSnapshot, ErTop, ErTree, IntoErPart,
-    IntoErSnapshot, IntoErTree, IntoErTreeRef,
+    ErPart, ErReport, ErReportRef, ErSnapshot, ErTop, ErTree, IntoErPart, IntoErSnapshot,
+    IntoErTree, IntoErTreeRef,
 };
 #[cfg(feature = "test")]
 use crate::{ErTestError, ErTestFailure};
@@ -112,22 +112,5 @@ where
 
     fn into_er_report(self) -> Self::Report {
         <&'a P as IntoErSnapshot>::into_er_report(self)
-    }
-}
-impl<P: ErOpaqueErrorExt> ErOpaqueErrorExt for Box<P> {
-    type Output = P::Output;
-
-    fn opaque_err(self) -> Self::Output {
-        (*self).opaque_err()
-    }
-}
-impl<'a, P: ?Sized> ErOpaqueErrorExt for &'a Box<P>
-where
-    &'a P: ErOpaqueErrorExt,
-{
-    type Output = <&'a P as ErOpaqueErrorExt>::Output;
-
-    fn opaque_err(self) -> Self::Output {
-        <&'a P as ErOpaqueErrorExt>::opaque_err(self)
     }
 }

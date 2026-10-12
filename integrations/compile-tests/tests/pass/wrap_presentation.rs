@@ -52,7 +52,7 @@ pub fn main() {
         Err(ErLineError::Callback(&text))
     );
     assert_eq!(
-        Err::<(), _>(&wrapped).opaque_err().unwrap_err().to_string(),
+        Err::<(), _>(&wrapped).er_top().unwrap_err().to_string(),
         wrapped.to_string()
     );
 
@@ -68,7 +68,7 @@ pub fn main() {
     );
 
     let local = LocalErr::new(std::rc::Rc::new(7)).er_wrap();
-    assert!(local.opaque_err().to_string().contains("LocalErr(7)"));
+    assert!(local.er_report().to_string().contains("LocalErr(7)"));
 
     // Wrap from another crate, its tree is still public.
     let wrapped = BoundaryErrWrap::from(ErTree::from(BoundaryErr));

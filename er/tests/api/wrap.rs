@@ -191,11 +191,11 @@ pub fn top_output() {
 
     let mut result = Err::<(), _>(Box::new(wrapped));
     assert_eq!(
-        result.as_ref().opaque_err().unwrap_err().to_string(),
+        result.as_ref().er_top().unwrap_err().to_string(),
         "TopOutputErr"
     );
     assert_eq!(
-        result.as_mut().opaque_err().unwrap_err().to_string(),
+        result.as_mut().er_top().unwrap_err().to_string(),
         "TopOutputErr"
     );
 
@@ -227,11 +227,11 @@ pub fn report_output() {
 
     let mut result = Err::<(), _>(Box::new(wrapped));
     assert_eq!(
-        result.as_ref().opaque_err().unwrap_err().to_string(),
+        result.as_ref().er_report().unwrap_err().to_string(),
         displayed
     );
     assert_eq!(
-        result.as_mut().opaque_err().unwrap_err().to_string(),
+        result.as_mut().er_report().unwrap_err().to_string(),
         displayed
     );
 
@@ -301,12 +301,12 @@ pub fn std_error() {
         Err(ErLineError::Callback(&failure))
     );
     assert_eq!(
-        Err::<(), _>(&wrapped).opaque_err().unwrap_err().to_string(),
+        Err::<(), _>(&wrapped).er_report().unwrap_err().to_string(),
         expected
     );
     assert_eq!(
         Err::<(), _>(&mut wrapped)
-            .opaque_err()
+            .er_report()
             .unwrap_err()
             .to_string(),
         expected

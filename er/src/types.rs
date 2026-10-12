@@ -17,7 +17,7 @@ pub struct ErShared<T: ?Sized> {
 }
 
 /// Where an error entered the tree.
-pub type SrcLocation = &'static Location<'static>;
+pub type ErSrcLocation = &'static Location<'static>;
 
 /// Root 0, then each child and its descendants. Native sources don't count.
 /// Indices belong to the current tree, wrapping updates the ones stored in its traces.
@@ -33,7 +33,7 @@ pub struct ErTree<E> {
     #[cfg(feature = "stack_traces")]
     pub stack_traces: Vec<ErStackTrace>,
     #[cfg(feature = "src_locations")]
-    pub src_location: SrcLocation,
+    pub src_location: ErSrcLocation,
 }
 
 /// A boxed error that can go in the tree.
@@ -50,7 +50,7 @@ pub struct ErNode {
     pub error: BoxError,
     pub nodes: Vec<ErNode>,
     #[cfg(feature = "src_locations")]
-    pub src_location: SrcLocation,
+    pub src_location: ErSrcLocation,
 }
 
 /// An erased subtree with its stack traces, ready to go under another error.
@@ -65,7 +65,7 @@ pub struct ErPart {
 #[cfg(feature = "stack_traces")]
 pub struct ErStackTrace {
     pub error_name: &'static str,
-    pub trace_location: SrcLocation,
+    pub trace_location: ErSrcLocation,
     pub error_index: ErErrorIndex,
     pub capture: Box<std::backtrace::Backtrace>,
 }
@@ -97,12 +97,6 @@ pub struct ErReportRef<'a, E> {
     pub tree: &'a ErTree<E>,
     pub layout: Layout,
 }
-
-/// An opaque standard Error. The presentation is still in `.0`.
-/// `source()` is empty, so ordinary error searches cannot see its tree.
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[must_use]
-pub struct ErAsError<P>(pub P);
 
 /// Layout variant for reports and snapshots
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
