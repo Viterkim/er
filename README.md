@@ -6,7 +6,7 @@ Design your error types around what your caller cares about, not what combinatio
 
 ```toml
 [dependencies]
-er = "0.7"
+er = "0.8"
 ```
 
 [Full examples / usage patterns](er/docs/examples.md)
@@ -298,7 +298,7 @@ It's not the user's fault when mistakes happen. There should be convenience and 
 If you've got a platform that uses Rc/RefCell you can use the `er-unsync` version of the crate.
 
 ```toml
-er = { package = "er-unsync", version = "0.7" }
+er = { package = "er-unsync", version = "0.8" }
 ```
 
 ## Docs
@@ -317,7 +317,7 @@ er = { package = "er-unsync", version = "0.7" }
 
 ### External links
 
-[Docs.rs](https://docs.rs/er/0.7.0/er/)
+[Docs.rs](https://docs.rs/er/0.8.0/er/)
 
 [Crates.io for the lib](https://crates.io/crates/er)
 

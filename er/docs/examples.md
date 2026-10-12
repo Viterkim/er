@@ -519,7 +519,7 @@ Enable `serde` on Er, then add `serde_json` (or toml, or whatever).
 
 ```toml
 [dependencies]
-er = { version = "0.7", features = ["serde"] }
+er = { version = "0.8", features = ["serde"] }
 serde_json = "1"
 ```
 
@@ -535,7 +535,7 @@ std::fs::write("/tmp/error.json", &json).unwrap();
 
 ```toml
 [dev-dependencies]
-er = "0.7"
+er = "0.8"
 ```
 
 Make the test return `ErTest` and use `?`. Ordinary errors and Er trees get `ErTestError` on top with the location of the `?`, and keep the original errors below it. It prints as `TestError`.
