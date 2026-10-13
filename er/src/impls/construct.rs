@@ -259,6 +259,7 @@ macro_rules! saved_outputs {
     };
 }
 
+#[cfg(any(er_unsync, target_has_atomic = "ptr"))]
 pub(crate) use saved_outputs;
 
 saved_outputs!(ErSaved, A, core::convert::identity);

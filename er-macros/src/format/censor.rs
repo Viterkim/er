@@ -28,7 +28,7 @@ pub fn helper(input: &Input<'_>, formatter: &Ident) -> TokenStream {
         struct __ErCensored;
         #(impl ::core::fmt::#traits for __ErCensored {
             fn fmt(&self, #formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                #formatter.write_str("*CENSORED*")
+                #formatter.pad("*CENSORED*")
             }
         })*
     }

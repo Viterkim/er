@@ -568,7 +568,7 @@ if let Err(error) = read_port("fakenumber") {
 
 Can still print `.er_top()` or `.er_report()`. Each entry has its depth and the index of the error above it.
 
-A type you own can save one with an `ErSnapshot` field marked `#[er(into_snapshot)]`, then `.er_into(|report| report)`. That field is still an Er type. For a public error without Er types, serialize the snapshot and store the resulting text instead.
+A type you own can save one with an `ErSnapshot` field marked `#[er(into_snapshot)]`, then `.er_into(|report| report)`. The snapshot belongs to your Er version, so use `into_report_string` for public errors that should work across versions. To keep the snapshot's structure without exposing an Er type, serialize it into text instead.
 
 On a Result, `.er_snapshot()` saves Err and leaves Ok alone.
 
@@ -702,7 +702,7 @@ if let Err(error) = reader {
 
 ## Foreign callbacks
 
-Sometimes another library makes you return its error type. SQLite's `FromSql` does that, with a box for your own diagnostic. We only need to say which value was invalid and where we found it:
+SQLite chooses the error type for `FromSql`, so this callback can't return our tree. It gives us a box for an ordinary error. We put the invalid value and its location there:
 
 ```rust
 #[derive(Er)]
@@ -723,7 +723,20 @@ impl FromSql for ValueKind {
 }
 ```
 
-`new(value)` fills the location with its call site. The box carries one ordinary diagnostic. Handle the database operation with `.er()` where you call it, so that layer says what you were reading.
+`new(value)` creates the ordinary error and captures the line where we call it inside the closure. The location isn't a constructor argument.
+
+The query's caller gets to choose its error type. This is where we use `.er()` and say which item we were reading:
+
+```rust
+#[derive(Er)]
+pub struct ReadKindErr(pub i64);
+pub fn read_kind(db: &Connection, id: i64) -> ErResult<ValueKind, ReadKindErr> {
+    db.query_row("SELECT kind FROM items WHERE id = ?1", [id], |row| row.get(0))
+        .er(|_| id)
+}
+```
+
+The callback supplies the diagnostic, and this call builds the tree around SQLite's error. The return types tell us which one we're writing.
 
 ## Stack traces
 

@@ -60,19 +60,14 @@ impl Error for IgnoresWriter {}
 
 #[test]
 pub fn callback_failure() {
-    pub struct Stop;
-    let stop = Stop;
     let tree = ErTree::from(IgnoresWriter);
     let mut calls = 0;
     let result = tree.er_top().try_for_each_line(|_| {
         calls += 1;
-        Err(&stop)
+        Err(1)
     });
 
-    assert!(matches!(
-        result,
-        Err(ErLineError::Callback(e)) if std::ptr::eq(e, &stop)
-    ));
+    assert_eq!(result, Err(ErLineError::Callback(1)));
     assert_eq!(calls, 1);
 
     let mut lines = Vec::new();
@@ -98,13 +93,10 @@ pub fn callback_failure() {
 
     let result = lines::try_for_each_line(&"unterminated", |l| {
         assert_eq!(l, "unterminated");
-        Err(&stop)
+        Err(2)
     });
 
-    assert!(matches!(
-        result,
-        Err(ErLineError::Callback(e)) if std::ptr::eq(e, &stop)
-    ));
+    assert_eq!(result, Err(ErLineError::Callback(2)));
 }
 
 #[test]

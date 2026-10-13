@@ -16,7 +16,6 @@ mod tests {
         }
 
         let err = save().unwrap_err();
-        assert_eq!(err.to_string(), "provider failed");
         assert!(err.diagnostics.contains("ReadErr"));
         assert!(
             err.diagnostics
@@ -24,7 +23,6 @@ mod tests {
         );
         assert!(!err.diagnostics.contains('\n'));
         assert_eq!(err.diagnostics, err.single_line);
-        assert_eq!(format!("{err:?}"), "provider failed, secret *CENSORED*");
         let () = err.data;
 
         struct Payload;

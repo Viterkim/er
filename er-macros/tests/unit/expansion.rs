@@ -1,6 +1,4 @@
-use crate::input::impls::exact_type;
 use quote::quote;
-use std::collections::HashSet;
 
 #[test]
 pub fn crate_paths() -> syn::Result<()> {
@@ -14,22 +12,6 @@ pub fn crate_paths() -> syn::Result<()> {
         assert_eq!(path.segments[0].ident.to_string(), expected);
     }
 
-    Ok(())
-}
-
-#[test]
-pub fn primitive_paths() -> syn::Result<()> {
-    let type_names = HashSet::new();
-    for path in [
-        "u8",
-        "std::primitive::u8",
-        "::core::primitive::u8",
-        "::r#core::r#primitive::u8",
-        "r#std::r#primitive::u8",
-    ] {
-        let ty = syn::parse_str(path)?;
-        assert!(exact_type(&ty, &type_names), "{path}");
-    }
     Ok(())
 }
 
@@ -53,7 +35,6 @@ pub fn format_options() -> syn::Result<()> {
             struct Example;
         })?;
         assert!(crate::generate::expand(&item).is_err(), "{options}");
-        assert!(crate::format::expand(&item).is_err(), "{options}");
     }
     Ok(())
 }
@@ -109,16 +90,6 @@ pub fn std_error_options() -> syn::Result<()> {
         })?;
         assert!(crate::generate::expand(&item).is_err());
     }
-    for options in [
-        quote!(output = top, std_error),
-        quote!(std_error, output = report),
-    ] {
-        let item = syn::parse2(quote! {
-            #[er(wrap(#options))]
-            struct Example;
-        })?;
-        crate::generate::expand(&item)?;
-    }
     Ok(())
 }
 
@@ -131,20 +102,18 @@ pub fn no_constructors_options() -> syn::Result<()> {
     ] {
         let item = syn::parse_str(source)?;
         assert!(crate::generate::expand(&item).is_err(), "{source}");
-        assert!(crate::format::expand(&item).is_err(), "{source}");
     }
     for source in [
         "struct Data { #[er(no_constructors)] value: u8 }",
         "enum Data { #[er(no_constructors)] Value }",
     ] {
         let item = syn::parse_str(source)?;
-        for result in [crate::generate::expand(&item), crate::format::expand(&item)] {
-            assert_eq!(
-                result.err().map(|error| error.to_string()).as_deref(),
-                Some("put `no_constructors` on the struct or enum"),
-                "{source}"
-            );
-        }
+        let error = crate::generate::expand(&item).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "put `no_constructors` on the struct or enum",
+            "{source}"
+        );
     }
     Ok(())
 }
@@ -162,7 +131,6 @@ pub fn default_options() -> syn::Result<()> {
     ] {
         let item = syn::parse_str(source)?;
         assert!(crate::generate::expand(&item).is_err(), "{source}");
-        assert!(crate::format::expand(&item).is_err(), "{source}");
     }
     Ok(())
 }

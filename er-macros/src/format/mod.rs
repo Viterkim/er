@@ -2,12 +2,7 @@ pub mod body;
 pub mod censor;
 
 use crate::generate::construct;
-use crate::input::{
-    Input,
-    attrs::FieldMode,
-    bounds::{format_generics, format_generics_for},
-    format::Output,
-};
+use crate::input::{Input, attrs::FieldMode, bounds::format_generics, format::Output};
 use crate::names::{binding, shield_bindings};
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -64,13 +59,7 @@ pub fn implementations(input: &Input<'_>, generics: &Generics, formatter: &Ident
         .iter()
         .any(|case| case.formats.display_alt.is_some());
     let separate = separate_normal || alternate;
-    let display_generics = separate.then(|| format_generics_for(input, Output::Display));
-    let debug_generics = separate.then(|| format_generics_for(input, Output::Debug));
-    let (display_impl, type_generics, display_where) = display_generics
-        .as_ref()
-        .unwrap_or(generics)
-        .split_for_impl();
-    let (debug_impl, _, debug_where) = debug_generics.as_ref().unwrap_or(generics).split_for_impl();
+    let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
     let debug = binding(&input.names, "__er_d");
     let mut locals = vec![formatter.clone()];
     if input.cases.iter().any(|case| match case.shape {
@@ -124,13 +113,13 @@ pub fn implementations(input: &Input<'_>, generics: &Generics, formatter: &Ident
         const _: () = {
             #shields
 
-            impl #debug_impl ::core::fmt::Debug for #name #type_generics #debug_where {
+            impl #impl_generics ::core::fmt::Debug for #name #type_generics #where_clause {
                 fn fmt(&self, #formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                     #censor
                     #debug_body
                 }
             }
-            impl #display_impl ::core::fmt::Display for #name #type_generics #display_where {
+            impl #impl_generics ::core::fmt::Display for #name #type_generics #where_clause {
                 fn fmt(&self, #formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                     #display_body
                 }

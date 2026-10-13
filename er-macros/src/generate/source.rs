@@ -263,7 +263,7 @@ pub fn conversion(
     .map(|(pointer, attributes)| {
         quote! {
             #attributes
-            impl<'a, T: #as_dyn + ?Sized> #as_source<'a> for &#source_ref<'a, #pointer<T>> {
+            impl<'a, T: #as_dyn + ?::core::marker::Sized> #as_source<'a> for &#source_ref<'a, #pointer<T>> {
                 fn __er_as_source(self) -> #source_ref<'a, dyn ::core::error::Error> {
                     #source_ref(#as_dyn::__er_as_dyn(&**self.0))
                 }
@@ -286,7 +286,7 @@ pub fn conversion(
 
         // Dispatch on our own receiver, so an error's inherent methods can't win.
         // Keep the result private too, so a foreign blanket method can't replace it.
-        struct #source_ref<'a, T: ?Sized>(&'a T);
+        struct #source_ref<'a, T: ?::core::marker::Sized>(&'a T);
         impl<'a> #source_ref<'a, dyn ::core::error::Error> {
             fn __er_finish(self) -> &'a (dyn ::core::error::Error + 'static) {
                 self.0
@@ -296,17 +296,17 @@ pub fn conversion(
         trait #as_source<'a> {
             fn __er_as_source(self) -> #source_ref<'a, dyn ::core::error::Error>;
         }
-        impl<'a, T: #as_dyn + ?Sized> #as_source<'a> for &&#source_ref<'a, T> {
+        impl<'a, T: #as_dyn + ?::core::marker::Sized> #as_source<'a> for &&#source_ref<'a, T> {
             fn __er_as_source(self) -> #source_ref<'a, dyn ::core::error::Error> {
                 #source_ref(#as_dyn::__er_as_dyn(self.0))
             }
         }
-        impl<'a, T: #as_dyn + ?Sized> #as_source<'a> for &#source_ref<'a, &T> {
+        impl<'a, T: #as_dyn + ?::core::marker::Sized> #as_source<'a> for &#source_ref<'a, &T> {
             fn __er_as_source(self) -> #source_ref<'a, dyn ::core::error::Error> {
                 #source_ref(#as_dyn::__er_as_dyn(&**self.0))
             }
         }
-        impl<'a, T: #as_dyn + ?Sized> #as_source<'a> for &#source_ref<'a, &mut T> {
+        impl<'a, T: #as_dyn + ?::core::marker::Sized> #as_source<'a> for &#source_ref<'a, &mut T> {
             fn __er_as_source(self) -> #source_ref<'a, dyn ::core::error::Error> {
                 #source_ref(#as_dyn::__er_as_dyn(&**self.0))
             }

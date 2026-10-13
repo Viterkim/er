@@ -1,4 +1,4 @@
-#[cfg(er_unsync)]
+#[cfg(all(er_unsync, target_has_atomic = "ptr"))]
 use crate::ErSavedArc;
 use crate::{
     ErDefaults, ErReport, ErSavedShared, ErShared, ErSnapshot, ErValFields, IntoErSnapshot,

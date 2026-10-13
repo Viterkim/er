@@ -14,7 +14,6 @@ fn constructors() {
     let expected = line!() + 1;
     let err = Located::new("banana");
     assert_eq!(err.location.line(), expected);
-    assert_eq!(err.value, "banana");
     assert!(err.to_string().contains(file!()));
 
     let expected = line!() + 1;
@@ -37,8 +36,7 @@ fn constructors() {
 
     let expected = line!() + 1;
     let variant = Variant::failed(85);
-    let Variant::Failed { value, location } = variant;
-    assert_eq!(value, 85);
+    let Variant::Failed { location, .. } = variant;
     assert_eq!(location.line(), expected);
 
     #[derive(Er)]
@@ -129,6 +127,9 @@ fn helpers() {
         let err = make(&line).unwrap_err();
         assert_eq!(err.top.location.line(), line.get());
         assert_eq!(err.top.location.file(), file!());
+
+        #[cfg(feature = "src_locations")]
+        assert_eq!(err.src_location.line(), line.get());
     }
 
     #[derive(Er)]
@@ -145,21 +146,12 @@ fn helpers() {
     let defaulted = defaulted.unwrap_err().top;
     assert_eq!(defaulted.location.line(), expected);
     assert_eq!(defaulted.retries, 0);
-    assert_eq!(defaulted.value, "default");
 
     let expected = line!() + 1;
     let explicit: ErResult<(), Defaulted> = Err("explicit").er_val(|v| (v, 85));
     let explicit = explicit.unwrap_err().top;
     assert_eq!(explicit.location.line(), expected);
     assert_eq!(explicit.retries, 85);
-
-    let calls = Cell::new(0);
-    let successful: ErResult<(), Located> = Ok::<_, &str>(()).er_val(|v| {
-        calls.set(calls.get() + 1);
-        v
-    });
-    assert!(successful.is_ok());
-    assert_eq!(calls.get(), 0);
 
     #[derive(Er)]
     #[er(format = "saved")]

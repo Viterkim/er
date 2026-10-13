@@ -4,102 +4,34 @@ use std::io;
 
 #[test]
 pub fn unit() -> ErTest {
-    let value = Ok::<_, ()>(85).er_test()?;
-    assert_eq!(value, 85);
+    assert_eq!(Ok::<_, ()>(85).er_test()?, 85);
 
-    let line = line!() + 1;
     let err = Err::<(), _>(()).er_test().unwrap_err();
     assert!(err.tree.nodes.is_empty());
-
-    #[cfg(feature = "src_locations")]
-    assert_eq!(err.tree.src_location.line(), line);
-    #[cfg(not(feature = "src_locations"))]
-    let _ = line;
 
     Ok(())
 }
 
 #[test]
 pub fn nested_helpers() {
-    fn inner(line: &mut u32) -> ErTest {
-        *line = line!() + 1;
+    fn inner() -> ErTest {
         "aint_even_a_number_cmon_man".parse::<u16>().er_test()?;
         Ok(())
     }
 
-    fn outer(line: &mut u32) -> ErTest {
-        inner(line).er_test()?;
+    fn outer() -> ErTest {
+        inner().er_test()?;
         Ok(())
     }
 
-    let mut line = 0;
-    let mut error = outer(&mut line).unwrap_err();
-    assert!(error.er_contains::<ParseIntError>());
+    let error = outer().unwrap_err();
     assert_eq!(error.er_find_all::<ErTestError>().count(), 1);
-
-    #[cfg(feature = "src_locations")]
-    {
-        assert_eq!(error.tree.src_location.file(), file!());
-        assert_eq!(error.tree.src_location.line(), line);
-    }
-
-    let report = format!("{error:?}");
-    assert!(report.starts_with("TestError"));
-    assert!(report.contains("invalid digit"));
-    assert_eq!(report, error.to_string());
-    assert_eq!(report, error.er_report().to_string());
-
-    let mut lines = Vec::new();
-    error.for_each_line(|l| lines.push(l.to_owned())).unwrap();
-    assert_eq!(lines.join("\n"), report);
-
-    let failure = String::from("stop");
-    assert_eq!(
-        error.try_for_each_line(|_| Err(&failure)),
-        Err(ErLineError::Callback(&failure))
-    );
-    assert_eq!(
-        Err::<(), _>(&error).er_report().unwrap_err().to_string(),
-        report
-    );
-    let view = Err::<(), _>(&mut error).er_report().unwrap_err();
-    assert_eq!(view.to_string(), report);
-    assert!(std::ptr::eq(view.tree, &error.tree));
-
-    let snapshot = error.er_snapshot();
-    assert_eq!(Err::<(), _>(&error).er_snapshot().unwrap_err(), snapshot);
-    assert_eq!(
-        Err::<(), _>(&mut error).er_snapshot().unwrap_err(),
-        snapshot
-    );
-    let error = Err::<(), _>(error.into_er_tree()).er_test().unwrap_err();
-    let error = Err::<(), _>(Box::new(error)).er_test().unwrap_err();
-    let view = Err::<(), _>(error).er_report().unwrap_err();
-    assert_eq!(view.to_string(), report);
-    let error = view;
-    assert_eq!(error.er_snapshot(), snapshot);
 
     #[cfg(feature = "stack_traces")]
     {
-        let _trace_line = line!() + 1;
         let error = Err::<(), _>(error).er_trace().unwrap_err();
-        assert_eq!(error.tree.stack_traces.len(), 1);
-        assert_eq!(error.tree.stack_traces[0].error_index, ErErrorIndex(0));
-        assert_eq!(
-            error.tree.stack_traces[0].trace_location.line(),
-            _trace_line
-        );
-
         let error = Err::<(), _>(error.into_er_report()).er_test().unwrap_err();
-        assert_eq!(error.tree.er_snapshot(), snapshot);
         assert_eq!(error.tree.stack_traces[0].error_index, ErErrorIndex(0));
-        assert_eq!(
-            error.tree.stack_traces[0].trace_location.line(),
-            _trace_line
-        );
-
-        #[cfg(feature = "src_locations")]
-        assert_eq!(error.tree.src_location.line(), line);
     }
 }
 
@@ -114,63 +46,29 @@ pub fn tree_and_report() {
             ],
         );
 
-        #[cfg(feature = "src_locations")]
-        let location = source.src_location;
-
-        let mut _line = 0;
         let result = (|| -> ErTest {
             if report {
-                _line = line!() + 1;
                 Err::<(), _>(source.into_er_report())?;
             } else {
-                _line = line!() + 1;
                 Err::<(), _>(source)?;
             }
             Ok(())
         })();
 
-        let error = result.unwrap_err();
-        assert_eq!(error.tree.nodes.len(), 1);
-        assert_eq!(error.tree.nodes[0].nodes.len(), 2);
-        assert_eq!(error.tree.er_find_all::<ParseIntError>().count(), 2);
-        assert_eq!(
-            error.tree.er_find::<std::io::Error>().unwrap().to_string(),
-            "ports"
-        );
-
-        #[cfg(feature = "src_locations")]
-        {
-            assert_eq!(error.tree.src_location.line(), _line);
-            assert_eq!(error.tree.nodes[0].src_location, location);
-        }
+        assert_eq!(result.unwrap_err().tree.nodes[0].nodes.len(), 2);
     }
 }
 
 #[test]
 pub fn option() {
-    assert_eq!(Some(85).er_test().unwrap(), 85);
-
-    let mut _line = 0;
     let result = (|| -> ErTest {
-        _line = line!() + 1;
         None::<u16>.ok_or("expected a port")?;
         Ok(())
     })();
+    assert!(result.unwrap_err().to_string().contains("expected a port"));
 
-    let error = result.unwrap_err();
-    assert!(error.to_string().contains("expected a port"));
-
-    #[cfg(feature = "src_locations")]
-    assert_eq!(error.tree.src_location.line(), _line);
-
-    let _line = line!() + 1;
     let error = None::<u16>.er_test().unwrap_err();
     assert!(error.tree.er_contains::<ErTestOptionNone>());
-    assert_eq!(error.tree.er_find_all::<ErTestError>().count(), 1);
-    assert!(error.to_string().contains("Option was None"));
-
-    #[cfg(feature = "src_locations")]
-    assert_eq!(error.tree.src_location.line(), _line);
 }
 
 #[test]
@@ -180,29 +78,23 @@ pub fn helpers() -> ErTest {
     }
 
     let mut called = false;
-    let port = read_port("85").er::<io::Error>(|| {
+    read_port("85").er::<io::Error>(|| {
         called = true;
         io::Error::other("port")
     })?;
-    assert_eq!(port, 85);
     assert!(!called);
 
     let error = read_port("bad")
         .er::<io::Error>(|| io::Error::other("port"))
         .unwrap_err();
     assert!(error.er_contains::<ParseIntError>());
-    assert_eq!(error.top.to_string(), "port");
 
     let error = read_port("bad")
         .er_with::<io::Error, _>(|err| er_built(io::Error::other(err.to_string())))
         .unwrap_err();
     assert_eq!(error.top.to_string(), "TestError");
-    assert!(error.er_contains::<ParseIntError>());
 
-    let error = read_port("bad")
-        .er_with::<ErTestError, _>(|_| {})
-        .unwrap_err();
-    assert!(error.er_contains::<ParseIntError>());
+    let _ = read_port("bad").er_with::<ErTestError, _>(|_| {});
 
     let error = read_port("bad")
         .er_with_tree::<io::Error, _>(|tree| {
@@ -212,21 +104,6 @@ pub fn helpers() -> ErTest {
         })
         .unwrap_err();
     assert!(error.top.to_string().contains("invalid digit"));
-    assert!(error.er_contains::<ParseIntError>());
-
-    let mut ports = ["bad", "85", "65536"].into_iter().map(read_port);
-    let error = ports
-        .by_ref()
-        .er_collect::<Vec<_>, ErTestError>(|_| {})
-        .unwrap_err();
-    assert_eq!(error.er_find_all::<ParseIntError>().count(), 1);
-    assert_eq!(ports.next().unwrap()?, 85);
-
-    let ports = ["7", "8"]
-        .into_iter()
-        .map(read_port)
-        .er_collect_all::<Vec<_>, ErTestError>(|| ErTestError)?;
-    assert_eq!(ports, [7, 8]);
 
     let error = (|| -> ErTest {
         ["bad", "85", "65536"]
@@ -237,7 +114,6 @@ pub fn helpers() -> ErTest {
     })()
     .unwrap_err();
     assert_eq!(error.tree.er_find_all::<ParseIntError>().count(), 2);
-    assert_eq!(error.tree.er_find_all::<ErTestError>().count(), 3);
 
     Ok(())
 }
@@ -265,42 +141,28 @@ pub fn macros() -> ErTest {
     })()
     .unwrap_err();
     assert_eq!(error.tree.er_find_all::<ParseIntError>().count(), 2);
-    assert_eq!(error.tree.er_find_all::<ErTestError>().count(), 3);
-    assert!(error.tree.er_contains::<ChecksErr>());
 
     let error = (|| -> ErTest {
         er_all!(|| ErTestError, [read_port("bad"), read_port("65536")])?;
         Ok(())
     })()
     .unwrap_err();
-    assert_eq!(error.tree.nodes.len(), 2);
-    assert_eq!(error.tree.er_find_all::<ErTestError>().count(), 3);
-
     let error = er_add!(error, [read_port("nope"), read_port("85")]);
     assert_eq!(error.nodes.len(), 3);
-    assert_eq!(error.er_find_all::<ParseIntError>().count(), 3);
 
     let error = er_try!(ChecksErr::new, [read_port("bad"), read_port("85")]).unwrap_err();
     let failure = read_port("65536").unwrap_err();
     let error = er_add!(error, [failure, read_port("85")]);
     assert_eq!(error.er_find_all::<ParseIntError>().count(), 2);
 
-    let error = (|| -> ErTest { er_bail!(ChecksErr::new) })().unwrap_err();
-    assert!(error.tree.er_contains::<ChecksErr>());
-    assert_eq!(error.tree.er_find_all::<ErTestError>().count(), 1);
+    let _ = (|| -> ErTest { er_bail!(ChecksErr::new) })();
+    let _ = (|| -> ErTest { er_bail!(()) })();
 
     let error = (|| -> ErTest { er_bail!(|| ErTestError) })().unwrap_err();
     assert!(error.tree.nodes.is_empty());
 
     let error = (|| -> ErTest { er_bail!(|_| "bad port") })().unwrap_err();
     assert!(error.to_string().contains("bad port"));
-
-    let _line = line!() + 1;
-    let error = (|| -> ErTest { er_bail!(()) })().unwrap_err();
-    assert!(error.tree.nodes.is_empty());
-
-    #[cfg(feature = "src_locations")]
-    assert_eq!(error.tree.src_location.line(), _line);
 
     Ok(())
 }

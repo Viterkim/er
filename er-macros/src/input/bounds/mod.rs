@@ -32,14 +32,6 @@ pub fn bound_key(ty: &Type) -> Option<String> {
 }
 
 pub fn format_generics(input: &Input<'_>) -> Generics {
-    generics(input, None)
-}
-
-pub fn format_generics_for(input: &Input<'_>, output: Output) -> Generics {
-    generics(input, Some(output))
-}
-
-fn generics(input: &Input<'_>, output: Option<Output>) -> Generics {
     let mut parameters: HashSet<_> = input
         .type_names
         .union(&input.const_names)
@@ -61,16 +53,10 @@ fn generics(input: &Input<'_>, output: Option<Output>) -> Generics {
     let mut seen = HashSet::new();
     let mut seen_fields = HashSet::new();
     let name = plain(&input.item.ident);
-    let outputs: &[Output] = match output {
-        None => &[Output::Display, Output::DisplayAlt, Output::Debug],
-        Some(Output::Display) => &[Output::Display, Output::DisplayAlt],
-        Some(Output::DisplayAlt) => &[Output::DisplayAlt],
-        Some(Output::Debug) => &[Output::Debug],
-    };
 
     for case in &input.cases {
         let mut requirements = Vec::new();
-        for &output in outputs {
+        for output in [Output::Display, Output::DisplayAlt, Output::Debug] {
             if matches!(output, Output::DisplayAlt) && case.formats.display_alt.is_none() {
                 continue;
             }

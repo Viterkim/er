@@ -222,7 +222,7 @@ result.er_into(|report| report) // No remaining fields
 result.er_into(|report| (report, (request_id, path))) // Several fields
 ```
 
-The saved string keeps the report's layout. Use `into_report_string(single_line)` to force one line (note that you can do into_snapshot, but be careful as you are then providing a type from 'er' it self which means your consumer know has an indirect depedency, avoid it for consumers who are external to your crate).
+The saved string keeps the report's layout. Use `into_report_string(single_line)` to force one line.
 
 You can use `source` without saving a report too, with one source per struct or variant. Box, Rc and Arc expose their contained error, and Option exposes nothing on None. For a pointer alias like `type Cause<E> = Arc<E>`, use `source(deref)`. `skip` only leaves the field out of formatting.
 

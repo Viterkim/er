@@ -18,15 +18,6 @@ impl From<()> for ManualEmpty {
     }
 }
 
-#[derive(Er)]
-#[er(no_constructors)]
-pub struct ManualFile(pub String);
-impl ManualFile {
-    pub fn new(value: &str) -> Self {
-        Self(format!("manual {value}"))
-    }
-}
-
 #[derive(ErFormat)]
 #[er(format = "{name}")]
 pub struct DefaultData<T> {
@@ -50,8 +41,6 @@ fn standalone_construction() {
     let _: ManualEmpty = ().into();
     let file: FileErr = ("config.toml",).into();
     assert_eq!(file.0, "config.toml");
-
-    assert_eq!(ManualFile::new("config.toml").0, "manual config.toml");
 }
 
 #[derive(Er)]

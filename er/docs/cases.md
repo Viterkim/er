@@ -24,11 +24,9 @@ Generate [Wrap](macros.md#wrap), so you own the type receiving the implementatio
 
 ### Their required error has a boxed Error slot
 
-Box an ordinary error, or a [std_error Wrap](macros.md#wrap-with-std_error) to keep a live tree.
+The callback has to return their error, so use the generated constructor for your diagnostic and put it in their box. `.er()` goes around the operation in your own function. [The SQLite example](examples.md#foreign-callbacks) shows both, including location capture.
 
-### That ordinary diagnostic needs a location
-
-Put [#[er(src_location)]](examples.md#foreign-callbacks) on its location field.
+A [std_error Wrap](macros.md#wrap-with-std_error) can carry an existing live tree instead. The reason why you can't do this in some cases (like sqlite) is that `ErTree` does not impl Error (on purpose).
 
 ### Their error has nowhere to keep your details
 

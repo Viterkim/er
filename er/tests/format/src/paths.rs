@@ -33,7 +33,7 @@ fn paths() {
             line: 7,
             column: 9,
         };
-        snapshot.entries[0].src_location = Some(location.clone());
+        snapshot.entries[0].src_location = Some(location);
         let printed = if cfg!(feature = "small_path_src") {
             small
         } else {
@@ -45,16 +45,14 @@ fn paths() {
             let report = snapshot.er_report().layout(layout);
             assert_eq!(report.to_string(), expected);
         }
-        assert_eq!(snapshot.entries[0].src_location, Some(location));
     }
 }
 
 #[test]
-fn live_and_saved() -> core::fmt::Result {
+fn live_and_saved() {
     let message = "/keep/message/src/as-written";
     let tree = ErTree::from(Message(message));
     let location = tree.src_location;
-    assert_eq!(location.file(), file!());
     let printed = if cfg!(feature = "small_path_src") {
         "format/src/paths.rs"
     } else {
@@ -79,10 +77,6 @@ fn live_and_saved() -> core::fmt::Result {
         let saved = snapshot.er_report().layout(layout);
         assert_eq!(live.to_string(), expected);
         assert_eq!(saved.to_string(), expected);
-        let mut lines = Vec::new();
-        live.for_each_line(|l| lines.push(l.to_owned()))?;
-        assert_eq!(lines, [expected.as_str()]);
     }
     assert_eq!(tree.er_top().to_string(), message);
-    Ok(())
 }

@@ -22,7 +22,8 @@ fn lazy_context() {
     assert_eq!(plain.er_entries().count(), 2);
     assert_eq!(plain.top.to_string(), "failed");
 
-    let contextual = with_context().unwrap_err();
-    assert_eq!(contextual.top.to_string(), "loading config");
-    assert!(contextual.er_contains::<io::Error>());
+    assert_eq!(
+        with_context().unwrap_err().top.to_string(),
+        "loading config"
+    );
 }

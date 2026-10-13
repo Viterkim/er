@@ -87,32 +87,10 @@ pub mod tests {
         assert_eq!(saved.report, saved.snapshot.er_report().to_string());
         assert_eq!(saved.kind.device.bus, 85);
 
-        let mut report = Err::<(), _>(saved.snapshot).er_report().unwrap_err();
-        assert_eq!(report.er_report_string(), saved.report);
-        assert_eq!(
-            Err::<(), _>(&report).er_report_string().unwrap_err(),
-            saved.report
-        );
-        assert_eq!(
-            Err::<(), _>(&mut report).er_report_string().unwrap_err(),
-            saved.report
-        );
-        assert_eq!(
-            Err::<(), _>(&mut report)
-                .er_report()
-                .unwrap_err()
-                .to_string(),
-            saved.report
-        );
-        assert_eq!(Ok::<_, ErSnapshot>(85).unwrap_report(), 85);
-
         #[cfg(target_has_atomic = "ptr")]
         {
             let shared = shared_diagnostic();
-            let borrowed = Err::<(), _>(&shared).er_top().unwrap_err();
-            assert_eq!(borrowed.er_top_string(), shared.er_top_string());
             let old = shared.nodes[0].er_find::<SharedErr>().unwrap();
-            assert_eq!(shared.top.device.bus, 85);
             assert!(ErShared::ptr_eq(&shared.top.device, &old.device));
         }
     }

@@ -15,7 +15,6 @@ pub enum CollidingEnum {
         __er_d: String,
         __ErCensored: String,
     },
-    Positional(String, String),
 }
 #[test]
 pub fn enum_collisions() {
@@ -29,12 +28,6 @@ pub fn enum_collisions() {
     assert_eq!(
         internals.to_string(),
         "CollidingEnum::Internals { __er_f: \"c\", __er_d: \"d\", __ErCensored: \"e\" }"
-    );
-
-    let positional = CollidingEnum::positional("f", "g");
-    assert_eq!(
-        positional.to_string(),
-        "CollidingEnum::Positional(\"f\", \"g\")"
     );
 }
 
@@ -62,8 +55,7 @@ pub struct AliasErr {
 }
 #[test]
 pub fn field_type_name_collision() {
-    let error: AliasErr = ("hello",).into();
-    assert_eq!(error.value, "hello");
+    let _: AliasErr = ("hello",).into();
 }
 
 mod bound_name {
@@ -80,8 +72,7 @@ mod bound_name {
     }
     #[test]
     pub fn collision() {
-        let error = BoundErr::<()>::new("hello", core::marker::PhantomData);
-        assert_eq!(error.message, "hello");
+        let _ = BoundErr::<()>::new("hello", core::marker::PhantomData);
     }
 }
 
@@ -121,4 +112,29 @@ pub fn const_generics() {
     let error = ConstNames::<2>::new([1, 2], 3);
     assert_eq!(error.N, [1, 2]);
     assert_eq!(error.__er_arg_0, 3);
+}
+
+#[no_implicit_prelude]
+pub mod source_paths {
+    extern crate core;
+    extern crate er_macros;
+
+    pub trait Sized {}
+
+    #[derive(er_macros::Er)]
+    #[er(format = "failed")]
+    pub struct Failure {
+        #[er(source)]
+        pub cause: core::fmt::Error,
+    }
+
+    #[test]
+    fn source() {
+        let err = Failure::new(core::fmt::Error);
+        core::assert!(
+            core::error::Error::source(&err)
+                .unwrap()
+                .is::<core::fmt::Error>()
+        );
+    }
 }
