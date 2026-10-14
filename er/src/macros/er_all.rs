@@ -7,17 +7,19 @@
 #[macro_export]
 macro_rules! er_all {
     ($top:expr, [$($result:expr),* $(,)?] $(,)?) => {{
-        let __er_results: [::core::result::Result<(), $crate::ErPart>; _] =
-            $crate::__er_all_results!($crate::ErAllItem, [$($result),*]);
-        $crate::aggregate::collect(|| $crate::ErMake::er_make($top), __er_results)
+        $crate::__er_all_results!($crate, [$($result),*], $top)
     }};
     ($top:expr, $results:expr $(,)?) => {{
-        $crate::aggregate::collect(
-            || $crate::ErMake::er_make($top),
+        $crate::aggregate::gather(
             ::core::iter::Iterator::map(
                 ::core::iter::IntoIterator::into_iter($results),
-                |__er_item| $crate::ErAllItem::er_all_item(__er_item),
+                {
+                    #[allow(unused_imports)]
+                    use ::core::mem::drop as __er_item;
+
+                    |__er_item| $crate::ErAllItem::er_all_item(__er_item)
+                },
             ),
-        )
+        ).finish(|| $crate::ErMake::er_make($top))
     }};
 }

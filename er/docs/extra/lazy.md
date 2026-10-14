@@ -10,7 +10,7 @@ For tests, use [`ErTest`](../examples.md#tests)
 
 ```toml
 [dependencies]
-er = { version = "0.7", features = ["lazy"] }
+er = { version = "0.8", features = ["lazy"] }
 ```
 
 ## Examples

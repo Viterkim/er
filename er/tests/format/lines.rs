@@ -37,7 +37,7 @@ pub fn lines() -> fmt::Result {
         let expected = parts.concat();
         let mut lines = Vec::new();
         let display: &dyn fmt::Display = &value;
-        lines::for_each_line(display, |line| lines.push(line.to_owned()))?;
+        lines::for_each_line(display, |l| lines.push(l.to_owned()))?;
 
         assert_eq!(lines, expected.lines().collect::<Vec<_>>());
         assert_eq!(value.calls.get(), 1);
@@ -60,24 +60,19 @@ impl Error for IgnoresWriter {}
 
 #[test]
 pub fn callback_failure() {
-    pub struct Stop;
-    let stop = Stop;
     let tree = ErTree::from(IgnoresWriter);
     let mut calls = 0;
     let result = tree.er_top().try_for_each_line(|_| {
         calls += 1;
-        Err(&stop)
+        Err(1)
     });
 
-    assert!(matches!(
-        result,
-        Err(ErLineError::Callback(e)) if std::ptr::eq(e, &stop)
-    ));
+    assert_eq!(result, Err(ErLineError::Callback(1)));
     assert_eq!(calls, 1);
 
     let mut lines = Vec::new();
-    let result = tree.into_er_report().try_for_each_line(|line| {
-        lines.push(line.to_owned());
+    let result = tree.into_er_report().try_for_each_line(|l| {
+        lines.push(l.to_owned());
 
         if lines.len() == 2 {
             return Err(17);
@@ -86,18 +81,22 @@ pub fn callback_failure() {
         Ok(())
     });
 
+    let failure =
+        lines::try_for_each_line(&"report", |_| Err(std::io::Error::other("sink closed")))
+            .unwrap_err();
+    let tree = ErTree::from(failure);
+    assert_eq!(tree.er_report_string().matches("sink closed").count(), 1);
+    assert!(tree.er_contains::<std::io::Error>());
+
     assert_eq!(result, Err(ErLineError::Callback(17)));
     assert_eq!(lines, ["first", "second"]);
 
-    let result = lines::try_for_each_line(&"unterminated", |line| {
-        assert_eq!(line, "unterminated");
-        Err(&stop)
+    let result = lines::try_for_each_line(&"unterminated", |l| {
+        assert_eq!(l, "unterminated");
+        Err(2)
     });
 
-    assert!(matches!(
-        result,
-        Err(ErLineError::Callback(e)) if std::ptr::eq(e, &stop)
-    ));
+    assert_eq!(result, Err(ErLineError::Callback(2)));
 }
 
 #[test]
@@ -111,7 +110,7 @@ pub fn chunks() -> fmt::Result {
 
     report.tree.top.calls.set(0);
     let mut lines = Vec::new();
-    report.for_each_line(|line| lines.push(line.to_owned()))?;
+    report.for_each_line(|l| lines.push(l.to_owned()))?;
 
     assert_eq!(lines, expected.lines().collect::<Vec<_>>());
     assert_eq!(report.tree.top.calls.get(), 1);
@@ -134,7 +133,7 @@ pub fn format_failure() {
     let mut lines = Vec::new();
     let outcome = ErTree::from(Broken)
         .into_er_top()
-        .for_each_line(|line| lines.push(line.to_owned()));
+        .for_each_line(|l| lines.push(l.to_owned()));
 
     assert_eq!(outcome, Err(fmt::Error));
     assert_eq!(lines, ["done"]);

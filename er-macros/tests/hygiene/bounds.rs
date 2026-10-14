@@ -23,6 +23,16 @@ pub fn recursive() {
         error.to_string(),
         "GenericTreeErr { value: 1, children: [GenericTreeErr { value: 2, children: [] }] }"
     );
+
+    #[derive(Er)]
+    #[er(display = "{children:?}")]
+    struct Nested<T> {
+        value: T,
+        children: Vec<Self>,
+    }
+
+    let error = Nested::new(1_u8, vec![Nested::new(2, vec![])]);
+    assert_eq!(error.to_string(), "[Nested { value: 2, children: [] }]");
 }
 
 #[derive(Er)]
@@ -112,12 +122,4 @@ pub fn projections() {
     assert_error::<SelfTagged<NotPrintable>>();
     assert_error::<Associated<NotPrintable>>();
     assert_error::<Qualified<NotPrintable>>();
-
-    let leaf = Associated {
-        children: Vec::new(),
-    };
-    let error = Associated::<NotPrintable> {
-        children: vec![(7, leaf)],
-    };
-    assert!(error.to_string().contains("7"));
 }

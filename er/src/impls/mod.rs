@@ -1,5 +1,9 @@
+pub mod boxed;
+pub mod construct;
 pub mod error;
 pub mod iterator;
+#[cfg(feature = "lazy")]
+pub mod lazy;
 pub mod lines;
 pub mod node;
 pub mod presentation;

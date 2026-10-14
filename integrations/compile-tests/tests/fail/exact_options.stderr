@@ -16,7 +16,7 @@ error: put `skip`, `censor`, `exact`, or `source` on a field
 16 | #[er(exact)]
    |      ^^^^^
 
-error: expected `format = "..."`; put `skip`, `censor`, `exact`, or `source` on a field, or `wrap`/`crate` on the enum
+error: expected `format = "..."`, `display = "..."`, `display_alt = "..."`, or `debug = "..."`; put `skip`, `censor`, `exact`, or `source` on a field, or `wrap`/`crate` on the enum
   --> tests/fail/exact_options.rs:23:10
    |
 23 |     #[er(exact)]

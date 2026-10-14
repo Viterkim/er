@@ -9,7 +9,7 @@ where
 {
     type Ok = T;
 
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er_collect<C, A>(self, error: impl ErMake<A, Mode>) -> ErResult<C, A>
     where
         C: FromIterator<T>,
@@ -18,17 +18,21 @@ where
         self.collect::<Result<C, E>>().er(error)
     }
 
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er_collect_all<C, A>(self, error: impl ErMake<A, Mode>) -> ErResult<C, A>
     where
         C: FromIterator<T>,
         A: Error + 'static,
     {
         let mut values = Vec::new();
-        aggregate::collect(
-            || error.er_make(),
-            self.map(|result| result.map(|value| values.push(value))),
-        )?;
-        Ok(values.into_iter().collect())
+        let failures = aggregate::gather(self.map(|result| result.map(|value| values.push(value))));
+
+        if failures.is_empty() {
+            drop(error);
+            Ok(values.into_iter().collect())
+        } else {
+            drop(values);
+            Err(failures.into_tree(error.er_make()))
+        }
     }
 }

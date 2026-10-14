@@ -14,8 +14,9 @@ pub struct PortError {
     pub report: String,
 }
 pub fn saved(input: &str) -> Result<(), PortError> {
-    read_port(input).er_into::<PortError>(|tree| {
-        eprintln!("{}", tree.er_report());
+    read_port(input).er_into::<PortError, _>(|report| {
+        eprintln!("{report}");
+        report
     })?;
     Ok(())
 }

@@ -19,8 +19,8 @@ pub fn for_each_line(
     value: &(impl fmt::Display + ?Sized),
     mut emit: impl FnMut(&str),
 ) -> fmt::Result {
-    let result: Result<(), ErLineError<Infallible>> = try_for_each_line(value, |line| {
-        emit(line);
+    let result: Result<(), ErLineError<Infallible>> = try_for_each_line(value, |l| {
+        emit(l);
         Ok(())
     });
 

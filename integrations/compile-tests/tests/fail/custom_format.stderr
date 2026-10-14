@@ -4,7 +4,7 @@ error: `format` is set more than once
 4 | #[er(format = "first", format = "second")]
   |                        ^^^^^^
 
-error: expected string literal
+error: expected a format string or formatting function path
  --> tests/fail/custom_format.rs:8:15
   |
 8 | #[er(format = 7)]

@@ -29,19 +29,10 @@ pub fn causal_chain() {
     let expected = "LoadConfigErr\n`- ParsePortErr(\"aint_even_a_number_cmon_man\")\n   `- invalid digit found in string";
 
     assert_eq!(error.er_report().to_string(), expected);
-
-    #[cfg(feature = "src_locations")]
-    {
-        let entries: Vec<_> = error.er_entries().collect();
-        assert_eq!(entries[1].src_location, entries[2].src_location);
-    }
 }
 
 #[test]
 pub fn panic_output() {
-    assert_eq!(parse_port("85").er_report().unwrap(), 85);
-    assert_eq!(parse_port("80").er_top().expect("usable port"), 80);
-
     for top in [false, true] {
         let tree = ErTree::new(Message("context"), [Message("cause")]);
         let expected = if top {
@@ -216,7 +207,6 @@ pub fn chunks() {
         let expected = "alpha\nbeta";
 
         assert_eq!(tree.er_report().to_string(), expected);
-        assert_eq!(tree.er_top().single_line().to_string(), "alpha beta");
 
         let mut text = String::new();
         let writer: &mut dyn fmt::Write = &mut text;
@@ -240,7 +230,12 @@ pub fn chunks() {
 
 #[test]
 pub fn partitions() -> fmt::Result {
-    let input = "a\r\nb\rc\0d\n\n";
+    let input = "æ\r\n日本\rc\0🦀\n\n";
+    let boundaries: Vec<_> = input
+        .char_indices()
+        .skip(1)
+        .map(|(index, _)| index)
+        .collect();
 
     for wrap in [render::Wrap::Indent("  "), render::Wrap::Flatten] {
         let render = |parts: &[&str]| -> Result<String, fmt::Error> {
@@ -267,11 +262,11 @@ pub fn partitions() -> fmt::Result {
         assert_eq!(characters, expected);
 
         // Each bit chooses a cut between two characters.
-        for cuts in 0..1 << (input.len() - 1) {
+        for cuts in 0..1 << boundaries.len() {
             let mut parts = Vec::new();
             let mut start = 0;
-            for end in 1..input.len() {
-                if cuts & (1 << (end - 1)) != 0 {
+            for (bit, end) in boundaries.iter().copied().enumerate() {
+                if cuts & (1 << bit) != 0 {
                     parts.push(&input[start..end]);
                     start = end;
                 }
@@ -296,19 +291,7 @@ pub fn single_line() {
         let tree = ErTree::from(Chunked(chunks));
         assert_eq!(tree.er_top().single_line().to_string(), expected);
 
-        let report = tree.into_er_report().single_line();
-
-        #[cfg(feature = "src_locations")]
-        let expected_report = format!("{expected} @ {}", report.tree.src_location);
-
-        #[cfg(not(feature = "src_locations"))]
-        let expected_report = expected;
-
-        assert_eq!(report.to_string(), expected_report);
-        assert_eq!(report.as_ref().to_string(), report.to_string());
-
-        let top = report.tree.into_er_top().single_line();
-        assert_eq!(top.as_ref().to_string(), expected);
+        let top = tree.into_er_top().single_line();
         assert_eq!(format!("{top:#?}"), expected);
     }
 

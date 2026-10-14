@@ -1,4 +1,4 @@
-use super::FormatBounds;
+use super::{BoundSyntax, FormatBounds};
 use crate::names::plain;
 use proc_macro2::{TokenStream, TokenTree};
 use std::collections::HashSet;
@@ -78,6 +78,26 @@ impl<'a> syn::visit::Visit<'a> for FormatBounds<'a, '_> {
             syn::Expr::Verbatim(tokens) => {
                 self.uses_parameters |= mentions(tokens, self.parameters)
             }
+            _ => syn::visit::visit_expr(self, expr),
+        }
+    }
+}
+
+impl<'a> syn::visit::Visit<'a> for BoundSyntax {
+    fn visit_macro(&mut self, _: &'a syn::Macro) {
+        self.opaque = true;
+    }
+
+    fn visit_type(&mut self, ty: &'a Type) {
+        match ty {
+            Type::Verbatim(_) => self.opaque = true,
+            _ => syn::visit::visit_type(self, ty),
+        }
+    }
+
+    fn visit_expr(&mut self, expr: &'a syn::Expr) {
+        match expr {
+            syn::Expr::Verbatim(_) => self.opaque = true,
             _ => syn::visit::visit_expr(self, expr),
         }
     }

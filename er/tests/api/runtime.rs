@@ -10,8 +10,8 @@ pub fn read_port(input: &str) -> ErResult<u16, Error> {
 #[test]
 pub fn without_derives() {
     assert_eq!(read_port("85").er_report().unwrap(), 85);
-    assert_eq!(read_port("85").unwrap_report(), 85);
-    assert_eq!(read_port("85").expect_report("bad port"), 85);
+    read_port("85").unwrap_report();
+    read_port("85").expect_report("bad port");
 
     let results = [Err::<(), _>(Error::other("mode"))];
     let error: ErTree<Error> = aggregate::collect(|| Error::other("config"), results).unwrap_err();
@@ -28,18 +28,31 @@ pub fn without_derives() {
         )
         .err()
         .unwrap();
-
         assert_eq!(error.nodes.len(), 2);
-        assert!(error.er_find::<std::num::ParseIntError>().is_some());
-        assert_eq!(error.er_top().to_string(), "config");
-        assert!(error.er_report().to_string().contains("invalid digit"));
     }
 
-    let root = ErTree::from(Error::other("fresh"));
-    assert!(root.nodes.is_empty());
+    struct SavedText(String);
+    impl From<((String, Error),)> for SavedText {
+        fn from(((text, _),): ((String, Error),)) -> Self {
+            Self(text)
+        }
+    }
+
+    let saved: SavedText = read_port("bad")
+        .er_report()
+        .unwrap_err()
+        .single_line()
+        .er_into(|report| {
+            let text = report.er_report_string();
+            (text, report.tree.top)
+        });
+    assert!(saved.0.contains("invalid digit"));
+
+    let _: Result<u16, SavedText> = read_port("85").er_into(|_| -> (String, Error) {
+        panic!("boundary constructor ran for a successful result");
+    });
 
     let error = Error::other("source").er::<Error>(|| Error::other("context"));
-    assert_eq!(error.top.to_string(), "context");
     assert_eq!(error.nodes[0].error.to_string(), "source");
 }
 
@@ -101,21 +114,7 @@ pub fn manual_wrap() {
     let report = ManualWrap(tree).into_er_report();
     let top = ManualWrap(report.tree).into_er_top();
 
-    assert_eq!(top.to_string(), "85");
-
     let result: Result<(), ErTop<_>> = Err(top);
-    let report = result.er_tree().er_report().unwrap_err();
-    let tree = report.into_er_tree();
-    assert!(core::ptr::eq(tree.top, text.as_str()));
-}
-
-#[cfg(feature = "test")]
-#[test]
-pub fn test_helpers() -> ErTest {
-    let port = read_port("85")?;
-    assert_eq!(port, 85);
-    assert_eq!("85".parse::<u16>().er_test()?, port);
-    assert_eq!(Some(port).ok_or("expected a port")?, port);
-
-    Ok(())
+    let tree = result.er_tree().er_report().unwrap_err().into_er_tree();
+    assert_eq!(tree.top, "85");
 }

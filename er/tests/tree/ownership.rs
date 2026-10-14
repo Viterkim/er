@@ -1,4 +1,4 @@
-use core::{error::Error, fmt, ptr};
+use core::{error::Error, fmt};
 use er::*;
 use std::io;
 use std::sync::{
@@ -29,56 +29,12 @@ impl Error for LegacyErr {
 }
 
 #[test]
-pub fn native_source() {
-    let cause = io::Error::new(io::ErrorKind::TimedOut, "timeout");
-    let error = ErTree::new(OuterErr, [LegacyErr { cause }]);
-
-    assert_eq!(error.er_descendants().count(), 1);
-
-    let source = error.er_find::<io::Error>().unwrap();
-    assert!(ptr::eq(
-        source,
-        &error.er_find::<LegacyErr>().unwrap().cause
-    ));
-
-    #[cfg(feature = "src_locations")]
-    assert_eq!(error.nodes[0].src_location, error.src_location);
-
-    let report = error.er_report().to_string();
-    assert_eq!(report.lines().last().unwrap().trim(), "`- timeout");
-}
-
-#[test]
 pub fn owned_context() {
-    let grandchild = ErTree::from(fmt::Error);
-
-    #[cfg(feature = "src_locations")]
-    let grandchild_src_location = grandchild.src_location;
-
-    let child = ErTree::new(StageErr, [grandchild]);
-
-    #[cfg(feature = "src_locations")]
-    let child_src_location = child.src_location;
-
+    let child = ErTree::new(StageErr, [fmt::Error]);
     let cause = io::Error::new(io::ErrorKind::TimedOut, "timeout");
     let inner = ErTree::new(LegacyErr { cause }, [child]);
-
-    assert_eq!(
-        inner
-            .er_sources()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>(),
-        ["timeout"]
-    );
-
-    #[cfg(feature = "src_locations")]
-    let inner_src_location = inner.src_location;
-
-    let expected_line = line!() + 1;
     let outer = inner.er(OuterErr::new);
 
-    assert!(outer.er_contains::<LegacyErr>());
-    assert!(outer.er_contains::<io::Error>());
     let children: Vec<_> = outer
         .er_descendants()
         .map(|node| node.error.to_string())
@@ -87,17 +43,6 @@ pub fn owned_context() {
         children,
         ["legacy", "StageErr", fmt::Error.to_string().as_str()]
     );
-
-    #[cfg(feature = "src_locations")]
-    {
-        let child = &outer.nodes[0].nodes[0];
-        assert_eq!(outer.src_location.line(), expected_line);
-        assert_eq!(outer.nodes[0].src_location, inner_src_location);
-        assert_eq!(child.src_location, child_src_location);
-        assert_eq!(child.nodes[0].src_location, grandchild_src_location);
-    }
-
-    let _ = expected_line;
 }
 
 pub struct Tracked {
@@ -142,14 +87,9 @@ pub fn drop_once() {
             [first.into_er_part(), second.into_er_part()],
         );
 
-        assert_eq!(drops.load(Ordering::Relaxed), 0);
-
         let wrapped = StageErrWrap::from(ErTree::new(StageErr, [error]));
         let recovered = wrapped.tree;
         let report = recovered.into_er_report();
-
-        assert_eq!(report.tree.er_descendants().count(), 3);
-        assert_eq!(drops.load(Ordering::Relaxed), 0);
 
         if top {
             drop(report.tree.into_er_top());

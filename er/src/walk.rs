@@ -1,6 +1,6 @@
 use crate::types::ErNode;
 #[cfg(feature = "src_locations")]
-use crate::types::SrcLocation;
+use crate::types::ErSrcLocation;
 use alloc::vec::Vec;
 use core::error::Error;
 use core::marker::PhantomData;
@@ -29,7 +29,7 @@ pub struct ErEntry<'a> {
     /// Another native source exists, but the walk stopped at its limit.
     pub source_truncated: bool,
     #[cfg(feature = "src_locations")]
-    pub src_location: Option<SrcLocation>,
+    pub src_location: Option<ErSrcLocation>,
 }
 
 #[derive(Clone, Copy)]

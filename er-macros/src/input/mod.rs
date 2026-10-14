@@ -1,25 +1,25 @@
-use attrs::{ContainerOptions, FieldOptions};
-use format::{Format, FormatTrait};
-use std::collections::HashSet;
-use syn::{DeriveInput, Ident};
-
 pub mod attrs;
 pub mod bounds;
 pub mod format;
 pub mod impls;
 
+use attrs::{ContainerOptions, FieldOptions};
+use format::{FormatTrait, Formats};
+use std::collections::HashSet;
+use syn::{DeriveInput, Ident};
+
 pub struct Field<'a> {
     pub item: &'a syn::Field,
     pub options: FieldOptions,
     pub formats: Vec<FormatTrait>,
-    pub sets_width_or_precision: bool,
+    pub used_in_format: bool,
 }
 
 pub struct Case<'a> {
     pub variant: Option<&'a Ident>,
     pub shape: &'a syn::Fields,
     pub fields: Vec<Field<'a>>,
-    pub format: Option<Format>,
+    pub formats: Formats,
 }
 
 pub struct Input<'a> {
@@ -28,4 +28,10 @@ pub struct Input<'a> {
     pub cases: Vec<Case<'a>>,
     pub const_names: HashSet<String>,
     pub type_names: HashSet<String>,
+    pub names: HashSet<String>,
+}
+
+#[derive(Default)]
+pub struct IdentifierNames {
+    pub names: HashSet<String>,
 }

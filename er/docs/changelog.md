@@ -1,6 +1,29 @@
+# 0.8.0
+
+Removed `.opaque_err()` and `ErAsError`. Instead export your saved diagnostics with `.er_into()` (or use an explicit Wrap to keep a live tree on the external trait cases).
+
+For your error types where you maybe don't use the tree, you can now use `#[er(src_location)]` which captures a location on your type instead of on the tree (and leaves the field out of constructor args). You can use it above a `pub some_name: ErSrcLocation` field (which is just an alias for `&'static core::panic::Location<'static>`).
+
+Added `#[er(display = "...")]` and `#[er(debug = "...")]` which override each output, `format` still does both. Also now `display_alt` for `{:#}` (each can also take a formatting functions).
+
+`#[er(default)]` lets tuple helpers omit fields. Use `#[er(default = make_data())]` for your own fallback. Supplying those fields still works.
+
+`.er_val()` now takes the same field and tuple helpers as `.er()`, like `.er_val(|v| (path, v))` (for old finished struct there's `er_built(...)`, same as `.er_with()`, but just use the new pattern like on `.er()`).
+Replace `.er_val(DeviceErr::new)` with `.er_val(|v| v)` for a single field.
+
+`.er_into()` now gets the owned report and uses those helpers too, like `.er_into(|report| report.er_report_string())`. You can build another library's error without caring about 'er' or the version.
+
+Automatic report saving now uses ordinary field conversions. `ErFromTree` is gone, use `.er_into()` to finish the conversion.
+
+For automatic `into_*` filling, change `.er_into(|_| ())` to `.er_into(|report| report)`. With extra fields, change `.er_into(|_| fields)` to `.er_into(|report| (report, fields))`.
+
+Snapshot Results get the printing and unwrap helpers. `ErSnapshotReport` and `ErSnapshotTop` now own the snapshot, rename the old borrowed types to `ErSnapshotReportRef` and `ErSnapshotTopRef`. Snapshot report/top views no longer implement `Error`. Save their diagnostics in an ordinary error when a foreign API requires one.
+
+`.er_test()?` now also handles `Result<T, ()>`.
+
 # 0.7.0
 
-`.er_with()` takes fields now, example: `.er_with(|old| (old.code, path))`. Use `er_built(...)` if you assemble the whole error yourself. Same for the tree and Wrap forms.
+`.er_with()` takes fields now, example: `.er_with(|err| (err.code, path))`. Use `er_built(...)` if you assemble the whole error yourself. Same for the tree and Wrap forms.
 
 Add the `er-unsync` crate which is the same api with Rc sharing and stored errors without Send/Sync requirements.
 
@@ -50,9 +73,9 @@ New `.er_add([error])` instead of `with_part` and `push_part`.
 
 `er_add!(tree, [first, second])` added (mixed types and results behind the `macros` feature).
 
-`.er_with(|err|)` now gets the 'top' error instead of the tree. So `err.top.path` is now `err.path` (If you need the old one, you can use `.er_with_tree(|t|)`).
+`.er_with(|err|)` now gets the 'top' error instead of the tree. So `err.top.path` is now `err.path` (If you need the old one, you can use `.er_with_tree(|tree|)`).
 
-Add `ErShared<T>` for sharing data between errors by passing `&old.field` (used with `.er_with(|old|)`).
+Add `ErShared<T>` for sharing data between errors by passing `&err.field` (used with `.er_with(|err|)`).
 
 # 0.3.0
 
@@ -110,7 +133,7 @@ Readme and docs changes.
 
 Optional serde for snapshots.
 
-Add `.er_with(|t|)` / `.er_with(|err|)` to copy fields off the previous error, without `map_err` accidentally destroying the tree.
+Add `.er_with(|tree|)` / `.er_with(|err|)` to copy fields off the previous error, without `map_err` accidentally destroying the tree.
 
 # 0.1.2
 

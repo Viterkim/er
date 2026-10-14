@@ -1,25 +1,40 @@
 use crate::{
     input::{
         Input,
-        bounds::{FormatBounds, impls::is_self_path},
+        attrs::SourceMode,
+        bounds::{FormatBounds, bound_key, impls::is_self_path},
     },
-    names::{binding, plain},
+    names::{binding, plain, shield_bindings},
 };
 use proc_macro2::TokenStream;
 use quote::quote;
+use std::collections::HashSet;
 use syn::{Fields, GenericArgument, Generics, PathArguments, Type, parse_quote, visit::Visit as _};
 
 pub fn implementation(input: &Input<'_>, formatting: &Generics) -> TokenStream {
     let name = &input.item.ident;
+    if !input
+        .cases
+        .iter()
+        .flat_map(|case| &case.fields)
+        .any(|field| field.options.source.is_some())
+    {
+        let (impl_generics, type_generics, where_clause) = formatting.split_for_impl();
+        return quote! {
+            impl #impl_generics ::core::error::Error for #name #type_generics #where_clause {}
+        };
+    }
+
     let type_name = plain(name);
-    let source = binding(&input.const_names, "__er_source");
-    let mut reserved = input.const_names.clone();
-    reserved.extend(input.type_names.iter().cloned());
-    reserved.insert(plain(name));
+    let mut reserved = input.names.clone();
+    let source = binding(&reserved, "__er_source");
+    let shields = shield_bindings([&source]);
     let as_dyn = binding(&reserved, "__ErAsDynError");
     reserved.insert(plain(&as_dyn));
     let as_source = binding(&reserved, "__ErAsSource");
     reserved.insert(plain(&as_source));
+    let source_ref = binding(&reserved, "__ErSourceRef");
+    reserved.insert(plain(&source_ref));
     let alloc = binding(&reserved, "__er_alloc");
 
     let mut parameters = input.type_names.clone();
@@ -33,7 +48,7 @@ pub fn implementation(input: &Input<'_>, formatting: &Generics) -> TokenStream {
     );
     let mut generics = formatting.clone();
     let mut arms = Vec::new();
-    let mut has_source = false;
+    let mut bounded = HashSet::new();
 
     for case in &input.cases {
         let target = match case.variant {
@@ -44,7 +59,7 @@ pub fn implementation(input: &Input<'_>, formatting: &Generics) -> TokenStream {
             .fields
             .iter()
             .enumerate()
-            .find(|(_, field)| field.options.source)
+            .find(|(_, field)| field.options.source.is_some())
         else {
             let pattern = match case.shape {
                 Fields::Unit => target,
@@ -55,13 +70,12 @@ pub fn implementation(input: &Input<'_>, formatting: &Generics) -> TokenStream {
             continue;
         };
 
-        has_source = true;
         let pattern = match case.shape {
             Fields::Named(_) => {
                 let field = &field.item.ident;
                 quote!(#target { #field: #source, .. })
             }
-            _ => {
+            Fields::Unnamed(_) => {
                 let fields = (0..case.fields.len()).map(|position| {
                     if position == index {
                         quote!(#source)
@@ -71,60 +85,84 @@ pub fn implementation(input: &Input<'_>, formatting: &Generics) -> TokenStream {
                 });
                 quote!(#target(#(#fields),*))
             }
+            Fields::Unit => target,
         };
-        let (ty, value) = value(&field.item.ty, quote!(#source), &source);
-        if matches!(&ty, Type::Path(path) if path.qself.is_none() && is_self_path(&path.path, &plain(name)))
-        {
+        let mode = field.options.source.unwrap_or(SourceMode::Normal);
+        let (ty, converted, pointer) =
+            value(&field.item.ty, quote!(#source), &source, &source_ref, mode);
+        if let Some(pointer) = pointer {
             generics
                 .make_where_clause()
                 .predicates
-                .push(parse_quote!(#ty: 'static));
+                .push(parse_quote!(#pointer: ::core::ops::Deref));
+        }
+        let bound = if matches!(&ty, Type::TraitObject(_)) {
+            None
+        } else if matches!(&ty, Type::Path(path) if path.qself.is_none() && is_self_path(&path.path, &type_name))
+        {
+            Some(quote!('static))
         } else {
             let mut types = Vec::new();
             let mut bounds = FormatBounds::new(&type_name, &parameters, &mut types, false);
             bounds.visit_type(&ty);
-            if bounds.uses_parameters {
-                generics
-                    .make_where_clause()
-                    .predicates
-                    .push(parse_quote!(#ty: #as_dyn + 'static));
-            }
+            bounds.uses_parameters.then(|| quote!(#as_dyn + 'static))
+        };
+        if let Some(bound) = bound
+            && bound_key(&ty).is_none_or(|key| bounded.insert(key))
+        {
+            generics
+                .make_where_clause()
+                .predicates
+                .push(parse_quote!(#ty: #bound));
         }
-        arms.push(quote!(#pattern => #value));
+        arms.push(quote!(#pattern => #converted));
     }
 
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
-    let method = has_source.then(|| {
-        quote! {
+    let implementation = quote! {
+        impl #impl_generics ::core::error::Error for #name #type_generics #where_clause {
             fn source(&self) -> ::core::option::Option<&(dyn ::core::error::Error + 'static)> {
                 match self { #(#arms),* }
             }
         }
-    });
-
-    let implementation = quote! {
-        impl #impl_generics ::core::error::Error for #name #type_generics #where_clause {
-            #method
-        }
     };
-    if !has_source {
-        return implementation;
-    }
 
-    let conversion = conversion(&as_dyn, &as_source, &alloc);
+    let conversion = conversion(&as_dyn, &as_source, &source_ref, &alloc);
     quote! {
         const _: () = {
+            #shields
             #conversion
             #implementation
         };
     }
 }
 
-pub fn value(ty: &Type, reference: TokenStream, source: &syn::Ident) -> (Type, TokenStream) {
+pub fn value(
+    ty: &Type,
+    reference: TokenStream,
+    source: &syn::Ident,
+    source_ref: &syn::Ident,
+    mode: SourceMode,
+) -> (Type, TokenStream, Option<Type>) {
     match ty {
-        Type::Paren(ty) => return value(&ty.elem, reference, source),
-        Type::Group(ty) => return value(&ty.elem, reference, source),
-        Type::Reference(ty) => return value(&ty.elem, quote!(*#reference), source),
+        Type::TraitObject(_) => {
+            return (
+                ty.clone(),
+                quote!(::core::option::Option::Some(#reference)),
+                None,
+            );
+        }
+        Type::Paren(ty) => return value(&ty.elem, reference, source, source_ref, mode),
+        Type::Group(ty) => return value(&ty.elem, reference, source, source_ref, mode),
+        Type::Reference(ty) => {
+            return value(
+                &ty.elem,
+                quote!(&**#reference),
+                source,
+                source_ref,
+                SourceMode::Normal,
+            );
+        }
         _ => (),
     }
 
@@ -143,12 +181,18 @@ pub fn value(ty: &Type, reference: TokenStream, source: &syn::Ident) -> (Type, T
                 Some("std" | "alloc" | "core")
             ))
     {
-        match segment.ident.to_string().as_str() {
+        match plain(&segment.ident).as_str() {
             "Box" | "Rc" | "Arc" => {
-                return value(inner, quote!(::core::ops::Deref::deref(#reference)), source);
+                return value(
+                    inner,
+                    quote!(::core::ops::Deref::deref(#reference)),
+                    source,
+                    source_ref,
+                    SourceMode::Normal,
+                );
             }
             "Option" => {
-                let (ty, inner) = value(inner, quote!(#source), source);
+                let (ty, inner, pointer) = value(inner, quote!(#source), source, source_ref, mode);
                 return (
                     ty,
                     quote! {
@@ -157,19 +201,40 @@ pub fn value(ty: &Type, reference: TokenStream, source: &syn::Ident) -> (Type, T
                             ::core::option::Option::None => ::core::option::Option::None,
                         }
                     },
+                    pointer,
                 );
             }
             _ => (),
         }
     }
 
+    if mode == SourceMode::Deref {
+        let target = parse_quote!(<#ty as ::core::ops::Deref>::Target);
+        let (ty_target, converted, _) = value(
+            &target,
+            quote!(::core::ops::Deref::deref(#reference)),
+            source,
+            source_ref,
+            SourceMode::Normal,
+        );
+        return (ty_target, converted, Some(ty.clone()));
+    }
+
     (
         ty.clone(),
-        quote!(::core::option::Option::Some((#reference).__er_as_source())),
+        quote!(::core::option::Option::Some(#source_ref::__er_finish(
+            (&#source_ref(#reference)).__er_as_source()
+        ))),
+        None,
     )
 }
 
-pub fn conversion(as_dyn: &syn::Ident, as_source: &syn::Ident, alloc: &syn::Ident) -> TokenStream {
+pub fn conversion(
+    as_dyn: &syn::Ident,
+    as_source: &syn::Ident,
+    source_ref: &syn::Ident,
+    alloc: &syn::Ident,
+) -> TokenStream {
     let objects = [
         quote!(),
         quote!(+ ::core::marker::Send),
@@ -198,9 +263,9 @@ pub fn conversion(as_dyn: &syn::Ident, as_source: &syn::Ident, alloc: &syn::Iden
     .map(|(pointer, attributes)| {
         quote! {
             #attributes
-            impl<'a, T: #as_dyn + ?Sized> #as_source<'a> for &'a #pointer<T> {
-                fn __er_as_source(self) -> &'a (dyn ::core::error::Error + 'static) {
-                    #as_dyn::__er_as_dyn(&**self)
+            impl<'a, T: #as_dyn + ?::core::marker::Sized> #as_source<'a> for &#source_ref<'a, #pointer<T>> {
+                fn __er_as_source(self) -> #source_ref<'a, dyn ::core::error::Error> {
+                    #source_ref(#as_dyn::__er_as_dyn(&**self.0))
                 }
             }
         }
@@ -219,12 +284,31 @@ pub fn conversion(as_dyn: &syn::Ident, as_source: &syn::Ident, alloc: &syn::Iden
         }
         #(#objects)*
 
-        trait #as_source<'a> {
-            fn __er_as_source(self) -> &'a (dyn ::core::error::Error + 'static);
+        // Dispatch on our own receiver, so an error's inherent methods can't win.
+        // Keep the result private too, so a foreign blanket method can't replace it.
+        struct #source_ref<'a, T: ?::core::marker::Sized>(&'a T);
+        impl<'a> #source_ref<'a, dyn ::core::error::Error> {
+            fn __er_finish(self) -> &'a (dyn ::core::error::Error + 'static) {
+                self.0
+            }
         }
-        impl<'a, T: #as_dyn + ?Sized> #as_source<'a> for &&'a T {
-            fn __er_as_source(self) -> &'a (dyn ::core::error::Error + 'static) {
-                #as_dyn::__er_as_dyn(*self)
+
+        trait #as_source<'a> {
+            fn __er_as_source(self) -> #source_ref<'a, dyn ::core::error::Error>;
+        }
+        impl<'a, T: #as_dyn + ?::core::marker::Sized> #as_source<'a> for &&#source_ref<'a, T> {
+            fn __er_as_source(self) -> #source_ref<'a, dyn ::core::error::Error> {
+                #source_ref(#as_dyn::__er_as_dyn(self.0))
+            }
+        }
+        impl<'a, T: #as_dyn + ?::core::marker::Sized> #as_source<'a> for &#source_ref<'a, &T> {
+            fn __er_as_source(self) -> #source_ref<'a, dyn ::core::error::Error> {
+                #source_ref(#as_dyn::__er_as_dyn(&**self.0))
+            }
+        }
+        impl<'a, T: #as_dyn + ?::core::marker::Sized> #as_source<'a> for &#source_ref<'a, &mut T> {
+            fn __er_as_source(self) -> #source_ref<'a, dyn ::core::error::Error> {
+                #source_ref(#as_dyn::__er_as_dyn(&**self.0))
             }
         }
         #(#pointers)*

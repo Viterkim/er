@@ -8,15 +8,20 @@ use crate::render::{
 };
 use crate::{
     ErEntries, ErEntryKind, ErLineError, ErSnapshot, ErSnapshotEntry, ErSnapshotReport,
-    ErSnapshotTop, Layout,
+    ErSnapshotReportRef, ErSnapshotTop, ErSnapshotTopRef, IntoErSnapshot, Layout,
 };
 use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use core::{error::Error, fmt, ops::Deref, slice};
+use core::{fmt, ops::Deref, slice};
 
 impl ErSnapshot {
+    /// Copy the saved entries.
+    pub fn er_snapshot(&self) -> Self {
+        self.clone()
+    }
+
     /// The saved report as text.
     pub fn er_report_string(&self) -> String {
         self.er_report().to_string()
@@ -44,19 +49,124 @@ impl ErSnapshot {
     }
 
     /// Print the whole saved report.
-    pub const fn er_report(&self) -> ErSnapshotReport<'_> {
-        ErSnapshotReport {
+    pub const fn er_report(&self) -> ErSnapshotReportRef<'_> {
+        ErSnapshotReportRef {
             snapshot: self,
             layout: Layout::Multiline,
         }
     }
 
     /// Print just the saved top error.
-    pub const fn er_top(&self) -> ErSnapshotTop<'_> {
+    pub const fn er_top(&self) -> ErSnapshotTopRef<'_> {
+        ErSnapshotTopRef {
+            snapshot: self,
+            layout: Layout::Multiline,
+        }
+    }
+
+    /// Print the whole saved report, moves the snapshot.
+    pub const fn into_er_report(self) -> ErSnapshotReport {
+        ErSnapshotReport {
+            snapshot: self,
+            layout: Layout::Multiline,
+        }
+    }
+
+    /// Print just the saved top, moves the snapshot.
+    pub const fn into_er_top(self) -> ErSnapshotTop {
         ErSnapshotTop {
             snapshot: self,
             layout: Layout::Multiline,
         }
+    }
+}
+impl IntoErSnapshot for ErSnapshot {
+    type Top = ErSnapshotTop;
+    type Report = ErSnapshotReport;
+
+    fn into_er_snapshot(self) -> Self {
+        self
+    }
+
+    fn into_er_top(self) -> ErSnapshotTop {
+        self.into_er_top()
+    }
+
+    fn into_er_report(self) -> ErSnapshotReport {
+        self.into_er_report()
+    }
+}
+impl<'a> IntoErSnapshot for &'a ErSnapshot {
+    type Top = ErSnapshotTopRef<'a>;
+    type Report = ErSnapshotReportRef<'a>;
+
+    fn into_er_snapshot(self) -> ErSnapshot {
+        self.clone()
+    }
+
+    fn into_er_top(self) -> Self::Top {
+        self.er_top()
+    }
+
+    fn into_er_report(self) -> Self::Report {
+        self.er_report()
+    }
+}
+impl<'a, P: ?Sized> IntoErSnapshot for &&'a P
+where
+    &'a P: IntoErSnapshot,
+{
+    type Top = <&'a P as IntoErSnapshot>::Top;
+    type Report = <&'a P as IntoErSnapshot>::Report;
+
+    fn into_er_snapshot(self) -> ErSnapshot {
+        (*self).into_er_snapshot()
+    }
+
+    fn into_er_top(self) -> Self::Top {
+        (*self).into_er_top()
+    }
+
+    fn into_er_report(self) -> Self::Report {
+        (*self).into_er_report()
+    }
+}
+impl<'a, P: ?Sized> IntoErSnapshot for &'a &mut P
+where
+    &'a P: IntoErSnapshot,
+{
+    type Top = <&'a P as IntoErSnapshot>::Top;
+    type Report = <&'a P as IntoErSnapshot>::Report;
+
+    fn into_er_snapshot(self) -> ErSnapshot {
+        <&'a P as IntoErSnapshot>::into_er_snapshot(self)
+    }
+
+    fn into_er_top(self) -> Self::Top {
+        <&'a P as IntoErSnapshot>::into_er_top(self)
+    }
+
+    fn into_er_report(self) -> Self::Report {
+        <&'a P as IntoErSnapshot>::into_er_report(self)
+    }
+}
+impl<'a, P: ?Sized> IntoErSnapshot for &'a mut P
+where
+    &'a P: IntoErSnapshot,
+{
+    type Top = <&'a P as IntoErSnapshot>::Top;
+    type Report = <&'a P as IntoErSnapshot>::Report;
+
+    fn into_er_snapshot(self) -> ErSnapshot {
+        <&'a P as IntoErSnapshot>::into_er_snapshot(self)
+    }
+
+    fn into_er_top(self) -> Self::Top {
+        <&'a P as IntoErSnapshot>::into_er_top(self)
+    }
+
+    fn into_er_report(self) -> Self::Report {
+        <&'a P as IntoErSnapshot>::into_er_report(self)
     }
 }
 impl From<ErEntries<'_>> for ErSnapshot {
@@ -90,7 +200,40 @@ impl From<ErEntries<'_>> for ErSnapshot {
     }
 }
 
-impl ErSnapshotReport<'_> {
+impl<'a> ErSnapshotReportRef<'a> {
+    /// The same saved report, keeping its layout.
+    pub const fn er_report(&self) -> Self {
+        *self
+    }
+
+    /// Just the saved top, keeping this layout.
+    pub const fn er_top(&self) -> ErSnapshotTopRef<'a> {
+        ErSnapshotTopRef {
+            snapshot: self.snapshot,
+            layout: self.layout,
+        }
+    }
+
+    /// Copy the saved entries, including the whole tree.
+    pub fn er_snapshot(&self) -> ErSnapshot {
+        self.snapshot.clone()
+    }
+
+    /// The saved errors, in tree order.
+    pub fn er_entries(&self) -> slice::Iter<'a, ErSnapshotEntry> {
+        self.snapshot.er_entries()
+    }
+
+    /// Call once per saved error.
+    pub fn er_for_each_entry(&self, visit: impl FnMut(&'a ErSnapshotEntry)) {
+        self.snapshot.er_for_each_entry(visit);
+    }
+
+    /// Stored sub errors, skips the root and native sources.
+    pub fn er_descendants(&self) -> impl Iterator<Item = &'a ErSnapshotEntry> + use<'a> {
+        self.snapshot.er_descendants()
+    }
+
     /// The saved report as text, keeps this layout.
     pub fn er_report_string(&self) -> String {
         self.to_string()
@@ -98,7 +241,7 @@ impl ErSnapshotReport<'_> {
 
     /// Just the saved outer error as text, keeps this layout.
     pub fn er_top_string(&self) -> String {
-        ErSnapshotTop {
+        ErSnapshotTopRef {
             snapshot: self.snapshot,
             layout: self.layout,
         }
@@ -128,14 +271,19 @@ impl ErSnapshotReport<'_> {
         lines::try_for_each_line(self, emit)
     }
 }
-impl Deref for ErSnapshotReport<'_> {
+impl Deref for ErSnapshotReportRef<'_> {
     type Target = ErSnapshot;
 
     fn deref(&self) -> &Self::Target {
         self.snapshot
     }
 }
-impl fmt::Display for ErSnapshotReport<'_> {
+impl<'a> From<ErSnapshotTopRef<'a>> for ErSnapshotReportRef<'a> {
+    fn from(top: ErSnapshotTopRef<'a>) -> Self {
+        top.er_report()
+    }
+}
+impl fmt::Display for ErSnapshotReportRef<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut previous_depth = None;
         for entry in &self.snapshot.entries {
@@ -148,14 +296,79 @@ impl fmt::Display for ErSnapshotReport<'_> {
         write_entries(formatter, self.snapshot.er_entries(), self.layout)
     }
 }
-impl fmt::Debug for ErSnapshotReport<'_> {
+impl fmt::Debug for ErSnapshotReportRef<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl Error for ErSnapshotReport<'_> {}
 
-impl ErSnapshotTop<'_> {
+impl<'a> IntoErSnapshot for ErSnapshotReportRef<'a> {
+    type Top = ErSnapshotTopRef<'a>;
+    type Report = Self;
+
+    fn into_er_snapshot(self) -> ErSnapshot {
+        self.snapshot.clone()
+    }
+
+    fn into_er_top(self) -> Self::Top {
+        self.er_top()
+    }
+
+    fn into_er_report(self) -> Self {
+        self
+    }
+}
+impl<'a> IntoErSnapshot for &ErSnapshotReportRef<'a> {
+    type Top = ErSnapshotTopRef<'a>;
+    type Report = ErSnapshotReportRef<'a>;
+
+    fn into_er_snapshot(self) -> ErSnapshot {
+        self.er_snapshot()
+    }
+
+    fn into_er_top(self) -> Self::Top {
+        self.er_top()
+    }
+
+    fn into_er_report(self) -> Self::Report {
+        *self
+    }
+}
+
+impl<'a> ErSnapshotTopRef<'a> {
+    /// The same saved top, keeping its layout.
+    pub const fn er_top(&self) -> Self {
+        *self
+    }
+
+    /// The whole saved report, keeping this layout.
+    pub const fn er_report(&self) -> ErSnapshotReportRef<'a> {
+        ErSnapshotReportRef {
+            snapshot: self.snapshot,
+            layout: self.layout,
+        }
+    }
+
+    /// Copy the saved entries, including the whole tree.
+    pub fn er_snapshot(&self) -> ErSnapshot {
+        self.snapshot.clone()
+    }
+
+    /// The saved errors, in tree order.
+    pub fn er_entries(&self) -> slice::Iter<'a, ErSnapshotEntry> {
+        self.snapshot.er_entries()
+    }
+
+    /// Call once per saved error.
+    pub fn er_for_each_entry(&self, visit: impl FnMut(&'a ErSnapshotEntry)) {
+        self.snapshot.er_for_each_entry(visit);
+    }
+
+    /// Stored sub errors, skips the root and native sources.
+    pub fn er_descendants(&self) -> impl Iterator<Item = &'a ErSnapshotEntry> + use<'a> {
+        self.snapshot.er_descendants()
+    }
+
     /// Just the saved outer error as text, keeps this layout.
     pub fn er_top_string(&self) -> String {
         self.to_string()
@@ -163,7 +376,7 @@ impl ErSnapshotTop<'_> {
 
     /// The whole saved report as text, keeps this layout.
     pub fn er_report_string(&self) -> String {
-        ErSnapshotReport {
+        ErSnapshotReportRef {
             snapshot: self.snapshot,
             layout: self.layout,
         }
@@ -193,14 +406,19 @@ impl ErSnapshotTop<'_> {
         lines::try_for_each_line(self, emit)
     }
 }
-impl Deref for ErSnapshotTop<'_> {
+impl Deref for ErSnapshotTopRef<'_> {
     type Target = ErSnapshot;
 
     fn deref(&self) -> &Self::Target {
         self.snapshot
     }
 }
-impl fmt::Display for ErSnapshotTop<'_> {
+impl<'a> From<ErSnapshotReportRef<'a>> for ErSnapshotTopRef<'a> {
+    fn from(report: ErSnapshotReportRef<'a>) -> Self {
+        report.er_top()
+    }
+}
+impl fmt::Display for ErSnapshotTopRef<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(entry) = self.snapshot.entries.first() {
             write_top(formatter, &entry.message, self.layout)?;
@@ -209,9 +427,309 @@ impl fmt::Display for ErSnapshotTop<'_> {
         Ok(())
     }
 }
-impl fmt::Debug for ErSnapshotTop<'_> {
+impl fmt::Debug for ErSnapshotTopRef<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(self, formatter)
     }
 }
-impl Error for ErSnapshotTop<'_> {}
+
+impl<'a> IntoErSnapshot for ErSnapshotTopRef<'a> {
+    type Top = Self;
+    type Report = ErSnapshotReportRef<'a>;
+
+    fn into_er_snapshot(self) -> ErSnapshot {
+        self.snapshot.clone()
+    }
+
+    fn into_er_top(self) -> Self {
+        self
+    }
+
+    fn into_er_report(self) -> Self::Report {
+        self.er_report()
+    }
+}
+impl<'a> IntoErSnapshot for &ErSnapshotTopRef<'a> {
+    type Top = ErSnapshotTopRef<'a>;
+    type Report = ErSnapshotReportRef<'a>;
+
+    fn into_er_snapshot(self) -> ErSnapshot {
+        self.er_snapshot()
+    }
+
+    fn into_er_top(self) -> Self::Top {
+        *self
+    }
+
+    fn into_er_report(self) -> Self::Report {
+        self.er_report()
+    }
+}
+
+impl ErSnapshotReport {
+    /// Copy the saved entries, including the whole tree.
+    pub fn er_snapshot(&self) -> ErSnapshot {
+        self.snapshot.clone()
+    }
+
+    /// Borrow the same report, keeping its layout.
+    pub const fn as_ref(&self) -> ErSnapshotReportRef<'_> {
+        ErSnapshotReportRef {
+            snapshot: &self.snapshot,
+            layout: self.layout,
+        }
+    }
+
+    /// The same saved report, keeping its layout.
+    pub const fn er_report(&self) -> ErSnapshotReportRef<'_> {
+        self.as_ref()
+    }
+
+    /// Just the saved top, keeping this layout.
+    pub const fn er_top(&self) -> ErSnapshotTopRef<'_> {
+        ErSnapshotTopRef {
+            snapshot: &self.snapshot,
+            layout: self.layout,
+        }
+    }
+
+    /// The saved report as text, keeps this layout.
+    pub fn er_report_string(&self) -> String {
+        self.er_report().er_report_string()
+    }
+
+    /// Just the saved outer error as text, keeps this layout.
+    pub fn er_top_string(&self) -> String {
+        self.er_top().er_top_string()
+    }
+
+    /// Pick how it gets printed.
+    pub fn layout(self, layout: Layout) -> Self {
+        Self { layout, ..self }
+    }
+
+    /// Print on one line.
+    pub fn single_line(self) -> Self {
+        self.layout(Layout::SingleLine)
+    }
+
+    /// Only formats once, no line endings.
+    pub fn for_each_line(&self, emit: impl FnMut(&str)) -> fmt::Result {
+        lines::for_each_line(self, emit)
+    }
+
+    /// Like `for_each_line()`, but the callback can fail.
+    pub fn try_for_each_line<X>(
+        &self,
+        emit: impl FnMut(&str) -> Result<(), X>,
+    ) -> Result<(), ErLineError<X>> {
+        lines::try_for_each_line(self, emit)
+    }
+}
+impl Deref for ErSnapshotReport {
+    type Target = ErSnapshot;
+
+    fn deref(&self) -> &Self::Target {
+        &self.snapshot
+    }
+}
+impl AsMut<ErSnapshot> for ErSnapshotReport {
+    fn as_mut(&mut self) -> &mut ErSnapshot {
+        &mut self.snapshot
+    }
+}
+impl fmt::Display for ErSnapshotReport {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.er_report(), formatter)
+    }
+}
+impl fmt::Debug for ErSnapshotReport {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, formatter)
+    }
+}
+
+impl IntoErSnapshot for ErSnapshotReport {
+    type Top = ErSnapshotTop;
+    type Report = Self;
+
+    fn into_er_snapshot(self) -> ErSnapshot {
+        self.snapshot
+    }
+
+    fn into_er_top(self) -> ErSnapshotTop {
+        ErSnapshotTop {
+            snapshot: self.snapshot,
+            layout: self.layout,
+        }
+    }
+
+    fn into_er_report(self) -> Self {
+        self
+    }
+}
+impl<'a> IntoErSnapshot for &'a ErSnapshotReport {
+    type Top = ErSnapshotTopRef<'a>;
+    type Report = ErSnapshotReportRef<'a>;
+
+    fn into_er_snapshot(self) -> ErSnapshot {
+        self.er_snapshot()
+    }
+
+    fn into_er_top(self) -> Self::Top {
+        self.er_top()
+    }
+
+    fn into_er_report(self) -> Self::Report {
+        self.er_report()
+    }
+}
+impl From<ErSnapshot> for ErSnapshotReport {
+    fn from(snapshot: ErSnapshot) -> Self {
+        snapshot.into_er_report()
+    }
+}
+impl From<ErSnapshotTop> for ErSnapshotReport {
+    fn from(top: ErSnapshotTop) -> Self {
+        top.into_er_report()
+    }
+}
+impl From<ErSnapshotReport> for ErSnapshot {
+    fn from(report: ErSnapshotReport) -> Self {
+        report.snapshot
+    }
+}
+
+impl ErSnapshotTop {
+    /// Copy the saved entries, including the whole tree.
+    pub fn er_snapshot(&self) -> ErSnapshot {
+        self.snapshot.clone()
+    }
+
+    /// Borrow the same top, keeping its layout.
+    pub const fn as_ref(&self) -> ErSnapshotTopRef<'_> {
+        ErSnapshotTopRef {
+            snapshot: &self.snapshot,
+            layout: self.layout,
+        }
+    }
+
+    /// The same saved top, keeping its layout.
+    pub const fn er_top(&self) -> ErSnapshotTopRef<'_> {
+        self.as_ref()
+    }
+
+    /// The whole saved report, keeping this layout.
+    pub const fn er_report(&self) -> ErSnapshotReportRef<'_> {
+        ErSnapshotReportRef {
+            snapshot: &self.snapshot,
+            layout: self.layout,
+        }
+    }
+
+    /// Just the saved outer error as text, keeps this layout.
+    pub fn er_top_string(&self) -> String {
+        self.er_top().er_top_string()
+    }
+
+    /// The whole saved report as text, keeps this layout.
+    pub fn er_report_string(&self) -> String {
+        self.er_report().er_report_string()
+    }
+
+    /// Pick how it gets printed.
+    pub fn layout(self, layout: Layout) -> Self {
+        Self { layout, ..self }
+    }
+
+    /// Print on one line.
+    pub fn single_line(self) -> Self {
+        self.layout(Layout::SingleLine)
+    }
+
+    /// Only formats once, no line endings.
+    pub fn for_each_line(&self, emit: impl FnMut(&str)) -> fmt::Result {
+        lines::for_each_line(self, emit)
+    }
+
+    /// Like `for_each_line()`, but the callback can fail.
+    pub fn try_for_each_line<X>(
+        &self,
+        emit: impl FnMut(&str) -> Result<(), X>,
+    ) -> Result<(), ErLineError<X>> {
+        lines::try_for_each_line(self, emit)
+    }
+}
+impl Deref for ErSnapshotTop {
+    type Target = ErSnapshot;
+
+    fn deref(&self) -> &Self::Target {
+        &self.snapshot
+    }
+}
+impl AsMut<ErSnapshot> for ErSnapshotTop {
+    fn as_mut(&mut self) -> &mut ErSnapshot {
+        &mut self.snapshot
+    }
+}
+impl fmt::Display for ErSnapshotTop {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.er_top(), formatter)
+    }
+}
+impl fmt::Debug for ErSnapshotTop {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, formatter)
+    }
+}
+
+impl IntoErSnapshot for ErSnapshotTop {
+    type Top = Self;
+    type Report = ErSnapshotReport;
+
+    fn into_er_snapshot(self) -> ErSnapshot {
+        self.snapshot
+    }
+
+    fn into_er_top(self) -> Self {
+        self
+    }
+
+    fn into_er_report(self) -> ErSnapshotReport {
+        ErSnapshotReport {
+            snapshot: self.snapshot,
+            layout: self.layout,
+        }
+    }
+}
+impl<'a> IntoErSnapshot for &'a ErSnapshotTop {
+    type Top = ErSnapshotTopRef<'a>;
+    type Report = ErSnapshotReportRef<'a>;
+
+    fn into_er_snapshot(self) -> ErSnapshot {
+        self.er_snapshot()
+    }
+
+    fn into_er_top(self) -> Self::Top {
+        self.er_top()
+    }
+
+    fn into_er_report(self) -> Self::Report {
+        self.er_report()
+    }
+}
+impl From<ErSnapshot> for ErSnapshotTop {
+    fn from(snapshot: ErSnapshot) -> Self {
+        snapshot.into_er_top()
+    }
+}
+impl From<ErSnapshotReport> for ErSnapshotTop {
+    fn from(report: ErSnapshotReport) -> Self {
+        report.into_er_top()
+    }
+}
+impl From<ErSnapshotTop> for ErSnapshot {
+    fn from(top: ErSnapshotTop) -> Self {
+        top.snapshot
+    }
+}

@@ -1,5 +1,7 @@
 use crate::walk::{MAX_SOURCE_HOPS, Pending};
-use crate::{ErEntries, ErEntry, ErEntryKind, ErFindAll, ErNode, ErNodes, ErSources, SrcLocation};
+use crate::{
+    ErEntries, ErEntry, ErEntryKind, ErFindAll, ErNode, ErNodes, ErSources, ErSrcLocation,
+};
 use alloc::{vec, vec::Vec};
 use core::error::Error;
 
@@ -9,7 +11,7 @@ impl<'a> ErEntries<'a> {
     pub fn new(
         error: &'a (dyn Error + 'static),
         nodes: &'a [ErNode],
-        src_location: Option<SrcLocation>,
+        src_location: Option<ErSrcLocation>,
     ) -> Self {
         #[cfg(not(feature = "src_locations"))]
         let _ = src_location;

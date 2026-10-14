@@ -1,33 +1,34 @@
-use crate::{er_all::expression_span, names::binding};
+use crate::{
+    er_all::expression_span,
+    names::{binding, identifiers, shield_bindings},
+};
 use proc_macro2::{TokenStream, TokenTree};
 use quote::{quote, quote_spanned};
-use std::collections::HashSet;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use syn::{Path, Token, parse::Parse, parse::ParseStream};
 
 pub struct Input {
     pub er_path: Path,
-    pub top: TokenTree,
     pub results: Vec<TokenTree>,
+    pub top: TokenTree,
 }
 impl Parse for Input {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let er_path = input.parse()?;
         input.parse::<Token![,]>()?;
-        let top = input.parse()?;
-        input.parse::<Token![,]>()?;
         let content;
         syn::bracketed!(content in input);
-        let mut results = Vec::new();
-        while !content.is_empty() {
-            results.push(content.parse()?);
-            if !content.is_empty() {
-                content.parse::<Token![,]>()?;
-            }
-        }
+        let results = content
+            .parse_terminated(TokenTree::parse, Token![,])?
+            .into_iter()
+            .collect();
+        input.parse::<Token![,]>()?;
+        let top = input.parse()?;
+
         Ok(Self {
             er_path,
-            top,
             results,
+            top,
         })
     }
 }
@@ -35,15 +36,16 @@ impl Parse for Input {
 pub fn expand(
     Input {
         er_path,
-        top,
         results,
+        top,
     }: Input,
 ) -> TokenStream {
-    let reserved = HashSet::new();
+    let tokens = quote!(#top #(#results)*);
+    let reserved = identifiers(tokens.clone());
     let values: Vec<_> = (0..results.len())
         .map(|index| binding(&reserved, &format!("__er_value_{index}")))
         .collect();
-    let errors = binding(&reserved, "__er_errors");
+    let shields = shield_bindings(&values);
     let item = binding(&reserved, "__ErTryItem");
     let items = results.iter().map(|result| {
         let span = expression_span(result);
@@ -57,17 +59,39 @@ pub fn expand(
         }
     });
 
+    let types = values
+        .iter()
+        .map(|_| quote!(::core::result::Result<_, #er_path::ErPart>));
+
+    let gathered = quote! {
+        ({
+            #shields
+            #[allow(clippy::result_large_err)]
+            |(#(#values,)*): (#(#types,)*)| match (#(#values,)*) {
+                (#(::core::result::Result::Ok(#values),)*) =>
+                    ::core::result::Result::Ok((#(#values,)*)),
+                (#(#values,)*) =>
+                    ::core::result::Result::Err([#(::core::result::Result::err(#values)),*]),
+            }
+        })((#(#items,)*))
+    };
+
+    // Imports around the match would hide constants inside caller macros.
+    let mut hash = DefaultHasher::new();
+    tokens.to_string().hash(&mut hash);
+    let suffix = hash.finish();
+    let values = binding(&reserved, &format!("__er_try_values_{suffix:x}"));
+    let errors = binding(&reserved, &format!("__er_try_errors_{suffix:x}"));
+
     quote! {
-        match (#(#items,)*) {
-            (#(::core::result::Result::Ok(#values),)*) =>
-                ::core::result::Result::Ok((#(#values,)*)),
-            (#(#values,)*) => {
-                let #errors = [#(::core::result::Result::err(#values)),*];
-                ::core::result::Result::Err(#er_path::ErTree::new(
+        match #gathered {
+            ::core::result::Result::Ok(#values) => ::core::result::Result::Ok(#values),
+            ::core::result::Result::Err(#errors) => ::core::result::Result::Err(
+                #er_path::ErTree::new(
                     #er_path::ErMake::er_make(#top),
                     ::core::iter::Iterator::flatten(::core::iter::IntoIterator::into_iter(#errors)),
-                ))
-            }
+                ),
+            ),
         }
     }
 }

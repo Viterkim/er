@@ -2,6 +2,7 @@
 #![cfg_attr(er_unsync, doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/README.md")))]
 #![cfg_attr(not(er_unsync), doc = include_str!("../docs/examples.md"))]
 #![cfg_attr(not(er_unsync), doc = include_str!("../docs/macros.md"))]
+#![cfg_attr(not(er_unsync), doc = include_str!("../docs/cases.md"))]
 
 extern crate alloc;
 #[cfg(feature = "stack_traces")]

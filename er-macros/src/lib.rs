@@ -31,10 +31,10 @@ pub fn __er_try_results(input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_derive(Er, attributes(er))]
-/// Impls error, generates Display/Debug(as the same), makes constructor funcs.
+/// Impls error, generates Display/Debug and constructor funcs.
 /// Structs also work with `.er(|_| path)`, so you don't have to name the err type.
 ///
-/// Options: `format`, `skip`, `censor`, `exact`, `no_constructors`, `wrap`, `crate`, `into_*` and `source`(you don't need this usually).
+/// Options: `format`, `display`, `display_alt`, `debug`, `skip`, `censor`, `exact`, `default`, `no_constructors`, `wrap`, `crate`, `into_*` and `source`(you don't need this usually).
 ///
 /// Just use `.er` on anything you see.
 /// If you need to implement a trait on your error type, you can use `wrap` [but you usually don't](https://github.com/Viterkim/er/blob/main/er/docs/macros.md#wrap).
@@ -58,9 +58,9 @@ pub fn derive_er_unsync(input: TokenStream) -> TokenStream {
     }
 }
 
-/// Does NOT impl error, Generates Display/Debug(as the same), makes constructor funcs.
+/// Does NOT impl error, generates Display/Debug and constructor funcs.
 ///
-/// Options: `format`, `skip`, `censor`, `exact`, and `no_constructors`.
+/// Options: `format`, `display`, `display_alt`, `debug`, `skip`, `censor`, `exact`, `default`, and `no_constructors`.
 #[proc_macro_derive(ErFormat, attributes(er))]
 pub fn derive_er_format(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

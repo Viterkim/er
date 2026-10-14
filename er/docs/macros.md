@@ -43,48 +43,40 @@ The derive writes those impls. `.er()` comes from the `er` lib as an extension t
 
 Enums get a constructor per variant.
 
-Fields are debug printed by default, foreign types too. In `#[er(format = "{input}")]`, `input` uses Display, or the classic `{input:?}` for Debug. `skip` leaves a field out, `censor` prints `*CENSORED*`.
+Fields are debug printed by default, foreign types too. In `#[er(format = "{input}")]`, `input` uses Display, or the classic `{input:?}` for Debug. Templates can access nested fields too, like `{oldest.0}` or `{details.message}`. `skip` leaves a field out, `censor` prints `*CENSORED*`.
 
-`ErFormat` gives the same constructors and Debug/Display, but no Error. Useful for structs inside your error.
-
-`er_all!((), [a(), b()])` runs both, keeps the errors and drops the oks. They can be different types in that list (a Vec needs them to match). The top error only gets made if something failed.
-
-`er_try!((), [a(), b()])` keeps the values too and returns `Ok((a, b))` if both succeed. If either fails, it drops the values and keeps every error. The results can have different success and error types. Bare errors and trees work too, with `()` as their success slot.
-
-`er_add!(error, [a(), b()])` adds them below an existing top instead (returns the tree even if nothing failed).
-
-## Constructors
-
-Both `Er` and `ErFormat` make constructors. Put `#[er(no_constructors)]` on the struct/enum to write your own instead. It skips `new` and all variant constructors. For `Er` structs it also skips the field conversions for `|_|`, but `#[er(wrap)]` still makes `MyErr::er_wrap()`.
-
-For an empty struct, use `.er(())`. `no_constructors` turns that off too.
-
-For a struct with fields, `.er(|_| path)` lets you skip typing out the name. The fields are converted only if something fails.
+`format` sets both Display and Debug. Override either with `display` or `debug`, the other keeps its usual output:
 
 ```rust
-use er::*;
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
-
 #[derive(Er)]
-pub struct FileErr(pub PathBuf);
-
-pub fn read_file(path: &Path) -> ErResult<String, FileErr> {
-    fs::read_to_string(path).er(|_| path)
+#[er(display = "couldn't read {path:?}")]
+pub struct ReadErr {
+    pub path: PathBuf,
+    pub attempts: u8,
 }
 ```
 
-For more fields, use a tuple `.er(|_| (machine, token))`.
+Display prints the short message, Debug still prints `ReadErr { path: ..., attempts: ... }`. An explicit `display` or `debug` also overrides a shared `format`, regardless of attribute order. The overrides work on structs, enums and individual variants.
 
-Enums still need the variant name, like `.er(|| ModeErr::unknown(input))`.
+Use `display_alt` for `{err:#}`, while ordinary Display and Debug keep their output:
 
-If Rust can't tell which error you mean (usually when chaining), use `.er::<FileErr>(|_| path)`.
+```rust
+#[derive(Er)]
+#[er(format = "operation failed", display_alt = "{diagnostics}")]
+pub struct SavedErr {
+    pub diagnostics: String,
+}
+```
 
-Variants get snake_case constructor names. Args follow field order. Strings accept `&str`, numbers keep their exact type. `#[er(exact)]` asks for the field's exact type too.
+`{err}` and both Debug forms print `operation failed`. `{err:#}` prints the saved diagnostics. Without `display_alt`, alternate formatting keeps working as before. Enum variants inherit it unless they set their own.
 
-Examples below of what it spits out.
+Each setting can take a formatting function instead of a string, like `#[er(display_alt = Self::details)]`. It receives `&Self` and `&mut fmt::Formatter<'_>` and returns `fmt::Result`. Conditions such as omitting empty diagnostics stay ordinary Rust.
+
+`ErFormat` gives the same constructors and Debug/Display, but no Error. Useful for structs inside your error.
+
+## Constructors
+
+Both `Er` and `ErFormat` generate `new` for structs and snake_case methods for enum variants. The arguments follow field order, with conversions such as `&str` into `String` done for you. Numbers already take their exact type, and `#[er(exact)]` does that for another field too. Here's what those methods look like:
 
 ```rust,ignore
 // You write this
@@ -146,6 +138,12 @@ impl ModeErr {
 }
 ```
 
+`#[er(src_location)]` fills a standard `Location` reference at construction, leaving that field out of the arguments. It works without the runtime `src_locations` feature too.
+
+The tuple helpers use those same field conversions when an error happens. `#[er(default)]` adds a form that omits all marked fields using `Default::default()`, or your expression with `#[er(default = make_data())]`. The full tuple and `new(...)` still take every ordinary field.
+
+`#[er(no_constructors)]` turns off the named constructors and the struct's field helpers, including `.er(())`. A requested Wrap constructor stays available.
+
 ## Wrap
 
 If you need to implement another crate's trait on the whole error tree, Rust says no: you don't own `ErTree` or that trait. [Orphan rule](https://doc.rust-lang.org/reference/items/implementations.html#trait-implementation-coherence)
@@ -198,27 +196,35 @@ Want Display/Debug on the Wrap itself? Add `output = report` or `output = top`. 
 
 If the `er` crate has another name, give Wrap its path with `#[er(crate = other_name, wrap)]`.
 
-## Conversion / er_into
+## Public errors
 
-`#[er(into_top)]` moves the typed top into that field. `#[er(into_report_string)]` saves the full report as a `String`, or `#[er(into_snapshot)]` saves an `ErSnapshot` (it gets printed as a report too).
-
-`.er_into(|tree| ...)` runs the closure on errors, then fills in those fields. Return your remaining fields from the closure, like `.er_into(|_| (request_id, path))`, in field order. With none left, use `|_| {}`.
-
-If Rust can't infer the destination (like before `?`), use `.er_into::<ApiError>(...)`.
-
-Converted structs and variants need a report or snapshot. Enum variants can accept different top types, unmarked variants stay ordinary.
-
-## Public boundary optional source
-
-If you make an error at the public boundary(after you've used your report), and you want that error to contain a source, put `#[er(source)]` on that field. One source per struct or enum variant. Box, Rc and Arc return the error inside, an Option returns no source when it's None, and `skip` still controls the top error's formatting.
+At the public boundary, keep the diagnostics you need in an ordinary error (they get a normal error and don't depend on 'er').
 
 ```rust
 #[derive(Er)]
-pub enum OpenError {
-    Missing,
-    Failed(#[er(source)] std::io::Error),
+#[er(format = "couldn't open {path:?}", display_alt = "{diagnostics}")]
+pub struct OpenError {
+    pub path: PathBuf,
+    #[er(into_top, source)]
+    pub cause: std::io::Error,
+    #[er(into_report_string)]
+    pub diagnostics: String,
 }
 ```
+
+`into_top` moves the typed top into `cause`, and `into_report_string` saves the report. `source` exposes the cause through Rust's `Error::source()`. And we offer full diagnostics with `{err:#}` (or accesing the data on the type).
+
+Return the report from `.er_into()` and it fills the marked fields. Any remaining fields go beside it, in field order:
+
+```rust
+result.er_into(|report| (report, path)) // OpenError above
+result.er_into(|report| report) // No remaining fields
+result.er_into(|report| (report, (request_id, path))) // Several fields
+```
+
+The saved string keeps the report's layout. Use `into_report_string(single_line)` to force one line.
+
+You can use `source` without saving a report too, with one source per struct or variant. Box, Rc and Arc expose their contained error, and Option exposes nothing on None. For a pointer alias like `type Cause<E> = Arc<E>`, use `source(deref)`. `skip` only leaves the field out of formatting.
 
 ## Wrap with std_error
 
@@ -248,7 +254,7 @@ pub fn request(input: &str) -> ErResult<u16, RequestErr> {
 }
 ```
 
-If you need the old top, use `.er_with_wrap(|old| fields)`.
+If you need the old top, use `.er_with_wrap(|err| fields)`.
 
 For aggregation, take the tree out first with `.er_tree()` on the Result, or `.tree` on the Wrap.
 

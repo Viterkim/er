@@ -7,6 +7,11 @@ pub fn cases() -> Vec<(&'static str, String, usize)> {
         .collect::<String>();
     let large_enum = format!("pub enum ManyErr {{ {variants} }}");
 
+    let sources = (0..1000)
+        .map(|i| format!("Variant{i}(#[er(source)] E),"))
+        .collect::<String>();
+    let source_enum = format!("pub enum SourceErr<E> {{ {sources} }}");
+
     let nested = format!("{}Self{}", "Vec<(T, ".repeat(32), ")>".repeat(32));
     let recursive = format!("pub struct Recursive<T> {{ pub children: {nested} }}");
 
@@ -14,6 +19,7 @@ pub fn cases() -> Vec<(&'static str, String, usize)> {
         ("unit", "pub struct ReadErr;".into(), 85),
         ("named", "pub struct ReadErr { pub path: std::path::PathBuf, pub message: String }".into(), 85),
         ("enum", large_enum, 3),
+        ("source_enum", source_enum, 3),
         ("recursive", recursive, 20),
         (
             "projection",

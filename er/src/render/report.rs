@@ -1,6 +1,6 @@
 use super::LineWriter;
 pub use super::ReportEntry;
-use crate::{ErEntries, ErEntry, ErNode, Layout, SrcLocation};
+use crate::{ErEntries, ErEntry, ErNode, ErSrcLocation, Layout};
 use alloc::string::String;
 #[cfg(feature = "src_locations")]
 use alloc::vec::Vec;
@@ -69,7 +69,7 @@ pub fn write_report<W: fmt::Write + ?Sized>(
     error: &(dyn Error + 'static),
     nodes: &[ErNode],
     layout: Layout,
-    src_location: Option<SrcLocation>,
+    src_location: Option<ErSrcLocation>,
 ) -> fmt::Result {
     let entries = ErEntries::new(error, nodes, src_location);
 
@@ -188,7 +188,7 @@ pub fn write_single_line<'a, W: fmt::Write + ?Sized>(
         hide_repeated_location(&mut entry, &mut locations);
         if entry.depth > depth {
             writer.write_str(" [")?;
-        } else if entry.index > 0 {
+        } else if entry.depth > 0 {
             for _ in entry.depth..depth {
                 writer.write_char(']')?;
             }

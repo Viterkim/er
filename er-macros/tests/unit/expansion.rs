@@ -1,26 +1,55 @@
-use crate::generate::constructors::exact_type;
 use quote::quote;
-use std::collections::HashSet;
 
 #[test]
-pub fn primitive_paths() -> syn::Result<()> {
-    let type_names = HashSet::new();
-    for path in [
-        "u8",
-        "std::primitive::u8",
-        "::core::primitive::u8",
-        "::r#core::r#primitive::u8",
-        "r#std::r#primitive::u8",
+pub fn crate_paths() -> syn::Result<()> {
+    for (name, expected) in [
+        ("er", "er"),
+        ("renamed_er", "renamed_er"),
+        ("type", "r#type"),
+        ("gen", "r#gen"),
     ] {
-        let ty = syn::parse_str(path)?;
-        assert!(exact_type(&ty, &type_names), "{path}");
+        let path = crate::generate::crate_path(name)?;
+        assert_eq!(path.segments[0].ident.to_string(), expected);
+    }
+
+    Ok(())
+}
+
+#[test]
+pub fn format_options() -> syn::Result<()> {
+    for options in [
+        quote!(display = "first", display = "second"),
+        quote!(display_alt = "first", display_alt = "second"),
+        quote!(debug = "first", debug = "second"),
+        quote!(format = "first", format = "second"),
+        quote!(display =),
+        quote!(display_alt =),
+        quote!(display_alt = 85),
+        quote!(debug = 85),
+        quote!(display = "{unknown}"),
+        quote!(display_alt = "{unknown}"),
+        quote!(debug = "{unknown}"),
+    ] {
+        let item = syn::parse2(quote! {
+            #[er(#options)]
+            struct Example;
+        })?;
+        assert!(crate::generate::expand(&item).is_err(), "{options}");
     }
     Ok(())
 }
 
 #[test]
 pub fn named_positions() -> syn::Result<()> {
-    for format in ["{}", "{0}", "{00}", "{value:0$}"] {
+    for format in [
+        "{}",
+        "{0}",
+        "{00}",
+        "{value:0$}",
+        "{value..0}",
+        "{value.}",
+        "{value.0 + 1}",
+    ] {
         let item = syn::parse2(quote! {
             #[er(format = #format)]
             struct Named { value: u8 }
@@ -61,16 +90,6 @@ pub fn std_error_options() -> syn::Result<()> {
         })?;
         assert!(crate::generate::expand(&item).is_err());
     }
-    for options in [
-        quote!(output = top, std_error),
-        quote!(std_error, output = report),
-    ] {
-        let item = syn::parse2(quote! {
-            #[er(wrap(#options))]
-            struct Example;
-        })?;
-        crate::generate::expand(&item)?;
-    }
     Ok(())
 }
 
@@ -83,20 +102,35 @@ pub fn no_constructors_options() -> syn::Result<()> {
     ] {
         let item = syn::parse_str(source)?;
         assert!(crate::generate::expand(&item).is_err(), "{source}");
-        assert!(crate::format::expand(&item).is_err(), "{source}");
     }
     for source in [
         "struct Data { #[er(no_constructors)] value: u8 }",
         "enum Data { #[er(no_constructors)] Value }",
     ] {
         let item = syn::parse_str(source)?;
-        for result in [crate::generate::expand(&item), crate::format::expand(&item)] {
-            assert_eq!(
-                result.err().map(|error| error.to_string()).as_deref(),
-                Some("put `no_constructors` on the struct or enum"),
-                "{source}"
-            );
-        }
+        let error = crate::generate::expand(&item).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "put `no_constructors` on the struct or enum",
+            "{source}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+pub fn default_options() -> syn::Result<()> {
+    for source in [
+        "#[er(default)] struct Data;",
+        "struct Data { #[er(default, default)] value: u8 }",
+        "struct Data { #[er(default =)] value: u8 }",
+        "struct Data { #[er(default())] value: u8 }",
+        "struct Data { #[er(default, into_report_string)] value: String }",
+        "struct Data { #[er(into_report_string, default)] value: String }",
+        "enum Data { Value(#[er(default)] u8) }",
+    ] {
+        let item = syn::parse_str(source)?;
+        assert!(crate::generate::expand(&item).is_err(), "{source}");
     }
     Ok(())
 }
@@ -107,6 +141,10 @@ pub fn source_options() -> syn::Result<()> {
         "struct Data { #[er(source, source)] cause: u8 }",
         "struct Data { #[er(source = true)] cause: u8 }",
         "struct Data { #[er(source())] cause: u8 }",
+        "struct Data { #[er(source(wrong))] cause: u8 }",
+        "struct Data { #[er(source(deref, deref))] cause: u8 }",
+        "struct Data { #[er(source(deref = true))] cause: u8 }",
+        "struct Data { #[er(source(deref), source)] cause: u8 }",
         "#[er(source)] struct Data;",
         "enum Data { #[er(source)] Failed(u8) }",
         "struct Data(#[er(source)] u8, #[er(source)] u8);",
@@ -128,6 +166,10 @@ pub fn into_options() -> syn::Result<()> {
         "struct Data { #[er(into_top)] kind: E, #[er(into_top)] other: E, #[er(into_snapshot)] diagnostics: S }",
         "struct Data { #[er(into_snapshot, into_report_string)] report: S }",
         "struct Data { #[er(into_snapshot = true)] report: S }",
+        "struct Data { #[er(into_report_string())] report: S }",
+        "struct Data { #[er(into_report_string(sideways))] report: S }",
+        "struct Data { #[er(into_report_string(single_line, single_line))] report: S }",
+        "struct Data { #[er(into_report_string(single_line = true))] report: S }",
         "#[er(into_snapshot)] struct Data;",
         "enum Data { First(#[er(into_top)] E, #[er(into_snapshot)] S), Second(#[er(into_top)] E, #[er(into_snapshot)] S) }",
         "enum Data { First(#[er(into_snapshot)] S), Second(#[er(into_snapshot)] S) }",

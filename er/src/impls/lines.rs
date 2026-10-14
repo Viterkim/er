@@ -4,8 +4,8 @@ use core::{error::Error, fmt};
 impl<E: fmt::Display> fmt::Display for ErLineError<E> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Format(e) => fmt::Display::fmt(e, formatter),
-            Self::Callback(e) => fmt::Display::fmt(e, formatter),
+            Self::Format(_) => formatter.write_str("could not format the error report"),
+            Self::Callback(_) => formatter.write_str("line callback failed"),
         }
     }
 }

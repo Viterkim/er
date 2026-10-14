@@ -1,9 +1,29 @@
+pub mod impls;
+
 use super::Field;
 use proc_macro2::Span;
 use std::collections::HashMap;
-use syn::LitStr;
+use syn::{ExprPath, LitStr, Member};
 
-pub mod impls;
+#[derive(Clone, Copy)]
+pub enum Output {
+    Display,
+    DisplayAlt,
+    Debug,
+}
+
+#[derive(Default)]
+pub struct Formats {
+    pub shared: Option<FormatBody>,
+    pub display: Option<FormatBody>,
+    pub display_alt: Option<FormatBody>,
+    pub debug: Option<FormatBody>,
+}
+
+pub enum FormatBody {
+    Template(Format),
+    Function(ExprPath),
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FormatTrait {
@@ -20,7 +40,14 @@ pub enum FormatTrait {
 
 pub struct Format {
     pub literal: LitStr,
-    pub arguments: Vec<usize>,
+    pub arguments: Vec<FormatArgument>,
+    pub requirements: Vec<(FormatArgument, FormatTrait)>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct FormatArgument {
+    pub field: usize,
+    pub members: Vec<Member>,
 }
 
 pub enum ArgumentUse {
@@ -30,8 +57,9 @@ pub enum ArgumentUse {
 
 pub struct FormatParser<'a, 'b> {
     pub span: Span,
-    pub fields: &'a mut [Field<'b>],
+    pub fields: &'a [Field<'b>],
     pub named_fields: HashMap<String, usize>,
     pub next_implicit: usize,
-    pub arguments: Vec<usize>,
+    pub arguments: Vec<FormatArgument>,
+    pub requirements: Vec<(FormatArgument, FormatTrait)>,
 }

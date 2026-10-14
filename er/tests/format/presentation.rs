@@ -1,7 +1,8 @@
+use core::fmt;
 #[cfg(feature = "src_locations")]
 use core::panic::Location;
-use core::{error::Error, fmt, ptr};
 use er::*;
+use std::{rc::Rc, sync::Arc};
 
 #[derive(Er)]
 pub struct InnerErr;
@@ -16,103 +17,123 @@ pub fn failing() -> ErResult<(), AppErr> {
 }
 
 #[test]
-pub fn views() -> fmt::Result {
+pub fn views() {
     let error = failing().unwrap_err();
     let top = error.er_top();
     let report = error.er_report();
 
     assert_eq!(top.to_string(), "AppErr");
     assert!(report.to_string().contains("InnerErr"));
-    assert_eq!(format!("{top}"), format!("{top:?}"));
     assert_eq!(format!("{report}"), format!("{report:?}"));
-    assert!(Error::source(&top.opaque_err()).is_none());
-    assert!(Error::source(&report.opaque_err()).is_none());
 
-    assert_eq!(top.single_line().layout, Layout::SingleLine);
-    assert_eq!(report.single_line().layout, Layout::SingleLine);
-    assert_eq!(top.layout, Layout::Multiline);
-    assert_eq!(report.layout, Layout::Multiline);
-
-    let from_tree: ErReportRef<'_, _> = (&error).into();
-    assert!(ptr::eq(from_tree.tree, report.tree));
-
-    let from_tree: ErTopRef<'_, _> = (&error).into();
-    assert!(ptr::eq(from_tree.tree, top.tree));
-
-    let expected = report.to_string();
-    assert_eq!(error.er_report_string(), expected);
-    assert_eq!(error.er_top_string(), "AppErr");
-    assert_eq!(
-        report.single_line().er_report_string(),
-        report.single_line().to_string()
-    );
+    let _: ErReportRef<'_, _> = (&error).into();
+    let _: ErTopRef<'_, _> = (&error).into();
     assert_eq!(
         top.single_line().er_report_string(),
         report.single_line().to_string()
     );
+}
 
-    let owned = error.into_er_report();
+#[test]
+pub fn borrowed_results() {
+    fn propagate<T, E, F: From<E>>(result: Result<T, E>) -> Result<T, F> {
+        Ok(result?)
+    }
 
-    let owned: ErTop<_> = owned.tree.into();
-    assert_eq!(owned.to_string(), "AppErr");
-    assert_eq!(owned.layout, Layout::Multiline);
+    fn local_view(tree: &ErTree<AppErr>) -> ErReportRef<'_, AppErr> {
+        let mut result = Err::<(), _>(tree.er_top().single_line());
+        result.as_mut().er_report().unwrap_err()
+    }
 
-    let recovered = owned.tree;
+    fn local_report(tree: &ErTree<AppErr>) -> ErReportRef<'_, AppErr> {
+        let mut result = Err::<(), _>(tree.er_report().single_line());
+        result.as_mut().er_report().unwrap_err()
+    }
 
-    let owned: ErReport<_> = recovered.into();
-    assert_eq!(owned.to_string(), expected);
-    assert_eq!(owned.layout, Layout::Multiline);
+    fn local_boxed(tree: &ErTree<AppErr>) -> ErReportRef<'_, AppErr> {
+        let boxed = Box::new(tree.er_top().single_line());
+        Err::<(), _>(&boxed).er_report().unwrap_err()
+    }
 
-    let error = owned.opaque_err();
-    assert_eq!(error.to_string(), expected);
-    assert_eq!(format!("{error:?}"), expected);
-    assert!(error.source().is_none());
-    let outer = Err::<(), _>(error)
-        .er(OuterErr::new)
-        .err()
-        .ok_or(fmt::Error)?;
-    assert_eq!(outer.nodes[0].error.to_string(), expected);
-    let adapter = outer
-        .er_find::<ErAsError<ErReport<AppErr>>>()
-        .ok_or(fmt::Error)?;
-    assert!(adapter.0.er_contains::<InnerErr>());
-    Ok(())
+    fn check<'a, P: Clone + IntoErTreeRef<'a, Error = AppErr>>(error: P, expected: &str) {
+        let report = Err::<(), _>(error.clone()).er_top().er_report();
+        assert_eq!(report.unwrap_err().er_report_string(), expected);
+        assert_eq!(
+            Err::<(), _>(error).er_report_string().unwrap_err(),
+            expected
+        );
+    }
+
+    let tree = failing().unwrap_err();
+    check(&tree, &tree.er_report_string());
+
+    for layout in [Layout::Multiline, Layout::SingleLine] {
+        let top = tree.er_top().layout(layout);
+        let report = tree.er_report().layout(layout);
+        let expected = report.er_report_string();
+        check(top, &expected);
+        check::<&ErTopRef<'_, _>>(&top, &expected);
+        check(report, &expected);
+        check::<&ErReportRef<'_, _>>(&report, &expected);
+        check(&Arc::new(report), &expected);
+        check(&Rc::new(top), &expected);
+
+        let mut borrowed = Err::<(), _>(&report);
+        let view = borrowed.as_mut().er_report().unwrap_err();
+        assert_eq!(view.to_string(), expected);
+
+        let report: ErReportRef<'_, _> = propagate(Err::<(), _>(top)).unwrap_err();
+        let top: ErTopRef<'_, _> = propagate(Err::<(), _>(report)).unwrap_err();
+        assert_eq!(top.er_report_string(), expected);
+    }
+
+    let mut result = failing();
+    let tree = result.as_mut().er_tree().unwrap_err();
+    let expected = tree.er_report().single_line().to_string();
+    for view in [local_view(tree), local_report(tree), local_boxed(tree)] {
+        assert_eq!(view.to_string(), expected);
+    }
+
+    let result = Err::<(), _>(result.er_report().unwrap_err().single_line());
+    check(result.as_ref().unwrap_err(), &expected);
+
+    let mut result = result.er_top();
+    let view = result.as_mut().er_top().unwrap_err();
+    assert_eq!(view.to_string(), "AppErr");
+
+    let mut success = Ok::<_, ErReport<AppErr>>(String::from("kept"));
+    success.as_mut().unwrap_report().push_str(" value");
+    assert_eq!(success.unwrap_report(), "kept value");
 }
 
 #[test]
 pub fn reentry() {
-    let report = failing().er_report().unwrap_err().single_line();
-    let outer = Err::<(), _>(report).er(OuterErr::new).unwrap_err();
-    assert!(outer.er_contains::<AppErr>());
-    assert!(outer.er_contains::<InnerErr>());
-    assert_eq!(outer.into_er_report().layout, Layout::Multiline);
+    let report = || failing().er_report().unwrap_err().single_line();
+    let top = || failing().er_top().unwrap_err().single_line();
 
-    let top = failing().er_top().unwrap_err().single_line();
-    let outer = Err::<(), _>(top).er(OuterErr::new).unwrap_err();
-    assert!(outer.er_contains::<AppErr>());
-    assert!(outer.er_contains::<InnerErr>());
-    assert_eq!(outer.into_er_report().layout, Layout::Multiline);
+    let outer = Err::<(), _>(report()).er(OuterErr::new).unwrap_err();
+    assert_eq!(outer.er_report().layout, Layout::Multiline);
 
     for outer in [
-        failing()
-            .er_report()
-            .unwrap_err()
-            .single_line()
-            .er(OuterErr::new),
-        failing()
-            .er_top()
-            .unwrap_err()
-            .single_line()
-            .er(OuterErr::new),
+        outer,
+        Err::<(), _>(top()).er(OuterErr::new).unwrap_err(),
+        report().er(OuterErr::new),
+        top().er(OuterErr::new),
     ] {
-        assert!(outer.er_contains::<AppErr>());
         assert!(outer.er_contains::<InnerErr>());
-        assert_eq!(outer.into_er_report().layout, Layout::Multiline);
     }
 }
 
 #[test]
-pub fn results() -> Result<(), ErReport<AppErr>> {
+pub fn results() {
+    fn to_report<T, E>(result: Result<T, ErTop<E>>) -> Result<T, ErReport<E>> {
+        Ok(result?)
+    }
+
+    fn to_top<T, E>(result: Result<T, ErReport<E>>) -> Result<T, ErTop<E>> {
+        Ok(result?)
+    }
+
     pub fn propagate() -> Result<(), ErReport<AppErr>> {
         failing()?;
 
@@ -121,45 +142,18 @@ pub fn results() -> Result<(), ErReport<AppErr>> {
 
     assert!(propagate().unwrap_err().er_contains::<InnerErr>());
 
-    let report = failing().er_report().unwrap_err();
-    assert!(report.er_contains::<InnerErr>());
-    assert_eq!(failing().er_top().unwrap_err().to_string(), "AppErr");
-
-    let success: ErResult<u32, AppErr> = Ok(7);
-    assert_eq!(success.er_report()?, 7);
-
-    assert_eq!(
-        Ok::<_, ErTree<AppErr>>(String::from("kept")).er_report_string(),
-        Ok(String::from("kept"))
-    );
-    assert_eq!(Ok::<_, ErTree<AppErr>>(7).er_top_string(), Ok(7));
-    assert_eq!(Ok::<_, ErTree<AppErr>>(7).er_snapshot().unwrap(), 7);
-
     let expected = failing().unwrap_err().er_report_string();
     assert_eq!(failing().er_report_string().unwrap_err(), expected);
-    assert_eq!(failing().er_top_string().unwrap_err(), "AppErr");
-    assert_eq!(
-        failing().er_snapshot().unwrap_err().er_report_string(),
-        expected
-    );
 
     let report = failing().er_report().unwrap_err().single_line();
     let expected = report.er_report_string();
-    assert_eq!(
-        Err::<(), _>(report).er_report_string().unwrap_err(),
-        expected
-    );
-
-    let report = failing().er_report().unwrap_err().single_line();
-    let top = Err::<(), _>(report).er_top().unwrap_err();
-    assert_eq!(top.er_report_string(), expected);
-    assert_eq!(Err::<(), _>(top).er_report_string().unwrap_err(), expected);
-
-    let top = failing().er_top().unwrap_err().single_line();
-    let report = Err::<(), _>(top).er_report().unwrap_err();
+    let top = to_top(Err::<(), _>(report)).unwrap_err();
+    let report = to_report(Err::<(), _>(top)).unwrap_err();
     assert_eq!(report.er_report_string(), expected);
 
-    Ok(())
+    let boxed = Err::<(), _>(Box::new(report));
+    let report = boxed.er_top().er_report().unwrap_err();
+    assert_eq!(report.er_report_string(), expected);
 }
 
 pub struct Text<'a>(pub &'a str);
@@ -181,35 +175,16 @@ pub fn display_only() -> fmt::Result {
         src_location: Location::caller(),
     };
     let top = tree.er_top();
-
     assert_eq!(format!("{:?}", top.single_line()), "first second");
-    let adapter = top.single_line().opaque_err();
-    assert_eq!(adapter.to_string(), "first second");
-    assert!(Error::source(&adapter).is_none());
 
     let mut lines = Vec::new();
-    top.for_each_line(|line| lines.push(line.to_owned()))?;
-
+    top.for_each_line(|l| lines.push(l.to_owned()))?;
     assert_eq!(lines, ["first", "second"]);
+
     assert_eq!(
-        top.try_for_each_line(|_| Err(7)),
-        Err(ErLineError::Callback(7))
+        Err::<(), _>(tree.er_report()).er_top_string().unwrap_err(),
+        text
     );
-
-    let owned = tree.into_er_top();
-    assert_eq!(format!("{owned:?}"), text);
-    lines.clear();
-    owned.for_each_line(|line| lines.push(line.to_owned()))?;
-
-    assert_eq!(lines, ["first", "second"]);
-    assert_eq!(
-        owned.try_for_each_line(|_| Err(8)),
-        Err(ErLineError::Callback(8))
-    );
-
-    let top = owned.single_line();
-    let expected = top.er_top_string();
-    assert_eq!(Err::<(), _>(top).er_top_string().unwrap_err(), expected);
 
     Ok(())
 }

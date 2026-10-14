@@ -1,5 +1,5 @@
 use crate::names::plain;
-use syn::{Attribute, Error, Ident, LitStr, Meta, Path, Result};
+use syn::{Attribute, Error, Expr, ExprPath, Ident, LitStr, Meta, Path, Result};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum FieldMode {
@@ -11,15 +11,42 @@ pub enum FieldMode {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum IntoField {
     Top,
-    ReportString,
+    ReportString { single_line: bool },
     Snapshot,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SourceMode {
+    Normal,
+    Deref,
+}
+
+pub enum FieldDefault {
+    Trait,
+    Expression(Expr),
 }
 
 pub struct FieldOptions {
     pub mode: FieldMode,
     pub exact: bool,
-    pub source: bool,
+    pub source: Option<SourceMode>,
     pub into: Option<IntoField>,
+    pub default: Option<FieldDefault>,
+    pub src_location: bool,
+}
+
+#[derive(Clone)]
+pub enum FormatValue {
+    Literal(LitStr),
+    Function(ExprPath),
+}
+
+#[derive(Clone, Default)]
+pub struct FormatOptions {
+    pub shared: Option<FormatValue>,
+    pub display: Option<FormatValue>,
+    pub display_alt: Option<FormatValue>,
+    pub debug: Option<FormatValue>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -39,7 +66,7 @@ pub struct WrapOptions {
 pub struct ContainerOptions {
     pub er_path: Option<Path>,
     pub wrap: Option<WrapOptions>,
-    pub format: Option<LitStr>,
+    pub format: FormatOptions,
     pub no_constructors: bool,
 }
 
@@ -64,7 +91,8 @@ pub fn require_list(attribute: &Attribute, expected: &str) -> Result<()> {
 }
 
 pub fn container(attributes: &[Attribute]) -> Result<ContainerOptions> {
-    const EXPECTED: &str = "expected `#[er(format = \"...\")]`, `#[er(crate = ...)]`, \
+    const EXPECTED: &str = "expected `#[er(format = \"...\")]`, `#[er(display = \"...\")]`, \
+        `#[er(display_alt = \"...\")]`, `#[er(debug = \"...\")]`, `#[er(crate = ...)]`, \
         `#[er(wrap)]`, or `#[er(no_constructors)]`";
 
     let mut options = ContainerOptions::default();
@@ -84,11 +112,12 @@ pub fn container(attributes: &[Attribute]) -> Result<ContainerOptions> {
                 return Ok(());
             }
 
-            if meta.path.is_ident("format") {
-                if options.format.is_some() {
-                    return Err(meta.error("`format` is set more than once"));
-                }
-                options.format = Some(meta.value()?.parse()?);
+            if meta.path.is_ident("format")
+                || meta.path.is_ident("display")
+                || meta.path.is_ident("display_alt")
+                || meta.path.is_ident("debug")
+            {
+                format(&meta, &mut options.format)?;
                 return Ok(());
             }
 
@@ -106,6 +135,10 @@ pub fn container(attributes: &[Attribute]) -> Result<ContainerOptions> {
                 }
                 options.wrap = Some(wrap(&meta)?);
                 return Ok(());
+            }
+
+            if meta.path.is_ident("default") || meta.path.is_ident("src_location") {
+                return Err(meta.error("put `default` or `src_location` on a field"));
             }
 
             if meta.path.is_ident("skip")
@@ -194,39 +227,69 @@ pub fn wrap(meta: &syn::meta::ParseNestedMeta<'_>) -> Result<WrapOptions> {
     Ok(options)
 }
 
-pub fn variant(attributes: &[Attribute]) -> Result<Option<LitStr>> {
-    let mut format = None;
+pub fn format(meta: &syn::meta::ParseNestedMeta<'_>, options: &mut FormatOptions) -> Result<()> {
+    let (slot, name) = if meta.path.is_ident("display") {
+        (&mut options.display, "display")
+    } else if meta.path.is_ident("display_alt") {
+        (&mut options.display_alt, "display_alt")
+    } else if meta.path.is_ident("debug") {
+        (&mut options.debug, "debug")
+    } else {
+        (&mut options.shared, "format")
+    };
+    if slot.is_some() {
+        return Err(meta.error(format!("`{name}` is set more than once")));
+    }
+    *slot = Some(format_value(meta.value()?)?);
+    Ok(())
+}
+
+pub fn format_value(input: syn::parse::ParseStream<'_>) -> Result<FormatValue> {
+    if input.peek(LitStr) {
+        Ok(FormatValue::Literal(input.parse()?))
+    } else {
+        let path = input.parse().map_err(|_| {
+            Error::new(
+                input.span(),
+                "expected a format string or formatting function path",
+            )
+        })?;
+        Ok(FormatValue::Function(path))
+    }
+}
+
+pub fn variant(attributes: &[Attribute]) -> Result<FormatOptions> {
+    let mut formats = FormatOptions::default();
     for attribute in er_attributes(attributes) {
         require_list(attribute, "expected `#[er(format = \"...\")]`")?;
         attribute.parse_nested_meta(|meta| {
             if meta.path.is_ident("no_constructors") {
                 return Err(meta.error("put `no_constructors` on the struct or enum"));
             }
-            if !meta.path.is_ident("format") {
+            if !meta.path.is_ident("format") && !meta.path.is_ident("display") && !meta.path.is_ident("display_alt") && !meta.path.is_ident("debug") {
                 return Err(meta.error(
-                    "expected `format = \"...\"`; put `skip`, `censor`, `exact`, or `source` on a field, \
+                    "expected `format = \"...\"`, `display = \"...\"`, `display_alt = \"...\"`, or `debug = \"...\"`; put `skip`, `censor`, `exact`, or `source` on a field, \
                      or `wrap`/`crate` on the enum",
                 ));
             }
-            if format.is_some() {
-                return Err(meta.error("`format` is set more than once"));
-            }
-            format = Some(meta.value()?.parse()?);
+            format(&meta, &mut formats)?;
             Ok(())
         })?;
     }
 
-    Ok(format)
+    Ok(formats)
 }
 
 pub fn field(attributes: &[Attribute]) -> Result<FieldOptions> {
     const EXPECTED: &str = "expected a field option: `skip`, `censor`, `exact`, `source`, \
-        `into_top`, `into_report_string`, or `into_snapshot`";
+        `into_top`, `into_report_string`, `into_snapshot`, `default`, or `src_location`";
 
     let mut mode = FieldMode::Normal;
     let mut exact = false;
-    let mut source = false;
+    let mut source = None;
     let mut into = None;
+    let mut default = None;
+    let mut src_location = false;
 
     for attribute in er_attributes(attributes) {
         require_list(attribute, EXPECTED)?;
@@ -235,13 +298,40 @@ pub fn field(attributes: &[Attribute]) -> Result<FieldOptions> {
             let conversion = if meta.path.is_ident("into_top") {
                 Some(IntoField::Top)
             } else if meta.path.is_ident("into_report_string") {
-                Some(IntoField::ReportString)
+                let mut single_line = false;
+                if meta.input.peek(syn::token::Paren) {
+                    meta.parse_nested_meta(|inner| {
+                        if !inner.path.is_ident("single_line") {
+                            return Err(inner.error("expected `single_line`"));
+                        }
+                        if single_line {
+                            return Err(inner.error("`single_line` is set more than once"));
+                        }
+                        if !inner.input.is_empty() && !inner.input.peek(syn::token::Comma) {
+                            return Err(inner.error("`single_line` takes no value"));
+                        }
+
+                        single_line = true;
+                        Ok(())
+                    })?;
+                    if !single_line {
+                        return Err(meta.error("expected `into_report_string(single_line)`"));
+                    }
+                }
+
+                Some(IntoField::ReportString { single_line })
             } else if meta.path.is_ident("into_snapshot") {
                 Some(IntoField::Snapshot)
             } else {
                 None
             };
             if let Some(conversion) = conversion {
+                if src_location {
+                    return Err(meta.error("`src_location` captures the caller; choose another field for `into_*`"));
+                }
+                if default.is_some() {
+                    return Err(meta.error("an `into_*` field is filled from the report; put `default` on an ordinary field"));
+                }
                 if into.is_some() {
                     return Err(meta.error("choose one `into_*` option per field"));
                 }
@@ -252,14 +342,68 @@ pub fn field(attributes: &[Attribute]) -> Result<FieldOptions> {
                 return Ok(());
             }
 
+            if meta.path.is_ident("src_location") {
+                if src_location {
+                    return Err(meta.error("`src_location` is set more than once"));
+                }
+                if into.is_some() || default.is_some() {
+                    return Err(meta.error("`src_location` captures the caller; it cannot also use `default` or `into_*`"));
+                }
+                if !meta.input.is_empty() && !meta.input.peek(syn::token::Comma) {
+                    return Err(meta.error("`src_location` takes no value"));
+                }
+                src_location = true;
+                return Ok(());
+            }
+
+            if meta.path.is_ident("default") {
+                if src_location {
+                    return Err(meta.error("`src_location` captures the caller; it cannot also use `default`"));
+                }
+                if into.is_some() {
+                    return Err(meta.error("an `into_*` field is filled from the report; put `default` on an ordinary field"));
+                }
+                if default.is_some() {
+                    return Err(meta.error("`default` is set more than once"));
+                }
+                default = Some(if meta.input.peek(syn::Token![=]) {
+                    FieldDefault::Expression(meta.value()?.parse()?)
+                } else {
+                    if !meta.input.is_empty() && !meta.input.peek(syn::token::Comma) {
+                        return Err(meta.error("use `default` or `default = expression`"));
+                    }
+                    FieldDefault::Trait
+                });
+                return Ok(());
+            }
+
             if meta.path.is_ident("source") {
-                if source {
+                if source.is_some() {
                     return Err(meta.error("`source` is set more than once"));
+                }
+                let mut mode = SourceMode::Normal;
+                if meta.input.peek(syn::token::Paren) {
+                    meta.parse_nested_meta(|inner| {
+                        if !inner.path.is_ident("deref") {
+                            return Err(inner.error("expected `deref`"));
+                        }
+                        if mode == SourceMode::Deref {
+                            return Err(inner.error("`deref` is set more than once"));
+                        }
+                        if !inner.input.is_empty() && !inner.input.peek(syn::token::Comma) {
+                            return Err(inner.error("`deref` takes no value"));
+                        }
+                        mode = SourceMode::Deref;
+                        Ok(())
+                    })?;
+                    if mode == SourceMode::Normal {
+                        return Err(meta.error("expected `source(deref)`"));
+                    }
                 }
                 if !meta.input.is_empty() && !meta.input.peek(syn::token::Comma) {
                     return Err(meta.error("`source` takes no value"));
                 }
-                source = true;
+                source = Some(mode);
                 return Ok(());
             }
 
@@ -280,6 +424,13 @@ pub fn field(attributes: &[Attribute]) -> Result<FieldOptions> {
                 FieldMode::Censor
             } else if meta.path.is_ident("format") {
                 return Err(meta.error("put `format = \"...\"` on the struct or enum variant"));
+            } else if meta.path.is_ident("display")
+                || meta.path.is_ident("display_alt")
+                || meta.path.is_ident("debug")
+            {
+                return Err(
+                    meta.error("put `display` or `debug` on the struct, enum, or enum variant")
+                );
             } else if meta.path.is_ident("no_constructors") {
                 return Err(meta.error("put `no_constructors` on the struct or enum"));
             } else if meta.path.is_ident("wrap") || meta.path.is_ident("crate") {
@@ -309,5 +460,7 @@ pub fn field(attributes: &[Attribute]) -> Result<FieldOptions> {
         exact,
         source,
         into,
+        default,
+        src_location,
     })
 }

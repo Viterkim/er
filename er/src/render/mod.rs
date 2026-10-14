@@ -1,9 +1,8 @@
-use alloc::string::String;
-use core::fmt;
-
 pub mod report;
 pub mod top;
 
+use alloc::string::String;
+use core::fmt;
 pub use report::{write_head, write_report};
 pub use top::write_top;
 

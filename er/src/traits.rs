@@ -1,10 +1,13 @@
+use crate::{
+    BoxError, ErNode, ErPart, ErReport, ErReportRef, ErResult, ErSnapshot, ErTop, ErTopRef, ErTree,
+    impls::tree::with_source,
+};
 #[cfg(feature = "test")]
-use crate::ErTest;
-use crate::{BoxError, ErNode, ErPart, ErReport, ErResult, ErSnapshot, ErTop, ErTree};
+use crate::{ErTest, ErTestFailure};
 use alloc::string::String;
 use core::error::Error;
 
-/// A finished error for `.er_with()` and its tree and Wrap forms.
+/// A finished error for `.er_with()`, `.er_val()`, `.er_into()` and the tree and Wrap forms.
 pub struct ErBuilt<E>(pub E);
 
 /// Use this error directly instead of building it from fields.
@@ -18,64 +21,52 @@ pub struct ErReady;
 /// Build the new top error from the fields returned by the closure.
 pub struct ErFields;
 
+#[doc(hidden)]
+pub struct ErSaved<Fields, const TAG: usize>(core::marker::PhantomData<Fields>);
+
+#[doc(hidden)]
+pub struct ErSavedBox<Fields, const TAG: usize>(core::marker::PhantomData<Fields>);
+
+#[doc(hidden)]
+pub struct ErSavedShared<Fields, const TAG: usize>(core::marker::PhantomData<Fields>);
+
+#[cfg(er_unsync)]
+#[doc(hidden)]
+pub struct ErSavedArc<Fields, const TAG: usize>(core::marker::PhantomData<Fields>);
+
+#[doc(hidden)]
+pub struct ErDefaults;
+
 #[cfg(er_unsync)]
 #[doc(hidden)]
 pub struct ErBoxedInput;
 
 /// How `.er()` makes its new top error.
 pub trait ErMake<A, Mode> {
+    #[track_caller]
     fn er_make(self) -> A;
-}
-
-impl<A, F: FnOnce() -> A> ErMake<A, ErReady> for F {
-    fn er_make(self) -> A {
-        self()
-    }
-}
-impl<A: From<(P,)>, P, F: FnOnce(()) -> P> ErMake<A, ErFields> for F {
-    fn er_make(self) -> A {
-        A::from((self(()),))
-    }
-}
-
-impl<A: From<()>> ErMake<A, ErFields> for () {
-    fn er_make(self) -> A {
-        A::from(())
-    }
 }
 
 #[doc(hidden)]
 pub trait ErWithFields<E: ?Sized, A, Mode>: for<'a> FnOnce(&'a E) -> Self::Input {
     type Input;
 
+    #[track_caller]
     fn er_with_fields(self, error: &E) -> A;
 }
-impl<E: ?Sized, A, Input, F> ErWithFields<E, A, ErFields> for F
-where
-    F: FnOnce(&E) -> Input,
-    A: From<(Input,)>,
-{
-    type Input = Input;
 
-    fn er_with_fields(self, error: &E) -> A {
-        A::from((self(error),))
-    }
-}
-impl<E: ?Sized, A, F> ErWithFields<E, A, ErReady> for F
-where
-    F: FnOnce(&E) -> ErBuilt<A>,
-{
-    type Input = ErBuilt<A>;
+#[doc(hidden)]
+pub trait ErValFields<E, A, Mode>: FnOnce(E) -> Self::Input {
+    type Input;
 
-    fn er_with_fields(self, error: &E) -> A {
-        self(error).0
-    }
+    #[track_caller]
+    fn er_val_fields(self, value: E) -> A;
 }
 
 /// Add a new top error above a raw error.
 pub trait ErErrorContextExt<Mode, Input = ()>: IntoErPart<Input> + Sized {
     /// Put your error above this one, keeping the original below.
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er<A>(self, error: impl ErMake<A, Mode>) -> ErTree<A>
     where
         A: Error + 'static,
@@ -89,7 +80,7 @@ pub trait ErErrorExt<Input = ()>: IntoErPart<Input> + Sized {
     /// Build the new top from fields taken from this error.
     ///
     /// `er_bail!(device.er_with(|err| err.code));`
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er_with<A, Mode>(self, fields: impl ErWithFields<Self, A, Mode>) -> ErTree<A>
     where
         A: Error + 'static,
@@ -128,7 +119,7 @@ pub trait ErContextExt<Mode, Input = ()> {
     /// result.er(|_| (machine, token))?; // More fields
     /// result.er(|| EnumErr::variant_name(arg1))?; // Enum variant
     /// ```
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er<A>(self, error: impl ErMake<A, Mode>) -> ErResult<Self::Ok, A>
     where
         A: Error + 'static;
@@ -137,7 +128,7 @@ pub trait ErContextExt<Mode, Input = ()> {
 /// Add a new top error above an existing tree.
 pub trait ErTreeContextExt<Mode> {
     /// Add your error on top, keeping the old tree below it.
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er<A>(self, error: impl ErMake<A, Mode>) -> ErTree<A>
     where
         A: Error + 'static;
@@ -150,7 +141,7 @@ pub trait ErResultExt<Input = ()> {
 
     /// Build the new top from the old error. On an ErResult, you get its typed top.
     /// Return fields, an enum constructor, or `er_built(MyErr { ... })`.
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er_with<A, Mode>(
         self,
         fields: impl ErWithFields<<Self::Err as ErInput<Input>>::Error, A, Mode>,
@@ -160,11 +151,17 @@ pub trait ErResultExt<Input = ()> {
         A: Error + 'static,
         Self::Err: ErInput<Input>,
     {
-        self.er_build_tree(|error| fields.er_with_fields(error.er_input_error()))
+        match self.er_result_input() {
+            Ok(value) => Ok(value),
+            Err(source) => {
+                let error = fields.er_with_fields(source.er_input_error());
+                Err(with_source(error, source))
+            }
+        }
     }
 
     /// Like `.er_with()`, but the closure gets the tree on an ErResult.
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er_with_tree<A, Mode>(
         self,
         fields: impl ErWithFields<Self::Err, A, Mode>,
@@ -174,15 +171,17 @@ pub trait ErResultExt<Input = ()> {
         A: Error + 'static,
         Self::Err: ErInput<Input>,
     {
-        self.er_build_tree(|error| fields.er_with_fields(error))
+        match self.er_result_input() {
+            Ok(value) => Ok(value),
+            Err(source) => {
+                let error = fields.er_with_fields(&source);
+                Err(with_source(error, source))
+            }
+        }
     }
 
     #[doc(hidden)]
-    #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_build_tree<A>(self, f: impl FnOnce(&Self::Err) -> A) -> ErResult<Self::Ok, A>
-    where
-        A: Error + 'static,
-        Self::Err: ErInput<Input>;
+    fn er_result_input(self) -> Result<Self::Ok, Self::Err>;
 }
 
 /// Replace a Result's error with a value of your own.
@@ -191,19 +190,27 @@ pub trait ErValueExt {
     type Err;
 
     /// For values that can't go in the tree, like `Err(85)`.
+    /// Takes ownership of the value. Return fields, an enum constructor, or `er_built(MyErr { ... })`.
     ///
-    /// ! WARNING ! Don't use this to add context to an existing tree, you'll nuke it. Use `.er()` for that.
+    /// ! WARNING ! Don't use this to add context to an error or tree, you'll nuke it. Use `.er()` or `.er_with()` for that.
     ///
     /// ```rust,ignore
-    /// // Err(85) calls DeviceErr::new(85)
-    /// // Same as `|v| DeviceErr::new(v)`
-    /// device_status().er_val(DeviceErr::new)?;
+    /// device_status().er_val(|v| v)?;
     /// ```
-    #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er_val<A, F>(self, f: F) -> ErResult<Self::Ok, A>
+    #[track_caller]
+    fn er_val<A, Mode>(self, fields: impl ErValFields<Self::Err, A, Mode>) -> ErResult<Self::Ok, A>
     where
+        Self: Sized,
         A: Error + 'static,
-        F: FnOnce(Self::Err) -> A;
+    {
+        match self.er_value_input() {
+            Ok(value) => Ok(value),
+            Err(value) => Err(ErTree::from(fields.er_val_fields(value))),
+        }
+    }
+
+    #[doc(hidden)]
+    fn er_value_input(self) -> Result<Self::Ok, Self::Err>;
 }
 
 /// Collect successful values and add context to failures.
@@ -211,7 +218,7 @@ pub trait ErIteratorExt<Mode, Input = ()>: Sized {
     type Ok;
 
     /// Stop at the first error.
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er_collect<C, A>(self, error: impl ErMake<A, Mode>) -> ErResult<C, A>
     where
         C: FromIterator<Self::Ok>,
@@ -219,7 +226,7 @@ pub trait ErIteratorExt<Mode, Input = ()>: Sized {
 
     /// Keep the successful values until the iterator finishes. If anything failed,
     /// keep every error and drop the collected values.
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er_collect_all<C, A>(self, error: impl ErMake<A, Mode>) -> ErResult<C, A>
     where
         C: FromIterator<Self::Ok>,
@@ -259,14 +266,20 @@ pub trait ErPresentationExt {
     where
         Self::Err: Error + 'static;
 
-    /// Convert to your error, the closure supplies its remaining fields from the failed tree.
-    fn er_into<A>(self, fields: impl ErIntoFields<Self::Err, A>) -> Result<Self::Ok, A>
+    /// Build your value from the failed report. Leaves Ok alone.
+    /// Return fields, or the report itself to fill `into_*` fields automatically.
+    /// Extra fields go beside the report: `|report| (report, (request_id, path))`.
+    #[track_caller]
+    fn er_into<A, Mode>(
+        self,
+        fields: impl ErValFields<ErReport<Self::Err>, A, Mode>,
+    ) -> Result<Self::Ok, A>
     where
         Self: Sized,
     {
-        match self.er_tree() {
+        match self.er_report() {
             Ok(value) => Ok(value),
-            Err(tree) => Err(fields.er_into_tree(tree)),
+            Err(report) => Err(fields.er_val_fields(report)),
         }
     }
 
@@ -303,7 +316,7 @@ pub trait ErPresentationExt {
     /// Take the tree out of a Wrap with `std_error` and add context. Leaves Ok alone.
     ///
     /// !WARNING! `.er()` and `.er_with()` box a Wrap with `std_error`, so you can't find the errors inside it.
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er_wrap<A, Mode>(self, error: impl ErMake<A, Mode>) -> ErResult<Self::Ok, A>
     where
         Self: Sized,
@@ -314,7 +327,7 @@ pub trait ErPresentationExt {
     }
 
     /// Take the tree out of a Wrap and build fields from its old top.
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er_with_wrap<A, Mode>(
         self,
         fields: impl ErWithFields<Self::Err, A, Mode>,
@@ -328,32 +341,146 @@ pub trait ErPresentationExt {
     }
 }
 
-/// Convert a tree into your own error, saving its diagnostics.
-/// Generated by `#[derive(Er)]` for fields marked `into_top`,
-/// `into_report_string` and `into_snapshot`.
-/// Implement this yourself when another crate chooses the error type.
-pub trait ErFromTree<E, Input = ()>: Sized {
-    /// Save the diagnostics and turn the tree into your error.
-    fn er_from_tree(tree: ErTree<E>, input: Input) -> Self;
-}
+/// Pick the output for a Result with a saved snapshot or its presentation.
+pub trait ErSnapshotPresentationExt {
+    type Ok;
+    type Top: core::fmt::Display + core::fmt::Debug;
+    type Report: core::fmt::Display + core::fmt::Debug;
 
-#[doc(hidden)]
-pub trait ErIntoFields<E, A>: for<'a> FnOnce(&'a ErTree<E>) -> Self::Input {
-    type Input;
+    /// Just the saved outer error, leaves Ok alone.
+    fn er_top(self) -> Result<Self::Ok, Self::Top>;
 
-    fn er_into_tree(self, tree: ErTree<E>) -> A;
-}
-impl<E, A, Input, F> ErIntoFields<E, A> for F
-where
-    F: FnOnce(&ErTree<E>) -> Input,
-    A: ErFromTree<E, Input>,
-{
-    type Input = Input;
+    /// The whole saved report, leaves Ok alone.
+    fn er_report(self) -> Result<Self::Ok, Self::Report>;
 
-    fn er_into_tree(self, tree: ErTree<E>) -> A {
-        let values = self(&tree);
-        A::er_from_tree(tree, values)
+    /// Print the whole saved report, leaves Ok alone.
+    fn er_report_string(self) -> Result<Self::Ok, String>;
+
+    /// Print just the saved outer error, leaves Ok alone.
+    fn er_top_string(self) -> Result<Self::Ok, String>;
+
+    /// Get the saved entries back, leaves Ok alone.
+    fn er_snapshot(self) -> Result<Self::Ok, ErSnapshot>;
+
+    /// Get the Ok value, or panic with the whole saved report.
+    ///
+    /// # Panics
+    /// Panics if the result is Err.
+    #[track_caller]
+    fn unwrap_report(self) -> Self::Ok
+    where
+        Self: Sized,
+    {
+        self.er_report().unwrap()
     }
+
+    /// Get the Ok value, or panic with your message and the whole saved report.
+    ///
+    /// # Panics
+    /// Panics if the result is Err.
+    #[track_caller]
+    fn expect_report(self, message: &str) -> Self::Ok
+    where
+        Self: Sized,
+    {
+        self.er_report().expect(message)
+    }
+}
+
+/// Pick the output for a Result that borrows a tree or its presentation.
+pub trait ErBorrowedPresentationExt<'a> {
+    type Ok;
+    type Err: 'a;
+
+    /// Get the borrowed tree back, leaves Ok alone.
+    fn er_tree(self) -> Result<Self::Ok, &'a ErTree<Self::Err>>;
+
+    /// Just the outer error, leaves Ok alone.
+    fn er_top(self) -> Result<Self::Ok, ErTopRef<'a, Self::Err>>;
+
+    /// The whole report, leaves Ok alone.
+    fn er_report(self) -> Result<Self::Ok, ErReportRef<'a, Self::Err>>;
+
+    /// Print the whole report, leaves Ok alone.
+    fn er_report_string(self) -> Result<Self::Ok, String>
+    where
+        Self::Err: Error + 'static;
+
+    /// Print just the outer error, leaves Ok alone.
+    fn er_top_string(self) -> Result<Self::Ok, String>
+    where
+        Self::Err: core::fmt::Display;
+
+    /// Save the failed tree as messages, leaves Ok alone.
+    fn er_snapshot(self) -> Result<Self::Ok, ErSnapshot>
+    where
+        Self::Err: Error + 'static;
+
+    /// Get the Ok value, or panic with the whole report.
+    ///
+    /// # Panics
+    /// Panics if the result is Err.
+    #[track_caller]
+    fn unwrap_report(self) -> Self::Ok
+    where
+        Self: Sized,
+        Self::Err: Error + 'static,
+    {
+        self.er_report().unwrap()
+    }
+
+    /// Get the Ok value, or panic with your message and the whole report.
+    ///
+    /// # Panics
+    /// Panics if the result is Err.
+    #[track_caller]
+    fn expect_report(self, message: &str) -> Self::Ok
+    where
+        Self: Sized,
+        Self::Err: Error + 'static,
+    {
+        self.er_report().expect(message)
+    }
+}
+
+/// Borrow a tree or change its borrowed presentation, keeping an existing layout.
+pub trait IntoErTreeRef<'a>: Sized {
+    type Error: 'a;
+
+    /// Borrow the whole report.
+    fn into_er_report_ref(self) -> ErReportRef<'a, Self::Error>;
+
+    /// Borrow just the outer error.
+    fn into_er_top_ref(self) -> ErTopRef<'a, Self::Error> {
+        self.into_er_report_ref().er_top()
+    }
+
+    /// Borrow the tree. Leaves the layout behind.
+    fn into_er_tree_ref(self) -> &'a ErTree<Self::Error> {
+        self.into_er_report_ref().tree
+    }
+}
+
+/// Move a snapshot or change its presentation, keeping an existing layout.
+pub trait IntoErSnapshot {
+    type Top: core::fmt::Display + core::fmt::Debug;
+    type Report: core::fmt::Display + core::fmt::Debug;
+
+    /// Take the saved entries out. Borrowed snapshots copy their entries.
+    fn into_er_snapshot(self) -> ErSnapshot;
+
+    /// Just the saved outer error.
+    fn into_er_top(self) -> Self::Top;
+
+    /// The whole saved report.
+    fn into_er_report(self) -> Self::Report;
+}
+
+#[cfg(feature = "test")]
+#[doc(hidden)]
+pub trait ErTestInput<Input = ()>: Sized {
+    #[track_caller]
+    fn into_er_test_failure(self) -> ErTestFailure;
 }
 
 /// Turn an Option or Result into ErTest. Existing test failures pass through.
@@ -362,16 +489,9 @@ pub trait ErTestExt<Input = ()> {
     type Ok;
 
     /// None reports "Option was None" with this call's location.
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    /// `Err(())` reports a test failure at this call too.
+    #[track_caller]
     fn er_test(self) -> ErTest<Self::Ok>;
-}
-
-/// Give a presentation standard Error support. On a Result, leaves Ok alone.
-pub trait ErOpaqueErrorExt {
-    type Output;
-
-    /// The presentation stays in `.0`, but error searches can't see inside it.
-    fn opaque_err(self) -> Self::Output;
 }
 
 /// Turns an error or tree into a node and its metadata.
@@ -382,7 +502,7 @@ pub trait IntoErPart<Input = ()> {
     fn er_error(&self) -> &Self::Error;
 
     /// Move the error and its traces into a subtree.
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn into_er_part(self) -> ErPart;
 }
 
@@ -393,7 +513,7 @@ pub trait ErInput<Input = ()> {
 
     fn er_input_error(&self) -> &Self::Error;
 
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn into_er_input(self) -> ErPart;
 }
 
@@ -405,7 +525,7 @@ pub trait IntoErTree {
     fn into_er_tree(self) -> ErTree<Self::Error>;
 
     /// Add context after taking the tree out of its presentation or Wrap.
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er_wrap<A, Mode>(self, error: impl ErMake<A, Mode>) -> ErTree<A>
     where
         Self: Sized,
@@ -416,7 +536,7 @@ pub trait IntoErTree {
     }
 
     /// Take the tree out and build fields from its old top.
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er_with_wrap<A, Mode>(self, fields: impl ErWithFields<Self::Error, A, Mode>) -> ErTree<A>
     where
         Self: Sized,
@@ -427,7 +547,7 @@ pub trait IntoErTree {
     }
 
     /// Build the new top from fields taken from the old top.
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er_with<A, Mode>(self, fields: impl ErWithFields<Self::Error, A, Mode>) -> ErTree<A>
     where
         Self: Sized,
@@ -438,7 +558,7 @@ pub trait IntoErTree {
     }
 
     /// Like `.er_with()`, but the closure gets the whole tree.
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er_with_tree<A, Mode>(
         self,
         fields: impl ErWithFields<ErTree<Self::Error>, A, Mode>,
@@ -452,7 +572,7 @@ pub trait IntoErTree {
     }
 
     /// Add errors below the current top.
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er_add<Input>(
         self,
         nodes: impl IntoIterator<Item = impl ErInput<Input>>,
@@ -472,12 +592,15 @@ pub trait IntoErTree {
         self.into_er_tree().into_er_node()
     }
 
-    /// Convert to your error, the closure supplies its remaining fields from the tree.
-    fn er_into<A>(self, fields: impl ErIntoFields<Self::Error, A>) -> A
+    /// Build your value from the owned report, keeping its chosen layout.
+    /// Return fields, or the report itself to fill `into_*` fields automatically.
+    /// Extra fields go beside the report: `|report| (report, (request_id, path))`.
+    #[track_caller]
+    fn er_into<A, Mode>(self, fields: impl ErValFields<ErReport<Self::Error>, A, Mode>) -> A
     where
         Self: Sized,
     {
-        fields.er_into_tree(self.into_er_tree())
+        fields.er_val_fields(self.into_er_report())
     }
 
     /// Just the outer error, moves the tree and keeps an existing layout.
@@ -512,7 +635,7 @@ pub trait ErTraceExt: Sized {
 #[cfg(feature = "macros")]
 #[doc(hidden)]
 pub trait ErBail<T, Mode> {
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er_bail(self) -> T;
 }
 
@@ -521,6 +644,6 @@ pub trait ErBail<T, Mode> {
 pub trait ErAllItem<Mode> {
     type Ok;
 
-    #[cfg_attr(feature = "src_locations", track_caller)]
+    #[track_caller]
     fn er_all_item(self) -> Result<Self::Ok, ErPart>;
 }

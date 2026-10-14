@@ -49,7 +49,12 @@ impl<W: fmt::Write + ?Sized> fmt::Write for LineWriter<'_, '_, W> {
     fn write_str(&mut self, text: &str) -> fmt::Result {
         let mut rest = text;
 
-        while let Some(index) = rest.find(['\r', '\n', '\0']) {
+        // Breaks are ASCII, so a match is always a character boundary.
+        while let Some(index) = rest
+            .as_bytes()
+            .iter()
+            .position(|byte| matches!(byte, b'\r' | b'\n' | b'\0'))
+        {
             if index > 0 {
                 self.pending_cr = false;
                 self.flush_break()?;

@@ -1,10 +1,11 @@
 #[cfg(all(feature = "macros", er_unsync))]
 use crate::ErBoxedInput;
+use crate::lines;
 #[cfg(feature = "macros")]
 use crate::{ErBail, ErFields};
 use crate::{
-    ErInput, ErMake, ErPart, ErTest, ErTestError, ErTestExt, ErTestFailure, ErTestOptionNone,
-    ErTree, ErTreeContextExt, IntoErPart, IntoErTree,
+    ErInput, ErLineError, ErMake, ErPart, ErTest, ErTestError, ErTestExt, ErTestFailure,
+    ErTestInput, ErTestOptionNone, ErTestUnit, ErTree, ErTreeContextExt, IntoErPart, IntoErTree,
 };
 use core::{error::Error, fmt, mem, ops::Deref};
 
@@ -27,6 +28,19 @@ impl ErTestFailure {
 
         Self { tree }
     }
+
+    /// Only formats once, no line endings.
+    pub fn for_each_line(&self, emit: impl FnMut(&str)) -> fmt::Result {
+        lines::for_each_line(self, emit)
+    }
+
+    /// Like `for_each_line()`, but the callback can fail.
+    pub fn try_for_each_line<X>(
+        &self,
+        emit: impl FnMut(&str) -> Result<(), X>,
+    ) -> Result<(), ErLineError<X>> {
+        lines::try_for_each_line(self, emit)
+    }
 }
 impl<E: IntoErPart> From<E> for ErTestFailure {
     #[cfg_attr(feature = "src_locations", track_caller)]
@@ -44,6 +58,7 @@ impl fmt::Debug for ErTestFailure {
         fmt::Display::fmt(self, formatter)
     }
 }
+
 impl Deref for ErTestFailure {
     type Target = ErTree<ErTestError>;
 
@@ -100,6 +115,11 @@ impl From<()> for ErTestError {
         Self
     }
 }
+impl From<((),)> for ErTestError {
+    fn from(_: ((),)) -> Self {
+        Self
+    }
+}
 
 impl fmt::Display for ErTestOptionNone {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -124,14 +144,27 @@ impl<T> ErTestExt for Option<T> {
         }
     }
 }
-impl<T, E: ErInput<Input>, Input> ErTestExt<Input> for Result<T, E> {
+impl<E: ErInput<Input>, Input> ErTestInput<Input> for E {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn into_er_test_failure(self) -> ErTestFailure {
+        ErTestFailure::new(self)
+    }
+}
+impl ErTestInput<ErTestUnit> for () {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn into_er_test_failure(self) -> ErTestFailure {
+        ErTestFailure::new(ErTestError)
+    }
+}
+
+impl<T, E: ErTestInput<Input>, Input> ErTestExt<Input> for Result<T, E> {
     type Ok = T;
 
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er_test(self) -> ErTest<T> {
         match self {
             Ok(value) => Ok(value),
-            Err(error) => Err(ErTestFailure::new(error)),
+            Err(error) => Err(error.into_er_test_failure()),
         }
     }
 }

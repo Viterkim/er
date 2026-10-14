@@ -47,6 +47,11 @@ impl ErNode {
         ErFindAll::new(&*self.error, &self.nodes)
     }
 
+    /// True if this type is in this node, its children or native sources.
+    pub fn er_contains<T: Error + 'static>(&self) -> bool {
+        self.er_find::<T>().is_some()
+    }
+
     /// Searches this error and its native sources, but not stored sub errors.
     pub fn er_find_here<T: Error + 'static>(&self) -> Option<&T> {
         let error: &(dyn Error + 'static) = &*self.error;
@@ -57,6 +62,8 @@ impl ErNode {
     }
 }
 impl Drop for ErNode {
+    // Let empty child cleanup disappear in the caller.
+    #[inline(always)]
     fn drop(&mut self) {
         let mut pending = take(&mut self.nodes);
 

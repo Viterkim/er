@@ -1,9 +1,44 @@
-use super::{ArgumentUse, Format, FormatParser, FormatTrait};
+use super::{
+    ArgumentUse, Format, FormatArgument, FormatBody, FormatParser, FormatTrait, Formats, Output,
+};
+use crate::input::attrs::{FormatOptions, FormatValue};
 use crate::input::{Field, attrs::FieldMode};
 use crate::names::plain;
 use proc_macro2::Span;
 use std::collections::HashMap;
 use syn::{Error, Ident, LitStr, Result};
+
+impl Formats {
+    pub fn parse(options: &FormatOptions, fields: &[Field<'_>]) -> Result<Self> {
+        Ok(Self {
+            shared: parse_body(options.shared.as_ref(), fields)?,
+            display: parse_body(options.display.as_ref(), fields)?,
+            display_alt: parse_body(options.display_alt.as_ref(), fields)?,
+            debug: parse_body(options.debug.as_ref(), fields)?,
+        })
+    }
+
+    pub fn get(&self, output: Output) -> Option<&FormatBody> {
+        match output {
+            Output::Display => self.display.as_ref().or(self.shared.as_ref()),
+            Output::DisplayAlt => self
+                .display_alt
+                .as_ref()
+                .or_else(|| self.get(Output::Display)),
+            Output::Debug => self.debug.as_ref().or(self.shared.as_ref()),
+        }
+    }
+}
+
+pub fn parse_body(value: Option<&FormatValue>, fields: &[Field<'_>]) -> Result<Option<FormatBody>> {
+    match value {
+        Some(FormatValue::Literal(literal)) => {
+            Ok(Some(FormatBody::Template(Format::parse(literal, fields)?)))
+        }
+        Some(FormatValue::Function(path)) => Ok(Some(FormatBody::Function(path.clone()))),
+        None => Ok(None),
+    }
+}
 
 impl FormatTrait {
     pub fn parse(text: &str, span: Span) -> Result<Self> {
@@ -38,7 +73,7 @@ impl FormatTrait {
 }
 
 impl Format {
-    pub fn parse(literal: &LitStr, fields: &mut [Field<'_>]) -> Result<Self> {
+    pub fn parse(literal: &LitStr, fields: &[Field<'_>]) -> Result<Self> {
         let mut named_fields = HashMap::new();
         for (index, field) in fields.iter().enumerate() {
             if let Some(name) = &field.item.ident {
@@ -52,6 +87,7 @@ impl Format {
             named_fields,
             next_implicit: 0,
             arguments: Vec::new(),
+            requirements: Vec::new(),
         };
         let text = literal.value();
         let mut rest = text.as_str();
@@ -77,8 +113,13 @@ impl Format {
         }
         let literal = LitStr::new(&output, literal.span());
         let arguments = parser.arguments;
+        let requirements = parser.requirements;
 
-        Ok(Self { literal, arguments })
+        Ok(Self {
+            literal,
+            arguments,
+            requirements,
+        })
     }
 }
 
@@ -115,10 +156,28 @@ impl FormatParser<'_, '_> {
         ))
     }
 
-    pub fn argument(&mut self, field_index: usize, usage: ArgumentUse) -> Result<usize> {
+    pub fn field_argument(&mut self, name: &str) -> Result<FormatArgument> {
+        let mut parts = name.split('.');
+        let field = self.field_index(parts.next().unwrap_or_default())?;
+        let members = parts
+            .map(|part| {
+                syn::parse_str::<syn::Member>(part).map_err(|_| {
+                    Error::new(
+                        self.span,
+                        format!("invalid field access `{name}` in format"),
+                    )
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(FormatArgument { field, members })
+    }
+
+    pub fn argument(&mut self, argument: FormatArgument, usage: ArgumentUse) -> Result<usize> {
+        let field_index = argument.field;
         let field = self
             .fields
-            .get_mut(field_index)
+            .get(field_index)
             .ok_or_else(|| Error::new(self.span, format!("no field at index {field_index}")))?;
         if field.options.mode == FieldMode::Skip
             || (field.options.mode == FieldMode::Censor && matches!(usage, ArgumentUse::Count))
@@ -137,17 +196,15 @@ impl FormatParser<'_, '_> {
 
         match usage {
             ArgumentUse::Value(format) => {
-                if !field.formats.contains(&format) {
-                    field.formats.push(format);
+                if !self.requirements.contains(&(argument.clone(), format)) {
+                    self.requirements.push((argument.clone(), format));
                 }
             }
-            ArgumentUse::Count => {
-                field.sets_width_or_precision = true;
-            }
+            ArgumentUse::Count => (),
         }
 
         let argument_position = self.arguments.len();
-        self.arguments.push(field_index);
+        self.arguments.push(argument);
         Ok(argument_position)
     }
 
@@ -171,8 +228,8 @@ impl FormatParser<'_, '_> {
         }
 
         // In "{:.*}", precision comes before the value.
-        let field_index = self.field_index(name.trim_end())?;
-        let position = self.argument(field_index, ArgumentUse::Value(format))?;
+        let argument = self.field_argument(name.trim_end())?;
+        let position = self.argument(argument, ArgumentUse::Value(format))?;
 
         output.push('{');
         output.push_str(&position.to_string());
@@ -211,7 +268,13 @@ impl FormatParser<'_, '_> {
             if rest.starts_with('*') {
                 self.take_char(rest)?;
                 let field_index = self.field_index("")?;
-                let position = self.argument(field_index, ArgumentUse::Count)?;
+                let position = self.argument(
+                    FormatArgument {
+                        field: field_index,
+                        members: Vec::new(),
+                    },
+                    ArgumentUse::Count,
+                )?;
                 output.push_str(&format!("{position}$"));
             } else if !self.width_or_precision(rest, output)? {
                 return Err(Error::new(self.span, "expected precision after `.`"));
@@ -249,7 +312,13 @@ impl FormatParser<'_, '_> {
 
         if end > 0 && rest[end..].starts_with('$') {
             let field_index = self.field_index(&rest[..end])?;
-            let position = self.argument(field_index, ArgumentUse::Count)?;
+            let position = self.argument(
+                FormatArgument {
+                    field: field_index,
+                    members: Vec::new(),
+                },
+                ArgumentUse::Count,
+            )?;
             output.push_str(&format!("{position}$"));
             *rest = &rest[end + 1..];
             Ok(true)

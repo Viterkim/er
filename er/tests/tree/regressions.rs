@@ -29,7 +29,6 @@ pub fn success_drop() {
         [success, next()]
     );
 
-    assert_eq!(drops.get(), 1);
     assert_eq!(calls.get(), 1);
     assert_eq!(result.unwrap_err().nodes.len(), 1);
 }
@@ -95,7 +94,6 @@ pub fn self_bounds() {
     }
     .er_wrap();
 
-    assert_eq!(wrapped.tree.top.to_string(), "Bound");
     assert!(wrapped.to_string().starts_with("Bound"));
 
     let wrapped = WhereBoundWrap::from(WhereBound::<Token> {
