@@ -883,3 +883,50 @@ fn main() {
 ```
 
 [The full tricky comparison](tricky-error-comparison.md) does this with the other libraries as a comparison.
+
+## Saved diagnostics from a library
+
+When several public errors carry saved reports you can give them a shared diagnostic source. Your application can then find one type after adding its own context.
+
+```rust
+#[derive(Er)]
+#[er(format = "{message}", display_alt = "{report}")]
+pub struct DbDiagnostic {
+    pub message: String,
+    #[er(into_report_string)]
+    pub report: String,
+}
+
+#[derive(Er)]
+#[er(format = "couldn't open {path:?}")]
+pub struct OpenError {
+    pub path: PathBuf,
+    #[er(source, skip)]
+    pub diagnostics: DbDiagnostic,
+}
+```
+
+At the library boundary, save the internal failure and return the ordinary public error:
+
+```rust
+let diagnostics = failure.er_into(|report| (report, "database initialization failed"));
+
+return Err(OpenError { path: path.into(), diagnostics });
+```
+
+Then you can possibly nest them, to easily find it later without having it be on each type.
+
+```rust
+let database = open_database(path).er::<OpenErr>(|_| path).er::<StartupErr>(());
+let cache = open_cache().er::<CacheErr>(()).er::<StartupErr>(());
+
+er_all!(|| StartupErr, [database, cache])?;
+```
+
+```rust
+eprintln!("{}", error.er_report());
+
+for diagnostic in error.er_find_all::<DbDiagnostic>() {
+    eprintln!("\n{}", diagnostic.report);
+}
+```
