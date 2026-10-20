@@ -13,7 +13,7 @@ name = "anyhow-integration"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "er 0.8.0",
+ "er 0.8.1",
 ]
 
 [[package]]
@@ -79,7 +79,7 @@ name = "axum-integration"
 version = "0.0.0"
 dependencies = [
  "axum",
- "er 0.8.0",
+ "er 0.8.1",
 ]
 
 [[package]]
@@ -88,7 +88,7 @@ version = "0.0.0"
 dependencies = [
  "boundary-provider",
  "er 0.7.0",
- "er 0.8.0",
+ "er 0.8.1",
 ]
 
 [[package]]
@@ -103,7 +103,7 @@ name = "boundary-provider"
 version = "0.0.0"
 dependencies = [
  "er 0.7.0",
- "er-macros 0.8.0",
+ "er-macros 0.8.1",
 ]
 
 [[package]]
@@ -116,7 +116,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 name = "compile-tests"
 version = "0.0.0"
 dependencies = [
- "er 0.8.0",
+ "er 0.8.1",
  "trybuild",
 ]
 
@@ -137,9 +137,9 @@ dependencies = [
 
 [[package]]
 name = "er"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
- "er-macros 0.8.0",
+ "er-macros 0.8.1",
 ]
 
 [[package]]
@@ -156,7 +156,7 @@ dependencies = [
 
 [[package]]
 name = "er-macros"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -166,9 +166,9 @@ dependencies = [
 
 [[package]]
 name = "er-unsync"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
- "er-macros 0.8.0",
+ "er-macros 0.8.1",
 ]
 
 [[package]]
@@ -366,7 +366,7 @@ dependencies = [
 name = "no-std"
 version = "0.0.0"
 dependencies = [
- "er 0.8.0",
+ "er 0.8.1",
 ]
 
 [[package]]
@@ -697,7 +697,7 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 name = "unsync"
 version = "0.0.0"
 dependencies = [
- "er 0.8.0",
+ "er 0.8.1",
  "er-unsync",
 ]
 

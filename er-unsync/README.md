@@ -12,7 +12,7 @@ er = { package = "er-unsync", version = "0.8" }
 
 [GitHub Repo](https://github.com/Viterkim/er)
 
-[Docs.rs](https://docs.rs/er/0.8.0/er/)
+[Docs.rs](https://docs.rs/er/0.8.1/er/)
 
 [Crates.io for the lib](https://crates.io/crates/er)
 

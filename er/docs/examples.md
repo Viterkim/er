@@ -10,7 +10,7 @@ Structs: Use `.er(())` for empty structs, `.er(|_| path)` for 1 field structs, a
 
 Enums: Need a variant specified like `.er(|| ModeErr::variant_name(arg1))`.
 
-Most functions that deal with errors should have their own error type.
+Give each fallible function its own error type so `?` can't silently pass the same error all the way up without adding context. Keep the cases your caller cares about, the tree keeps the original errors underneath.
 
 ```rust
 // Put your error type directly above your function.
@@ -19,31 +19,26 @@ Most functions that deal with errors should have their own error type.
 pub struct MyFuncErr;
 
 pub fn my_func() -> ErResult<(), MyFuncErr> {
-  something_else().er(())?;
-  // more real code
+    something_else().er(())?;
+    // more real code
 }
 
 // Context which is relevant in your logs / to your consumer
 #[derive(Er)]
 pub struct MyOtherErr {
-  pub path: PathBuf, // What file didn't exist
-  pub msg: &'static str, // Bonus: even if it was an Option<>, Some(v)/.into() wouldn't be needed
+    pub path: PathBuf, // What file didn't exist
+    // Include messages in the type itself, don't use `#[er(format)]` for that
+    pub msg: &'static str, // Bonus: even if it was an Option<>, Some(v)/.into() wouldn't be needed
 }
 
 pub fn other_func(path: &str) -> ErResult<(), MyOtherErr> {
-  // Usually pass values directly, no .as_ref()/.as_str()
-  if path.is_empty() {
-    er_bail!(|_| (path, "no file given"));
-  }
-  my_func().er(|_| (path, "some cool msg"))
+    // Usually pass values directly, no .as_ref()/.as_str(), and Option<T> takes T without Some().
+    if path.is_empty() {
+        er_bail!(|_| (path, "no file given"));
+    }
+    my_func().er(|_| (path, "some cool msg"))
 }
 ```
-
-Your errors should not be giant pyramids, they should be local to the things you are doing, related to what your consumer cares about and not which errors you got (the original errors are always stored automatically in the tree below).
-
-Think about what your caller wants to 'match on', or what is relevant for the flow/logic of your code. Don't make state that can't exist and instead make variants with exactly why/what happened so the consumer can print it or react on it.
-
-You can carry data up instead of runtime searching(`.er_find()`) by using `.er_with(|err|)` to inspect the previous error. You can also use `ErShared<DataType>` on your fields in your error types to avoid cloning the value.
 
 ## Empty struct
 
@@ -167,9 +162,9 @@ pub fn read_config(path: &Path) -> ErResult<String, ReadConfigErr> {
 
 No `ReadConfigErr::new(...)`, `path.to_path_buf()` or `String::from(...)` at the call. The same field helpers work with `.er_with()`, `.er_val()` and `.er_into()`, each giving the closure the thing you need to build from. To stop a conversion on a particular field, mark it with `#[er(exact)]` and pass its actual type.
 
-You still get `new(...)` for constructing a value directly, and `.er(|| MyTypeErr { a, b })` works for a finished error. Use `#[er(no_constructors)]` to turn off the constructors and field helpers when you want to handle construction yourself.
+You still get `new(...)` for constructing a value directly, and `.er(|| MyTypeErr { a, b })` works for a finished error.
 
-Each function's return type usually gives Rust everything it needs. An extra intermediate error in a chain can need its name, like `.er::<ReadConfigErr>(|_| (path, "load config"))`. Put the relevant fields on the error your function returns and you usually won't need that extra layer.
+Pass values directly, there's usually no need for `.as_ref()` or `.as_str()`. `Option<T>` fields take `T` too, no `Some(...)`.
 
 ## Use stuff from the previous error
 
@@ -551,7 +546,7 @@ if path.is_empty() {
 
 ## Snapshots
 
-Saves msgs and the tree structure for special occasions (as strings, not the error types).
+Saves msgs and the tree structure for christmas or other special occasions (as strings, not the error types).
 
 ```rust
 if let Err(error) = read_port("fakenumber") {

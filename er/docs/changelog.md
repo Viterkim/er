@@ -1,3 +1,9 @@
+# 0.8.1
+
+Performance fix in iterator next. 
+
+Docs changes.
+
 # 0.8.0
 
 Removed `.opaque_err()` and `ErAsError`. Instead export your saved diagnostics with `.er_into()` (or use an explicit Wrap to keep a live tree on the external trait cases).

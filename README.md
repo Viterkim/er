@@ -225,7 +225,7 @@ Just use the helpers then the type is inferred, but you can also manually write 
 
 ### Making errors
 
-Most functions that deal with errors should have their own error type.
+Most functions that deal with errors should have their own error type, directly above the function. That forces you to add what this function was doing with `.er()`, otherwise you can just `?` the same error all the way up.
 
 ```rust
 // Put your error type directly above your function.
@@ -255,9 +255,9 @@ pub fn other_func(path: &str) -> ErResult<(), MyOtherErr> {
 }
 ```
 
-This forces you to re add context with `.er()` (otherwise you can just '?' the same error up all the way).
+Your errors should not be giant pyramids. Give your caller the cases and data they can actually use, the original errors are already in the tree below.
 
-Your errors should not be giant pyramids, they should be local to the things you are doing, related to what your consumer cares about and not which errors you got (the original errors are always stored automatically in the tree below).
+Put messages on the type alongside the other data. The derive already prints those fields, you don't need `#[er(format)]` just to explain what happened.
 
 Think about what your caller wants to 'match on', or what is relevant for the flow/logic of your code. Don't make state that can't exist and instead make variants with exactly why/what happened so the consumer can print it or react on it.
 
@@ -319,7 +319,7 @@ er = { package = "er-unsync", version = "0.8" }
 
 ### External links
 
-[Docs.rs](https://docs.rs/er/0.8.0/er/)
+[Docs.rs](https://docs.rs/er/0.8.1/er/)
 
 [Crates.io for the lib](https://crates.io/crates/er)
 

@@ -119,8 +119,20 @@ impl<'a> Iterator for ErNodes<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        let node = self.pending.pop()?;
-        self.pending.extend(node.nodes.iter().rev());
+        let next = self.pending.last_mut()?;
+        let node = *next;
+
+        match node.nodes.as_slice() {
+            [] => {
+                self.pending.pop();
+            }
+            [child] => *next = child,
+            children => {
+                self.pending.pop();
+                self.pending.extend(children.iter().rev());
+            }
+        }
+
         Some(node)
     }
 }
