@@ -1,21 +1,12 @@
-use crate::render::{LineWriter, ReportEntry, Wrap};
+use crate::render::{LineWriter, ReportEntry};
 use crate::{ErEntry, ErSnapshotEntry};
-use core::fmt;
+use core::fmt::{self, Write as _};
 
 impl<'a, 'p, W: fmt::Write + ?Sized> LineWriter<'a, 'p, W> {
     pub const fn indent(inner: &'a mut W, prefix: &'p str) -> Self {
         Self {
             inner,
-            wrap: Wrap::Indent(prefix),
-            pending_breaks: 0,
-            pending_cr: false,
-        }
-    }
-
-    pub const fn flatten(inner: &'a mut W) -> Self {
-        Self {
-            inner,
-            wrap: Wrap::Flatten,
+            prefix,
             pending_breaks: 0,
             pending_cr: false,
         }
@@ -31,17 +22,51 @@ impl<'a, 'p, W: fmt::Write + ?Sized> LineWriter<'a, 'p, W> {
             return Ok(());
         }
 
-        match self.wrap {
-            Wrap::Indent(prefix) => {
-                for _ in 0..self.pending_breaks {
-                    self.inner.write_char('\n')?;
+        if self.pending_breaks > 1 {
+            let prefix = self.prefix.trim_end();
+            for _ in 1..self.pending_breaks {
+                self.inner.write_char('\n')?;
+                if !prefix.is_empty() {
                     self.inner.write_str(prefix)?;
                 }
             }
-            Wrap::Flatten => self.inner.write_char(' ')?,
+        }
+
+        self.inner.write_char('\n')?;
+        if !self.prefix.is_empty() {
+            self.inner.write_str(self.prefix)?;
         }
 
         self.pending_breaks = 0;
+        Ok(())
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn write_unindented(&mut self, text: &str) -> fmt::Result {
+        for (index, part) in text.split('\r').enumerate() {
+            if index != 0 {
+                self.write_char('\r')?;
+            }
+            if part.is_empty() {
+                continue;
+            }
+
+            let part = if self.pending_cr {
+                self.pending_cr = false;
+                part.strip_prefix('\n').unwrap_or(part)
+            } else {
+                part
+            };
+            let content = part.trim_end_matches('\n');
+
+            if !content.is_empty() {
+                self.flush_break()?;
+                self.inner.write_str(content)?;
+            }
+            self.pending_breaks += part.len() - content.len();
+        }
+
         Ok(())
     }
 }
@@ -49,12 +74,23 @@ impl<W: fmt::Write + ?Sized> fmt::Write for LineWriter<'_, '_, W> {
     fn write_str(&mut self, text: &str) -> fmt::Result {
         let mut rest = text;
 
-        // Breaks are ASCII, so a match is always a character boundary.
-        while let Some(index) = rest
-            .as_bytes()
-            .iter()
-            .position(|byte| matches!(byte, b'\r' | b'\n' | b'\0'))
-        {
+        // Most long messages use LF. Search those in bulk once we've ruled out CR.
+        let check_cr = if text.len() < 64 {
+            true
+        } else if self.prefix.is_empty() {
+            return self.write_unindented(text);
+        } else {
+            text.as_bytes().contains(&b'\r')
+        };
+        loop {
+            let next = if check_cr {
+                rest.as_bytes()
+                    .iter()
+                    .position(|byte| matches!(byte, b'\r' | b'\n'))
+            } else {
+                rest.find('\n')
+            };
+            let Some(index) = next else { break };
             if index > 0 {
                 self.pending_cr = false;
                 self.flush_break()?;
@@ -88,7 +124,6 @@ impl<W: fmt::Write + ?Sized> fmt::Write for LineWriter<'_, '_, W> {
                     self.pending_breaks += 1;
                 }
             }
-            '\0' if matches!(self.wrap, Wrap::Flatten) => self.pending_breaks += 1,
             _ => {
                 self.flush_break()?;
                 self.inner.write_char(character)?;
@@ -123,7 +158,7 @@ impl<'a> From<&'a ErSnapshotEntry> for ReportEntry<'a> {
         let src_location = entry
             .src_location
             .as_ref()
-            .map(|location| (location.file.as_str(), location.line, location.column));
+            .map(|location| (location.file.as_ref(), location.line, location.column));
 
         Self {
             message: &entry.message,

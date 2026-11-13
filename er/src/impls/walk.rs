@@ -1,8 +1,9 @@
-use crate::walk::{MAX_SOURCE_HOPS, Pending};
+use crate::impls::node::shared_address;
+use crate::walk::{MAX_SOURCE_HOPS, PendingError, PendingNodes};
 use crate::{
     ErEntries, ErEntry, ErEntryKind, ErFindAll, ErNode, ErNodes, ErSources, ErSrcLocation,
 };
-use alloc::{vec, vec::Vec};
+use alloc::{collections::BTreeSet, vec::Vec};
 use core::error::Error;
 
 impl<'a> ErEntries<'a> {
@@ -16,90 +17,117 @@ impl<'a> ErEntries<'a> {
         #[cfg(not(feature = "src_locations"))]
         let _ = src_location;
 
-        let entry = ErEntry {
+        let next_error = Some(PendingError {
             error,
-            kind: ErEntryKind::Root,
-            index: 0,
-            parent: None,
             depth: 0,
+            sources_left: MAX_SOURCE_HOPS,
             is_last: true,
-            source_truncated: false,
             #[cfg(feature = "src_locations")]
             src_location,
+        });
+        let nodes = PendingNodes {
+            siblings: nodes,
+            parent: 0,
+            depth: 1,
         };
-        let pending = vec![Pending {
-            entry,
-            nodes,
-            sources_left: MAX_SOURCE_HOPS,
-        }];
 
         Self {
-            pending,
+            next_error,
+            nodes,
+            pending: Vec::new(),
             next_index: 0,
         }
+    }
+
+    #[inline]
+    fn next_node(&mut self, index: usize) -> Option<(ErEntry<'a>, bool)> {
+        if self.nodes.siblings.is_empty() {
+            self.nodes = self.pending.pop()?;
+        }
+
+        let (node, rest) = self.nodes.siblings.split_first()?;
+        let (error, sub_errors) = node.er_view();
+        let entry = ErEntry {
+            error,
+            kind: ErEntryKind::Node,
+            index,
+            parent: Some(self.nodes.parent),
+            depth: self.nodes.depth,
+            is_last: rest.is_empty(),
+            source_truncated: false,
+            #[cfg(feature = "src_locations")]
+            src_location: Some(node.src_location),
+        };
+
+        self.nodes.siblings = rest;
+        if !sub_errors.is_empty() {
+            if !rest.is_empty() {
+                self.pending.push(self.nodes);
+            }
+
+            self.nodes = PendingNodes {
+                siblings: sub_errors,
+                parent: index,
+                depth: entry.depth + 1,
+            };
+        }
+
+        Some((entry, !sub_errors.is_empty()))
     }
 }
 impl<'a> Iterator for ErEntries<'a> {
     type Item = ErEntry<'a>;
 
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let known = self.nodes.siblings.len() + usize::from(self.next_error.is_some());
+        (known, (known == 0 && self.pending.is_empty()).then_some(0))
+    }
+
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
-        let Pending {
-            mut entry,
-            nodes,
-            sources_left,
-        } = self.pending.pop()?;
-        entry.index = self.next_index;
-        self.next_index += 1;
-
-        if nodes.len() > 1 {
-            // Leave room for its native source too.
-            self.pending.reserve(nodes.len() + 1);
-        }
-
-        for (index, node) in nodes.iter().enumerate().rev() {
-            let sub_entry = ErEntry {
-                error: &*node.error,
-                kind: ErEntryKind::Node,
-                index: 0,
-                parent: Some(entry.index),
-                depth: entry.depth + 1,
-                is_last: index + 1 == nodes.len(),
+        let index = self.next_index;
+        let (mut entry, has_sub_errors, sources_left) = if let Some(next) = self.next_error.take() {
+            let root = index == 0;
+            let entry = ErEntry {
+                error: next.error,
+                kind: if root {
+                    ErEntryKind::Root
+                } else {
+                    ErEntryKind::Source
+                },
+                index,
+                parent: index.checked_sub(1),
+                depth: next.depth,
+                is_last: next.is_last,
                 source_truncated: false,
                 #[cfg(feature = "src_locations")]
-                src_location: Some(node.src_location),
+                src_location: next.src_location,
             };
 
-            self.pending.push(Pending {
-                entry: sub_entry,
-                nodes: &node.nodes,
-                sources_left: MAX_SOURCE_HOPS,
-            });
-        }
+            (
+                entry,
+                root && !self.nodes.siblings.is_empty(),
+                next.sources_left,
+            )
+        } else {
+            let (entry, has_sub_errors) = self.next_node(index)?;
+            (entry, has_sub_errors, MAX_SOURCE_HOPS)
+        };
 
-        if let Some(source) = entry.error.source() {
+        self.next_index += 1;
+        if let Some(error) = entry.error.source() {
             if sources_left == 0 {
                 entry.source_truncated = true;
-                return Some(entry);
+            } else {
+                self.next_error = Some(PendingError {
+                    error,
+                    depth: entry.depth + 1,
+                    sources_left: sources_left - 1,
+                    is_last: !has_sub_errors,
+                    #[cfg(feature = "src_locations")]
+                    src_location: None,
+                });
             }
-
-            let sub_entry = ErEntry {
-                error: source,
-                kind: ErEntryKind::Source,
-                index: 0,
-                parent: Some(entry.index),
-                depth: entry.depth + 1,
-                is_last: nodes.is_empty(),
-                source_truncated: false,
-                #[cfg(feature = "src_locations")]
-                src_location: None,
-            };
-
-            self.pending.push(Pending {
-                entry: sub_entry,
-                nodes: &[],
-                sources_left: sources_left - 1,
-            });
         }
 
         Some(entry)
@@ -107,11 +135,55 @@ impl<'a> Iterator for ErEntries<'a> {
 }
 
 impl<'a> ErNodes<'a> {
-    /// Walk these nodes and their children.
+    /// Walk these nodes and everything below them.
     #[inline]
-    pub fn new(roots: &'a [ErNode]) -> Self {
-        let pending = roots.iter().rev().collect();
-        Self { pending }
+    pub fn new(nodes: &'a [ErNode]) -> Self {
+        Self {
+            nodes: nodes.iter(),
+            pending: Vec::new(),
+            seen: None,
+        }
+    }
+
+    /// Like `new`, but a shared tree that sits under several errors only gets walked the first time. The node
+    /// holding it still shows up every time. A search for one match finds nothing new in there, and going in
+    /// again through every path doubles the work per layer of sharing.
+    #[inline]
+    pub fn once(nodes: &'a [ErNode]) -> Self {
+        Self {
+            seen: Some(BTreeSet::new()),
+            ..Self::new(nodes)
+        }
+    }
+
+    #[inline]
+    fn walks_into(&mut self, node: &ErNode) -> bool {
+        let Some(seen) = &mut self.seen else {
+            return true;
+        };
+
+        shared_address(node).is_none_or(|address| seen.insert(address))
+    }
+
+    #[inline(always)]
+    fn next_with_error(&mut self) -> Option<(&'a ErNode, &'a (dyn Error + 'static))> {
+        let node = match self.nodes.next() {
+            Some(node) => node,
+            None => {
+                self.nodes = self.pending.pop()?;
+                self.nodes.next()?
+            }
+        };
+
+        let (error, nodes) = node.er_view();
+        if !nodes.is_empty() && self.walks_into(node) {
+            let rest = core::mem::replace(&mut self.nodes, nodes.iter());
+            if !rest.as_slice().is_empty() {
+                self.pending.push(rest);
+            }
+        }
+
+        Some((node, error))
     }
 }
 impl<'a> Iterator for ErNodes<'a> {
@@ -119,21 +191,13 @@ impl<'a> Iterator for ErNodes<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        let next = self.pending.last_mut()?;
-        let node = *next;
+        self.next_with_error().map(|(node, _)| node)
+    }
 
-        match node.nodes.as_slice() {
-            [] => {
-                self.pending.pop();
-            }
-            [child] => *next = child,
-            children => {
-                self.pending.pop();
-                self.pending.extend(children.iter().rev());
-            }
-        }
-
-        Some(node)
+    // The rest of the current siblings are coming for sure, enough for collect() to skip most regrowing.
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.nodes.len(), None)
     }
 }
 
@@ -171,27 +235,27 @@ impl<'a, T> ErFindAll<'a, T> {
             error: Some(error),
             yielded_error: false,
             sources_left: MAX_SOURCE_HOPS,
-            nodes,
-            pending: Vec::new(),
+            nodes: ErNodes::new(nodes),
             marker: core::marker::PhantomData,
         }
     }
 
-    pub fn next_node(&mut self) -> Option<&'a ErNode> {
-        loop {
-            if let Some((node, rest)) = self.nodes.split_first() {
-                if node.nodes.is_empty() {
-                    self.nodes = rest;
-                } else {
-                    if !rest.is_empty() {
-                        self.pending.push(rest);
-                    }
-                    self.nodes = &node.nodes;
-                }
-                return Some(node);
-            }
+    /// Like `below` for a search that stops at the first match, see `ErNodes::once`.
+    pub fn first(nodes: &'a [ErNode]) -> Self {
+        Self {
+            nodes: ErNodes::once(nodes),
+            ..Self::below(nodes)
+        }
+    }
 
-            self.nodes = self.pending.pop()?;
+    /// Find this type in these nodes and below.
+    pub fn below(nodes: &'a [ErNode]) -> Self {
+        Self {
+            error: None,
+            yielded_error: true,
+            sources_left: MAX_SOURCE_HOPS,
+            nodes: ErNodes::new(nodes),
+            marker: core::marker::PhantomData,
         }
     }
 
@@ -229,8 +293,7 @@ impl<'a, T: Error + 'static> Iterator for ErFindAll<'a, T> {
                 self.error = None;
             }
 
-            let node = self.next_node()?;
-            self.error = Some(&*node.error);
+            self.error = Some(self.nodes.next_with_error()?.1);
             self.yielded_error = false;
             self.sources_left = MAX_SOURCE_HOPS;
         }

@@ -1,43 +1,37 @@
-error: use derive(Er) for `wrap` and `crate` options
+error: `wrap` needs `#[derive(Er)]`
   --> tests/fail/format_only.rs:11:12
    |
 11 | pub struct Wrapped;
    |            ^^^^^^^
 
-error: use derive(Er) for `wrap` and `crate` options
-  --> tests/fail/format_only.rs:15:12
-   |
-15 | pub struct RuntimePath;
-   |            ^^^^^^^^^^^
-
 error[E0599]: no associated function or constant named `new` found for struct `Data` in the current scope
-  --> tests/fail/format_only.rs:26:19
+  --> tests/fail/format_only.rs:22:19
    |
  5 | pub struct Data {
    | --------------- associated function or constant `new` not found for this struct
 ...
-26 |     let _ = Data::new(7);
+22 |     let _ = Data::new(7);
    |                   ^^^ associated function or constant not found in `Data`
 
 error[E0599]: no variant, associated function, or constant named `missing` found for enum `NoVariants` in the current scope
-  --> tests/fail/format_only.rs:27:25
+  --> tests/fail/format_only.rs:23:25
    |
-19 | pub enum NoVariants {
+15 | pub enum NoVariants {
    | ------------------- variant, associated function, or constant `missing` not found for this enum
 ...
-27 |     let _ = NoVariants::missing();
+23 |     let _ = NoVariants::missing();
    |                         ^^^^^^^ variant, associated function, or constant not found in `NoVariants`
    |
 help: there is a variant with a similar name
    |
-27 -     let _ = NoVariants::missing();
-27 +     let _ = NoVariants::Missing;
+23 -     let _ = NoVariants::missing();
+23 +     let _ = NoVariants::Missing;
    |
 
 error[E0277]: the trait bound `Data: std::error::Error` is not satisfied
-  --> tests/fail/format_only.rs:28:17
+  --> tests/fail/format_only.rs:24:17
    |
-28 |     needs_error(Data { value: 7 });
+24 |     needs_error(Data { value: 7 });
    |     ----------- ^^^^^^^^^^^^^^^^^ unsatisfied trait bound
    |     |
    |     required by a bound introduced by this call
@@ -48,7 +42,7 @@ help: the trait `std::error::Error` is not implemented for `Data`
  5 | pub struct Data {
    | ^^^^^^^^^^^^^^^
 note: required by a bound in `needs_error`
-  --> tests/fail/format_only.rs:23:28
+  --> tests/fail/format_only.rs:19:28
    |
-23 | pub fn needs_error(_: impl std::error::Error) {}
+19 | pub fn needs_error(_: impl std::error::Error) {}
    |                            ^^^^^^^^^^^^^^^^^ required by this bound in `needs_error`

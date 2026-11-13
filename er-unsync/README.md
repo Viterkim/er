@@ -1,21 +1,21 @@
 # er-unsync
 
-Single threaded / unsync version of `er` for platforms that don't use Arc, and want to use Rc/RefCell etc.
+Use `er-unsync` when errors below your top need to hold `Rc` or `RefCell`. Its `ErShared` and `ErSharedTree` use `Rc`, so you can use them on targets without pointer atomics.
 
 ```toml
-er = { package = "er-unsync", version = "0.8" }
+er = { package = "er-unsync", version = "0.9" }
 ```
+
+Keep the name `er` on the left so the derives can find it. If you call it `er_unsync` instead, each derive needs `#[er(crate = er_unsync)]`.
 
 ## Links
 
-[What pattern should I use?](https://github.com/Viterkim/er/blob/main/er/docs/cases.md)
-
 [GitHub Repo](https://github.com/Viterkim/er)
 
-[Docs.rs](https://docs.rs/er/0.8.1/er/)
+[Er usage and examples](https://docs.rs/er/0.9.0/er/)
 
-[Crates.io for the lib](https://crates.io/crates/er)
+[er-unsync on crates.io](https://crates.io/crates/er-unsync)
 
 [Crates.io for the macros](https://crates.io/crates/er-macros/)
 
-[Libs.rs](https://lib.rs/crates/er)
+[er-unsync on Lib.rs](https://lib.rs/crates/er-unsync)

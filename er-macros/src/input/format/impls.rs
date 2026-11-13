@@ -1,6 +1,8 @@
 use super::{
     ArgumentUse, Format, FormatArgument, FormatBody, FormatParser, FormatTrait, Formats, Output,
+    Tried,
 };
+use crate::fields::option_inner;
 use crate::input::attrs::{FormatOptions, FormatValue};
 use crate::input::{Field, attrs::FieldMode};
 use crate::names::plain;
@@ -18,15 +20,43 @@ impl Formats {
         })
     }
 
-    pub fn get(&self, output: Output) -> Option<&FormatBody> {
-        match output {
-            Output::Display => self.display.as_ref().or(self.shared.as_ref()),
-            Output::DisplayAlt => self
-                .display_alt
-                .as_ref()
-                .or_else(|| self.get(Output::Display)),
-            Output::Debug => self.debug.as_ref().or(self.shared.as_ref()),
+    pub fn tried(&self, output: Output) -> Tried<'_> {
+        let order = match output {
+            Output::Display => [&None, &self.display, &self.shared],
+            Output::DisplayAlt => [&self.display_alt, &self.display, &self.shared],
+            Output::Debug => [&None, &self.debug, &self.shared],
+        };
+        let mut formats = Vec::new();
+
+        for body in order.into_iter().flatten() {
+            formats.push(body);
+
+            let always = match body {
+                FormatBody::Template(format) => !format.optional(),
+                FormatBody::Function(_) => true,
+            };
+            if always {
+                return Tried {
+                    formats,
+                    default: false,
+                };
+            }
         }
+
+        Tried {
+            formats,
+            default: true,
+        }
+    }
+
+    pub fn templates(&self) -> impl Iterator<Item = &Format> {
+        [&self.shared, &self.display, &self.display_alt, &self.debug]
+            .into_iter()
+            .flatten()
+            .filter_map(|body| match body {
+                FormatBody::Template(format) => Some(format),
+                FormatBody::Function(_) => None,
+            })
     }
 }
 
@@ -104,7 +134,7 @@ impl Format {
                 } else {
                     return Err(Error::new(
                         literal.span(),
-                        "unmatched `}` in format; use `}}` for a literal brace",
+                        "there's a `}` without a `{`, write `}}` to print a brace",
                     ));
                 }
             } else {
@@ -120,6 +150,10 @@ impl Format {
             arguments,
             requirements,
         })
+    }
+
+    pub fn optional(&self) -> bool {
+        self.arguments.iter().any(|argument| argument.optional)
     }
 }
 
@@ -161,19 +195,31 @@ impl FormatParser<'_, '_> {
         let field = self.field_index(parts.next().unwrap_or_default())?;
         let members = parts
             .map(|part| {
-                syn::parse_str::<syn::Member>(part).map_err(|_| {
+                let mut member = syn::parse_str::<syn::Member>(part).map_err(|_| {
                     Error::new(
                         self.span,
                         format!("invalid field access `{name}` in format"),
                     )
-                })
+                })?;
+
+                // Point type errors in a nested access at the format string, not the derive.
+                match &mut member {
+                    syn::Member::Named(ident) => ident.set_span(self.span),
+                    syn::Member::Unnamed(index) => index.span = self.span,
+                }
+
+                Ok(member)
             })
             .collect::<Result<Vec<_>>>()?;
 
-        Ok(FormatArgument { field, members })
+        Ok(FormatArgument {
+            field,
+            members,
+            optional: false,
+        })
     }
 
-    pub fn argument(&mut self, argument: FormatArgument, usage: ArgumentUse) -> Result<usize> {
+    pub fn argument(&mut self, mut argument: FormatArgument, usage: ArgumentUse) -> Result<usize> {
         let field_index = argument.field;
         let field = self
             .fields
@@ -194,6 +240,15 @@ impl FormatParser<'_, '_> {
             return Err(Error::new(self.span, message));
         }
 
+        let inside = match usage {
+            ArgumentUse::Value(FormatTrait::Debug) => !argument.members.is_empty(),
+            ArgumentUse::Value(_) => true,
+            ArgumentUse::Count => false,
+        };
+        argument.optional = inside
+            && field.options.mode == FieldMode::Normal
+            && option_inner(&field.item.ty).is_some();
+
         match usage {
             ArgumentUse::Value(format) => {
                 if !self.requirements.contains(&(argument.clone(), format)) {
@@ -209,9 +264,12 @@ impl FormatParser<'_, '_> {
     }
 
     pub fn placeholder(&mut self, rest: &mut &str, output: &mut String) -> Result<()> {
-        let end = rest
-            .find([':', '}'])
-            .ok_or_else(|| Error::new(self.span, "unclosed `{` in format"))?;
+        let end = rest.find([':', '}']).ok_or_else(|| {
+            Error::new(
+                self.span,
+                "there's a `{` without a `}`, write `{{` to print a brace",
+            )
+        })?;
         let name = &rest[..end];
         *rest = &rest[end..];
 
@@ -272,6 +330,7 @@ impl FormatParser<'_, '_> {
                     FormatArgument {
                         field: field_index,
                         members: Vec::new(),
+                        optional: false,
                     },
                     ArgumentUse::Count,
                 )?;
@@ -292,7 +351,8 @@ impl FormatParser<'_, '_> {
     }
 
     pub fn take_char(&self, text: &mut &str) -> Result<char> {
-        next_char(text).ok_or_else(|| Error::new(self.span, "unexpected end of format"))
+        next_char(text)
+            .ok_or_else(|| Error::new(self.span, "the format ends in the middle of a `{...}`"))
     }
 
     pub fn copy_char(&self, text: &mut &str, output: &mut String) -> Result<()> {
@@ -316,6 +376,7 @@ impl FormatParser<'_, '_> {
                 FormatArgument {
                     field: field_index,
                     members: Vec::new(),
+                    optional: false,
                 },
                 ArgumentUse::Count,
             )?;

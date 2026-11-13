@@ -9,7 +9,7 @@ pub struct PortErr {
 }
 ```
 
-Is roughly this ordinary Rust:
+Here's roughly what the derive writes.
 
 ```rust
 use std::{error::Error, fmt};
@@ -41,8 +41,6 @@ impl Error for PortErr {}
 
 The derive writes those impls. `.er()` comes from the `er` lib as an extension trait on errors.
 
-Enums get a constructor per variant.
-
 Fields are debug printed by default, foreign types too. In `#[er(format = "{input}")]`, `input` uses Display, or the classic `{input:?}` for Debug. Templates can access nested fields too, like `{oldest.0}` or `{details.message}`. `skip` leaves a field out, `censor` prints `*CENSORED*`.
 
 `format` sets both Display and Debug. Override either with `display` or `debug`, the other keeps its usual output:
@@ -56,27 +54,38 @@ pub struct ReadErr {
 }
 ```
 
-Display prints the short message, Debug still prints `ReadErr { path: ..., attempts: ... }`. An explicit `display` or `debug` also overrides a shared `format`, regardless of attribute order. The overrides work on structs, enums and individual variants.
+Display prints the short message, Debug still prints `ReadErr { path: ..., attempts: ... }`. An explicit `display` or `debug` also overrides a shared `format`, regardless of attribute order. On enums, set a string `format` on each variant that needs one.
 
 Use `display_alt` for `{err:#}`, while ordinary Display and Debug keep their output:
 
 ```rust
 #[derive(Er)]
-#[er(format = "operation failed", display_alt = "{diagnostics}")]
-pub struct SavedErr {
-    pub diagnostics: String,
+#[er(format = "couldn't connect", display_alt = "couldn't connect to {host}, tried {attempts} times")]
+pub struct ConnectErr {
+    pub host: String,
+    pub attempts: u8,
 }
 ```
 
-`{err}` and both Debug forms print `operation failed`. `{err:#}` prints the saved diagnostics. Without `display_alt`, alternate formatting keeps working as before. Enum variants inherit it unless they set their own.
+`{err}` and both Debug forms print `couldn't connect`. `{err:#}` prints `couldn't connect to db.local, tried 3 times`. Enum variants inherit it unless they set their own.
 
-Each setting can take a formatting function instead of a string, like `#[er(display_alt = Self::details)]`. It receives `&Self` and `&mut fmt::Formatter<'_>` and returns `fmt::Result`. Conditions such as omitting empty diagnostics stay ordinary Rust.
+The field can be an `Option` too. `{hint}` prints what's inside, and on `None` you get the output you'd have without that format, so `{err:#}` goes back to `couldn't connect`:
+
+```rust
+#[derive(Er)]
+#[er(format = "couldn't connect", display_alt = "couldn't connect, {hint}")]
+pub struct ConnectErr {
+    pub hint: Option<String>,
+}
+```
+
+Each setting can take a formatting function instead of a string, `#[er(display_alt = Self::details)]`, handy when an empty hint shouldn't print either. It gets `&Self` and `&mut fmt::Formatter<'_>` and returns `fmt::Result`.
 
 `ErFormat` gives the same constructors and Debug/Display, but no Error. Useful for structs inside your error.
 
 ## Constructors
 
-Both `Er` and `ErFormat` generate `new` for structs and snake_case methods for enum variants. The arguments follow field order, with conversions such as `&str` into `String` done for you. Numbers already take their exact type, and `#[er(exact)]` does that for another field too. Here's what those methods look like:
+Both `Er` and `ErFormat` generate `new` for structs and snake_case methods for enum variants. The arguments follow field order, with conversions such as `&str` into `String` done for you. Primitive numbers take their exact type, so an integer literal can pick up the field's type. Use `#[er(exact)]` to take one of your own types directly.
 
 ```rust,ignore
 // You write this
@@ -140,95 +149,51 @@ impl ModeErr {
 
 `#[er(src_location)]` fills a standard `Location` reference at construction, leaving that field out of the arguments. It works without the runtime `src_locations` feature too.
 
-The tuple helpers use those same field conversions when an error happens. `#[er(default)]` adds a form that omits all marked fields using `Default::default()`, or your expression with `#[er(default = make_data())]`. The full tuple and `new(...)` still take every ordinary field.
+The tuple helpers use those same field conversions when an error happens. On struct fields, `#[er(default)]` adds a form that omits all marked fields using `Default::default()`, or your expression with `#[er(default = make_data())]`. The full tuple and `new(...)` still take every ordinary field.
 
-`#[er(no_constructors)]` turns off the named constructors and the struct's field helpers, including `.er(())`. A requested Wrap constructor stays available.
+`#[er(no_constructors)]` turns off the named constructors and the struct's field helpers, including `.er(())`.
+
+The derives call er's own items through `::er`, so a renamed er needs `#[er(crate = other_name)]`.
 
 ## Wrap
 
-If you need to implement another crate's trait on the whole error tree, Rust says no: you don't own `ErTree` or that trait. [Orphan rule](https://doc.rust-lang.org/reference/items/implementations.html#trait-implementation-coherence)
-
-Wrap gives you a type you *do* own, around the tree:
+Rust won't let you implement another crate's trait on `ErTree`. A Wrap gives you a type you own, with the tree still inside it.
 
 ```rust
-// You write this
 #[derive(Er)]
-#[er(wrap(name = BaseErrWrap))]
-pub struct BaseErr;
-
-// You get this (plus a LOT of helpers, so you can treat it like the normal case)
-pub struct BaseErrWrap {
-    pub tree: ErTree<BaseErr>,
-}
-```
-
-Let's look at the `Axum` example, where we own `BaseErrWrap` and can implement Axum's `IntoResponse` for it.
-
-```rust
-use axum::{
-    http::StatusCode,
-    response::{IntoResponse, Response},
-};
-
-#[derive(Er)]
-#[er(wrap(name = BaseErrWrap))] // Is the default name, but written out here for the example
-pub struct BaseErr {
+#[er(wrap)]
+pub struct PortErr {
     pub input: String,
 }
 
-// ? turns the normal Er tree into our Wrap
-pub fn read_port(input: &str) -> Result<u16, BaseErrWrap> {
-    let port = input.parse().er(|_| input)?;
+pub fn read_port(input: &str) -> Result<u16, PortErrWrap> {
+    let port = input.parse().er(input)?;
     Ok(port)
 }
 
-impl IntoResponse for BaseErrWrap {
+impl IntoResponse for PortErrWrap {
     fn into_response(self) -> Response {
-        let response = (StatusCode::BAD_REQUEST, "invalid port");
-        response.into_response()
+        tracing::error!("{}", self.er_report());
+        (StatusCode::BAD_REQUEST, "invalid port").into_response()
     }
 }
 ```
 
-Wrap and its Results still work with `.er()`, `.er_report()` and `.er_top()`.
+The `?` puts the tree into `PortErrWrap`. You can also use `PortErrWrap::from(error)` with a plain error or a tree. Add context when another part of your app calls `read_port` with `.er()` or `.er_with()`. For a public error meant to outlive your Er version, hand out the error and report as a pair. [Public errors](https://github.com/Viterkim/er/blob/main/er/docs/examples.md#public-error)
 
-Want Display/Debug on the Wrap itself? Add `output = report` or `output = top`. Axum doesn't care.
+Give it a different name with `wrap(name = Name)`. A trait that needs Display or Debug on the Wrap can use `output = report` or `output = top`.
 
-If the `er` crate has another name, give Wrap its path with `#[er(crate = other_name, wrap)]`.
+## Source
 
-## Public errors
+`#[er(source)]` exposes one cause per struct or variant. Er prints the cause below the error, so it leaves the field out of the parent's default Display and Debug. `#[er(source, show_in_parent)]` prints it inside the parent too, handy when someone prints just that error. An explicit format can use the field as well.
 
-At the public boundary, keep the diagnostics you need in an ordinary error (they get a normal error and don't depend on 'er').
+Box, Rc and Arc expose the error inside. An Option can leave the source empty. With a generic pointer alias like `type Cause<E> = Arc<E>`, put `#[er(source(deref))]` on the field and write an outer Option as `Option<Cause<E>>`.
 
-```rust
-#[derive(Er)]
-#[er(format = "couldn't open {path:?}", display_alt = "{diagnostics}")]
-pub struct OpenError {
-    pub path: PathBuf,
-    #[er(into_top, source)]
-    pub cause: std::io::Error,
-    #[er(into_report_string)]
-    pub diagnostics: String,
-}
-```
-
-`into_top` moves the typed top into `cause`, and `into_report_string` saves the report. `source` exposes the cause through Rust's `Error::source()`. And we offer full diagnostics with `{err:#}` (or accesing the data on the type).
-
-Return the report from `.er_into()` and it fills the marked fields. Any remaining fields go beside it, in field order:
-
-```rust
-result.er_into(|report| (report, path)) // OpenError above
-result.er_into(|report| report) // No remaining fields
-result.er_into(|report| (report, (request_id, path))) // Several fields
-```
-
-The saved string keeps the report's layout. Use `into_report_string(single_line)` to force one line.
-
-You can use `source` without saving a report too, with one source per struct or variant. Box, Rc and Arc expose their contained error, and Option exposes nothing on None. For a pointer alias like `type Cause<E> = Arc<E>`, use `source(deref)`. `skip` only leaves the field out of formatting.
+The derive only sees the type the way you wrote it. Put that alias inside another pointer (`Box<Cause<E>>`, `&Cause<E>`), or alias a pointer to your own error trait (`type Cause = Arc<dyn DriverError>`), and the pointer itself becomes the source, so `er_find` can't see the error inside it. Write the pointer out in the field for those.
 
 ## Wrap with std_error
 
-! WARNING ! Only add `std_error` with `output` if the foreign trait needs `Error` on the Wrap itself (Axum doesn't). When that Wrap comes back, use the Wrap helpers below or `.er_find()` won't see the errors inside it!
+Only use `std_error` when the foreign trait requires `Error` on the Wrap. It needs `output = top` or `output = report`. Coming back from that API, use `.er_wrap()` to keep the whole tree.
 
 ```rust
 #[derive(Er)]
@@ -241,7 +206,7 @@ pub fn handler(input: &str) -> Result<u16, HandlerError> {
 }
 ```
 
-When you get its Result back, use this instead of `.er()`:
+Use `.er_wrap()` when you get the Result back. A plain `.er()` boxes the Wrap, so a search won't find the errors inside.
 
 ```rust
 #[derive(Er)]
@@ -250,12 +215,14 @@ pub struct RequestErr {
 }
 
 pub fn request(input: &str) -> ErResult<u16, RequestErr> {
-    handler(input).er_wrap(|_| input)
+    handler(input).er_wrap(input)
 }
 ```
 
-If you need the old top, use `.er_with_wrap(|err| fields)`.
+`.er_with_wrap(|err| fields)` lets you read the old top. Both helpers also work on a Wrap you've already taken out of the Result.
 
-For aggregation, take the tree out first with `.er_tree()` on the Result, or `.tree` on the Wrap.
+On a Result with a `std_error` Wrap, use `.er_save_wrap(..)` to save a report on the inner tree. Plain `.er_save(..).er_split()` on that Result puts the Wrap itself in the pair.
 
-This needs your actual Wrap back. If another lib boxed it, you need to downcast it first.
+The aggregation macros keep the tree when you pass them a `std_error` Wrap or its Result.
+
+This needs your actual Wrap back. If another lib erased it into `Box<dyn Error>`, downcast it first.

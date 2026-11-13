@@ -29,6 +29,10 @@ pub fn identifiers(tokens: TokenStream) -> HashSet<String> {
 }
 
 pub fn binding(reserved: &HashSet<String>, name: &str) -> Ident {
+    if !reserved.contains(name) {
+        return Ident::new(name, Span::mixed_site());
+    }
+
     let mut name = name.to_owned();
     while reserved.contains(&name) {
         name.insert(0, '_');
@@ -54,18 +58,21 @@ pub fn shield_bindings<'a>(bindings: impl IntoIterator<Item = &'a Ident>) -> Tok
 }
 
 pub fn snake_case(name: &str) -> String {
-    let chars = name.trim_start_matches("r#").chars().collect::<Vec<_>>();
-    let mut result = String::new();
+    let name = name.trim_start_matches("r#");
+    let mut chars = name.chars().peekable();
+    let mut result = String::with_capacity(name.len());
+    let mut previous = '_';
 
-    for (index, &ch) in chars.iter().enumerate() {
-        if ch.is_uppercase() && index > 0 && chars[index - 1] != '_' {
-            let follows_word = chars[index - 1].is_lowercase() || chars[index - 1].is_numeric();
-            let ends_acronym = chars.get(index + 1).is_some_and(|next| next.is_lowercase());
+    while let Some(ch) = chars.next() {
+        if ch.is_uppercase() && previous != '_' {
+            let follows_word = previous.is_lowercase() || previous.is_numeric();
+            let ends_acronym = chars.peek().is_some_and(|next| next.is_lowercase());
             if follows_word || ends_acronym {
                 result.push('_');
             }
         }
         result.extend(ch.to_lowercase());
+        previous = ch;
     }
 
     if matches!(result.as_str(), "self" | "super" | "crate") {

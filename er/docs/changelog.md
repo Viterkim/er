@@ -1,3 +1,14 @@
+# 0.9.0
+
+- Use `.er_split()` to hand a caller `(MyErr, String)`, or `.er_split_with(...)` to build a different error from the pair. Replaces `.er_into()` and the `into_*` field attributes. A plain `.er()` on the pair keeps both.
+- `.er_report()` returns a String now. Use `.er_write_report(&mut writer)` to write the report straight to a buffer. Removed `ErReport`, `ErTop` and their views. Use `.top` on a tree and `.top()` on a snapshot.
+- `.er(path)` and `.er((path, port))` take Copy fields directly. The derive no longer adds `From` impls for field tuples or `()`. `.er_with()` and `.er_val()` take a finished error from the closure, so `er_built` is gone.
+- `er_new!()` starts a tree, `.er_share()` lets several places keep it, and `.er_save()` keeps reports and backtraces. Removed `.er_trace()`.
+- Added `ErMain` and `er_assert_err!()`. `ErTest` is always available. The panic helpers are now `.er_unwrap_report()` and `.er_expect_report()`.
+- Wraps use `.into()` or `?` for construction. `.er_wrap(..)` and `.er_with_wrap(..)` add context to a Wrap with `std_error`.
+- `#[er(source)]` leaves the cause out of the parent's default output. Use `#[er(source, show_in_parent)]` to include it. Optional source aliases work, and a missing optional field in `display_alt` falls back to normal Display.
+- Removed the `lazy` and `serde` features, `Layout` and `.single_line()`. Name `er-unsync` as `er` in Cargo.toml so the derives can find it.
+
 # 0.8.1
 
 Performance fix in iterator next. 
@@ -17,7 +28,7 @@ Added `#[er(display = "...")]` and `#[er(debug = "...")]` which override each ou
 `.er_val()` now takes the same field and tuple helpers as `.er()`, like `.er_val(|v| (path, v))` (for old finished struct there's `er_built(...)`, same as `.er_with()`, but just use the new pattern like on `.er()`).
 Replace `.er_val(DeviceErr::new)` with `.er_val(|v| v)` for a single field.
 
-`.er_into()` now gets the owned report and uses those helpers too, like `.er_into(|report| report.er_report_string())`. You can build another library's error without caring about 'er' or the version.
+`.er_into()` now gets the owned report and uses those helpers too, like `.er_into(|report| report.er_report_string())`.
 
 Automatic report saving now uses ordinary field conversions. `ErFromTree` is gone, use `.er_into()` to finish the conversion.
 

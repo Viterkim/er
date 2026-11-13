@@ -2,6 +2,8 @@
 #![doc = include_str!("../README.md")]
 
 mod er_all;
+mod er_assert_err;
+mod er_bail;
 mod er_try;
 mod fields;
 mod format;
@@ -30,14 +32,34 @@ pub fn __er_try_results(input: TokenStream) -> TokenStream {
     er_try::expand(input).into()
 }
 
+#[proc_macro]
+#[doc(hidden)]
+pub fn __er_assert_err(input: TokenStream) -> TokenStream {
+    er_assert_err::expand(input.into())
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+#[proc_macro]
+#[doc(hidden)]
+pub fn __er_bail_nodes(input: TokenStream) -> TokenStream {
+    er_bail::expand(input.into())
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
 #[proc_macro_derive(Er, attributes(er))]
-/// Impls error, generates Display/Debug and constructor funcs.
-/// Structs also work with `.er(|_| path)`, so you don't have to name the err type.
+/// Implements Error, Display and Debug and generates constructors.
+/// With a struct, pass its fields to `.er(path)` and let the return type pick the error.
+/// Use `.er(|_| (path, user.name()))` to run a lookup only when the call fails.
 ///
-/// Options: `format`, `display`, `display_alt`, `debug`, `skip`, `censor`, `exact`, `default`, `no_constructors`, `wrap`, `crate`, `into_*` and `source`(you don't need this usually).
+/// Options include `format`, `display`, `display_alt`, `debug`, `skip`, `censor`, `exact`,
+/// `default`, `src_location`, `no_constructors`, `wrap` and `crate`. Use `source` to expose a cause.
+/// Add `show_in_parent` if the parent's own message should print it too.
 ///
-/// Just use `.er` on anything you see.
-/// If you need to implement a trait on your error type, you can use `wrap` [but you usually don't](https://github.com/Viterkim/er/blob/main/er/docs/macros.md#wrap).
+/// Use `.er()` on a Result, Option, error or tree to add context.
+/// [`wrap`](https://github.com/Viterkim/er/blob/main/er/docs/macros.md#wrap) gives you a type
+/// you own to implement a foreign trait on while keeping the tree. You usually don't need it.
 pub fn derive_er(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
@@ -47,20 +69,10 @@ pub fn derive_er(input: TokenStream) -> TokenStream {
     }
 }
 
-#[proc_macro_derive(ErUnsync, attributes(er))]
-/// Er's derive, exported by er-unsync as Er.
-pub fn derive_er_unsync(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-
-    match generate::expand_for(&input, "er-unsync") {
-        Ok(tokens) => tokens.into(),
-        Err(error) => error.to_compile_error().into(),
-    }
-}
-
-/// Does NOT impl error, generates Display/Debug and constructor funcs.
+/// Generates Display, Debug and constructors for data inside an error. Leaves out the Error impl.
 ///
-/// Options: `format`, `display`, `display_alt`, `debug`, `skip`, `censor`, `exact`, `default`, and `no_constructors`.
+/// Supports `format`, `display`, `display_alt`, `debug`, `skip`, `censor`, `exact`, `default`,
+/// `src_location`, `no_constructors` and `crate`.
 #[proc_macro_derive(ErFormat, attributes(er))]
 pub fn derive_er_format(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

@@ -1,21 +1,21 @@
 # Simple Error Comparison ™
 
-Same bad port for every library. First the easy version, then one with the input added so we can actually see what went wrong.
+Same bad port for every library. The parser says there's a bad digit, here's what it takes to see what we gave it.
 
-Links on this page: [thiserror](#thiserror-2020), [error-stack](#error-stack-080), [Er](#er-081), [Anyhow](#anyhow-10104), [SNAFU](#snafu-092), [rootcause](#rootcause-0130),
+Links on this page: [thiserror](#thiserror-2020), [error-stack](#error-stack-080), [Er](#er-090), [Anyhow](#anyhow-10104), [SNAFU](#snafu-092), [rootcause](#rootcause-0130),
 [exn](#exn-031), [Eros](#eros-080), [Problemo](#problemo-0013), [Nightly std::error::Report](#nightly-stderrorreport), [Others](#others)
 
 For the messy version with several errors and a public boundary, see the [tricky comparison](tricky-error-comparison.md).
 
-## The quest /task we're about to do
+## The bad port
 
-Someone entered `aint_even_a_number_cmon_man` as input and we get this:
+Someone entered `aint_even_a_number_cmon_man`. All the port parser has to say about that is
 
 ```text
 invalid digit found in string
 ```
 
-So let's call `read_port("aint_even_a_number_cmon_man")` and try adding the input with each library.
+We'll call `read_port("aint_even_a_number_cmon_man")` and see what it takes to get that string into the report.
 
 Done on Rust 1.98.1
 
@@ -168,13 +168,13 @@ You can also use 'Attachments' to add data.
 
 `{}` only prints the current context, `{:?}` prints the report.
 
-`source()` entries become text copies, those copies won't downcast to the original type but the error owning that source is still there.
+Error-stack copies the messages from `source()` into the report. Those copies won't downcast to the original type. The error that owns the source is still there, so you can get to it that way.
 
 I love the typed context and keeping the original errors. But you still need to make the error types yourself or use another derive, and `.change_context_lazy()` is a lot to type.
 
 Error-stack needs Send + Sync so no Rc/RefCell errors (`er-unsync` can).
 
-## Er (0.8.1)
+## Er (0.9.0)
 
 (hey that's this one)
 
@@ -210,7 +210,7 @@ pub struct PortErr {
 }
 
 pub fn read_port(input: &str) -> ErResult<u16, PortErr> {
-    let port: u16 = input.parse().er(|_| input)?;
+    let port: u16 = input.parse().er(input)?;
     Ok(port)
 }
 
@@ -322,7 +322,7 @@ Pretty easy, but the input is text, not a field.
 Or a small struct, SNAFU fills in the source and location:
 
 ```rust
-use snafu::Snafu;
+use snafu::{ResultExt, Snafu};
 use std::num::ParseIntError;
 
 #[derive(Debug, Snafu)]
@@ -335,7 +335,7 @@ pub struct PortErr {
 }
 
 pub fn read_port(input: &str) -> Result<u16, PortErr> {
-    input.parse().context(PortSnafu { input })
+    input.parse().context(PortErrSnafu { input })
 }
 ```
 
@@ -423,7 +423,7 @@ println!("{}", another.current_context().input);
 
 Same errors shared, not string copies. The shared report can't be mutated directly.
 
-Rootcause can do Rc/RefCell errors with Local but needs Arc.
+Rootcause's `Local` accepts errors with `Rc` or `RefCell` fields. Its reports still use `Arc` internally.
 
 ## exn (0.3.1)
 
@@ -482,10 +482,6 @@ invalid port "aint_even_a_number_cmon_man", at examples/exn_context.rs:10:37
 
 `{}` prints the top, `{:?}` prints the tree/report.
 
-`raise_all` collects several failures (has to be the same type, and makes a new Exn (the tree/report type)).
-
-Native sources get copied into another frame as text (like error-stack). Those frames can't be downcast to the original source, but the error owning it still can. [Construction](https://docs.rs/exn/0.3.1/exn/struct.Exn.html#method.new)
-
 I love exn, but i got tired of typing `.or_raise()` and `.ok_or_raise()` everywhere. Exn doesn't make the types for you either, so these examples use thiserror. That little bit of friction is part of why i made Er.
 
 ### Exn vs Er
@@ -496,30 +492,29 @@ If we also want the input from our `PortErr` in the next error:
 #[derive(Er)]
 pub struct ConfigErr(pub String);
 
-read_port(input).er_with(|err| err.input.clone())?;
+pub fn config_port(input: &str) -> ErResult<u16, ConfigErr> {
+    read_port(input).er_with(|err| err.input.clone())
+}
 ```
 
 Still keeps the old error and everything below it. A `map_err` that makes a fresh tree loses that history, which is really easy to do by accident.
 
-`.er_find::<io::Error>()` finds the actual error, including inside native `source()` chains. `.er_find_all::<PortErr>()` gets all the bad ports.
+Exn keeps the errors you give it. Say a library gives you a `ReadErr` with an `io::Error` in its native source. Exn copies the source's message into a frame. You can SEE the io error in the report, but searching the frames for its type comes up empty. [Exn construction](https://docs.rs/exn/0.3.1/exn/struct.Exn.html#method.new).
 
-Exn keeps the actual errors you give it too. BUT if a library gives you a `ReadErr` with an `io::Error` inside its `source()`, exn copies that source's message into another frame. So you can SEE the io error in the report, try to find its type in that frame and get nothing. [Exn construction](https://docs.rs/exn/0.3.1/exn/struct.Exn.html#method.new).
-
-The real io error is still there in the normal `source()` of `ReadErr`. You don't even have to know it was a `ReadErr` to find it. But that means a find function has to check both the Exn frames AND the normal `source()` chains. [This one from the Exn issue](https://github.com/fast/exn/issues/65) only checks frames, so it misses the io error. `.er_find()` checks both.
+The real `io::Error` still lives in `ReadErr::source()`. A diagnostic that needs to find it has to walk the frames AND their native sources. Er's `.er_find::<io::Error>()` does both. The [search from the Exn issue](https://github.com/fast/exn/issues/65) only walks frames.
 
 `er_all!((), [a(), b()])` lets the results have different types. It runs all of them, keeps the failures and drops the oks. Exn's `raise_all` needs every error to convert to the same `Exn<T>` type.
 
-Snapshots in Er for storing/having owned string version of the reports:
+A snapshot keeps the shape of the report after you drop the errors.
 
 ```rust
 let saved = error.er_snapshot();
-let json = serde_json::to_string(&saved).unwrap();
+drop(error);
 
-let saved: ErSnapshot = serde_json::from_str(&json).unwrap();
 println!("{}", saved.er_report());
 ```
 
-There's `.single_line()` and `for_each_line()` for printing too, mostly because logging multiline errors can be [complete shit](extra/systemd.md).
+There's `for_each_line()` for printing too, mostly because logging multiline errors can be [complete shit](extra/systemd.md).
 
 You don't HAVE to make an error type per function with Exn or Er. But i like distinct types because then the caller can't just `?` the error up unchanged.
 
@@ -627,6 +622,8 @@ The parser error is no more, F in the chat.
 You can combine error types without making another enum, which i think is cool. The tuple names the possible types, not three errors all sitting there at runtime. `map_inner` can group them into your own error type if the caller needs your cases instead.
 
 ```rust
+use eros::{IntoUnion, ReshapeUnion};
+
 type FilePortErr = (io::Error, Utf8Error, ParseIntError);
 
 fn file_port(path: &str) -> eros::Result<u16, FilePortErr> {
@@ -636,7 +633,7 @@ fn file_port(path: &str) -> eros::Result<u16, FilePortErr> {
 }
 ```
 
-The union gives the caller the original errors, not necessarily the cases you want them to handle. If you want your own typed context, you still have to make and map those types. The [tricky example](tricky-error-comparison.md#eros-080--thiserror-1) does that at the public boundary.
+The union gives the caller the original errors. To give them cases of our own, we have to make the types and map into them, like we do at the [public boundary](tricky-error-comparison.md#eros-2).
 
 ## Problemo (0.0.13)
 
@@ -674,9 +671,9 @@ println!("{error}");
 invalid port "aint_even_a_number_cmon_man": invalid digit found in string
 ```
 
-`.via(MyErr)` adds your error above the current cause without source being needed, but it returns Problem, so the signature doesn’t name your top error type, but the actual errors are kept inside.
+`.via(MyErr)` puts your error above the cause and keeps both. The signature still says `Problem`, so someone reading it can't see which error you put on top.
 
-The distinctive thing is the caller chooses how failures are dealt with, pass a ProblemReceiver to something like a parser, then choose to collect errors, stop at the first one, or process them as they arrive.
+The fun bit is `ProblemReceiver`. You can write the parser once and let whoever calls it decide whether to stop on the first error or keep the good values too.
 
 `map_via` adds a cause, `GlossError` is its string error, no custom type. [Docs](https://docs.rs/problemo/0.0.13/problemo/)
 
@@ -744,7 +741,7 @@ Leave the source in Display and it prints twice, thats twice the value for half 
 
 Report prints what you already have, it doesn't add context. Single line by default, `.pretty(true)` for this output.
 
-[Nightly Docs](https://doc.rust-lang.org/std/error/struct.Report.html)
+[Nightly Docs](https://doc.rust-lang.org/nightly/std/error/struct.Report.html)
 
 ## Others
 

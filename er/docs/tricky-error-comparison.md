@@ -1,8 +1,8 @@
-# Tricky Error Comparison - Overview
+# Tricky Error Comparison
 
-This is a made up `listen()` case to hit the pain points of different error libraries, including Er. The [simple comparison](simple-error-comparison.md) does basic context and output first.
+The [simple comparison](simple-error-comparison.md) puts the bad input in the report. This time we bind a socket and the caller has to decide what to try next.
 
-### Links - Sections
+### On this page
 
 [Printed errors](#what-gets-printed)
 
@@ -10,13 +10,13 @@ This is a made up `listen()` case to hit the pain points of different error libr
 
 [Public errors](#public-errors)
 
-### Links - Libraries
+### Full examples by library
 
 [thiserror, verbose style](#thiserror-verbose-style-2020-1)
 
 [error-stack](#error-stack-080--thiserror-1)
 
-[Er](#er-081-1)
+[Er](#er-090-1)
 
 [thiserror, lazy style](#thiserror-lazy-style-2020-1)
 
@@ -34,13 +34,11 @@ This is a made up `listen()` case to hit the pain points of different error libr
 
 `(+ thiserror)` means i used its derive to write `Display` and `Error`.
 
-## The quest / task we're about to do
+## What the caller needs
 
 We try to listen on something like `127.0.0.1:8080`. Bad IP and bad port should both become `InvalidInput`, while keeping the parser error underneath. Port `85` is sacred and not allowed.
 
-If bind fails, we grab `kind()` from the io error and look for available ports so the caller can actually use them. Then we'll see if we can find an io error nested inside a dependency's error, and whether a public caller needs our error library too.
-
-The thing i care about here is what the caller gets... can they match on bad input or address in use? can they read the ports? Short code is nice, but not if the useful bits only survive as text.
+On a failed bind, give the caller the address, the error kind and available ports. Those ports are for another attempt, so let's see which examples still have them as numbers by the time the caller gets them.
 
 Done on Rust 1.98.1
 
@@ -52,9 +50,9 @@ Now we make the cases around what our caller cares about and keep the original e
 
 We get a typed current error with the old errors in a report. The lazy context callback can't see the failed error, so bind needs `map_err`. Lookup finds the error we gave it but not its real nested io source in that copied text frame.
 
-### Er (0.8.1)
+### Er (0.9.0)
 
-We get a typed top error with the stuff our caller cares about. `.er_with()` can read the failed error and keep it underneath. Everything below `.top` needs a search. And the old error can't also sit in a typed source field on the top variant, because the tree owns it.
+At the bind, `.er_with()` borrows the I/O error just long enough to copy its kind into `ListenErr::BindFailed`. The caller can match that variant and read the available ports. The original I/O error goes below it.
 
 ### thiserror, lazy style (2.0.20)
 
@@ -89,7 +87,7 @@ Tags say what happened and attachments hold the data. The caller has to look up 
 First let's look at what actually comes out. Someone entered `127.0.0.1:nope`, and the port parser only says `invalid digit found in string`. What do we get?
 
 ```rust
-let error = listen("127.0.0.1:nope").unwrap_err();
+let Err(error) = listen("127.0.0.1:nope") else { return; };
 ```
 
 ## thiserror, lazy style
@@ -396,7 +394,7 @@ fn main() {
 
 Error-stack needs Send + Sync so no Rc/RefCell errors (`er-unsync` can).
 
-## Er (0.8.1)
+## Er (0.9.0)
 
 ```rust
 use er::*;
@@ -417,7 +415,7 @@ pub fn listen(input: &str) -> ErResult<TcpListener, ListenErr> {
     let ip = ip.parse::<Ipv4Addr>().er(|| ListenErr::invalid_input(input))?;
     let port = port.parse::<u16>().er(|| ListenErr::invalid_input(input))?;
     // If it was a struct error, it would be even shorter with like:
-    // `let ip = ip.parse::<Ipv4Addr>().er(|_| input)?;`
+    // `let ip = ip.parse::<Ipv4Addr>().er(input)?;`
 
     // Third error, our own rule that port 85 is sacred
     if port == 85 {
@@ -504,7 +502,7 @@ fn main() {
 }
 ```
 
-All the original errors are there and most of `listen` is just `?`. But we didn't make one `InvalidInput`, or keep the address and ports for the caller. The function is short; the caller has less to work with.
+All the original errors are there and most of `listen` is just `?`. But we didn't make one `InvalidInput`, or keep the address and ports for the caller. The function is short, the caller just has less to work with.
 
 ## Anyhow (1.0.104)
 
@@ -543,7 +541,7 @@ fn main() {
 }
 ```
 
-The io error is still there, so we can downcast it and read `kind()`. But the available ports are in the message, not a `Vec<u16>` the caller can use.
+The io error is still there, so we can downcast it and read `kind()`. The caller would have to parse the message to get the ports back as a `Vec<u16>`.
 
 ## SNAFU (0.9.2)
 
@@ -646,12 +644,11 @@ fn listen(input: &str) -> Result<TcpListener, Report<ListenErr>> {
     // Fourth error, we might want to match on what happened
     let address = SocketAddrV4::new(ip, port);
 
-    // We CANNOT use `context_transform`, it can read the failed io error, but it replaces it. So we get the kind but lose the original io error. Adding context keeps it, but that callback can't read it.
-    // So gotta use map_err
+    // context_transform would replace the io error. Read its kind, then add context above it.
     TcpListener::bind(address).map_err(|source| {
         let kind = source.kind();
         let available_ports = find_available_ports(address);
-        Report::new(source).context(ListenErr::BindFailed {
+        Report::new_sendsync(source).context(ListenErr::BindFailed {
             address,
             kind,
             available_ports,
@@ -678,9 +675,7 @@ fn main() {
 }
 ```
 
-Similar to error-stack.
-
-Rootcause can do Rc/RefCell errors with Local, still needs Arc though.
+Rootcause's `Local` accepts errors with `Rc` or `RefCell` fields. Its reports still use `Arc` internally.
 
 ## exn (0.3.1) (+ thiserror)
 
@@ -746,8 +741,6 @@ fn main() {
     }
 }
 ```
-
-Similar to error-stack and rootcause.
 
 Exn needs Send + Sync so no Rc/RefCell errors (`er-unsync` can).
 
@@ -958,14 +951,14 @@ use er::*;
 pub struct DeviceErr;
 
 fn inspect_device() {
-    let Err(error) = read_device().er(DeviceErr::new) else { return; };
+    let Err(error) = read_device().er(|| DeviceErr) else { return; };
 
     let original = error.er_find::<DriverErr>(); // Found in the tree
     let nested = error.er_find::<io::Error>(); // Found inside DriverErr too
 }
 ```
 
-Both are runtime lookups. `.er_find()` searches the tree and the native sources for us.
+For this diagnostic, Er will walk into `DriverErr::source()` for us. In the socket example above we already knew the caller cared about `AddrInUse`, so we put the kind on `ListenErr` at bind time.
 
 ## Eros
 
@@ -1016,7 +1009,7 @@ pub struct DeviceErr {
 }
 
 fn inspect_device() {
-    let Err(error) = read_device().context(DeviceSnafu) else { return; };
+    let Err(error) = read_device().context(DeviceErrSnafu) else { return; };
 
     let original = &error.source; // Direct field
     let nested = snafu::ChainCompat::new(&error)
@@ -1081,7 +1074,7 @@ We search the reports for `DriverErr`. For the io error inside it, we ask each r
 
 ## exn
 
-Exn keeps `DriverErr` in a frame, but has no built in search. The [find_error people issues/request](https://github.com/fast/exn/issues/65) only searches frames. Exn [copies the io source's message into another frame as text](https://docs.rs/exn/0.3.1/exn/struct.Exn.html#method.new), so that search still wouldn't find the real `io::Error` inside `DriverErr`. The real one is still there, but we'd have to follow `source()` manually.
+A frame search finds `DriverErr`. To find the actual `io::Error`, follow its `source()` too. Exn puts a text copy of that source in the next frame, which is why the [frame search from the Exn issue](https://github.com/fast/exn/issues/65) misses it.
 
 ## Problemo
 
@@ -1102,7 +1095,7 @@ Problemo's [cause lookup](https://docs.rs/problemo/0.0.13/problemo/trait.Causes.
 
 # Public errors
 
-Now someone else calls our code. Can we give them our error without making them use the same error library?
+Now someone else calls our code. They should be able to match our cases and get the address, kind and ports even when their app uses a different error library. We can hand them a report as text for the logs.
 
 Some of these errors are already plain types. Some are inside a report or tree. For Eros, Anyhow and Problemo we'll make this one:
 
@@ -1114,33 +1107,33 @@ pub enum ApiError {
     #[error("port 85 is sacred")]
     SacredPort,
     #[error("couldn't bind {address}")]
-    BindFailed { address: SocketAddrV4, available_ports: Vec<u16> },
+    BindFailed { address: SocketAddrV4, kind: io::ErrorKind, available_ports: Vec<u16> },
     #[error("{0}")]
     Other(String),
 }
 ```
 
-I chose to give the public caller the address and ports, but not the io kind. `Other` is for when a lookup doesn't find our case or its data.
+`Other` gives the caller a message when our case or its data is missing.
 
 ## Er
 
-We already made `ListenErr` with the cases and fields we want to give them, so we keep that and save the report next to it:
+`ListenErr` already has the cases and data. Give the app that error with the report next to it.
 
 ```rust
-#[derive(Er)]
-#[er(format = "listen failed", display_alt = "{report}")]
-pub struct ListenError {
-    pub kind: ListenErr,
-    pub report: String,
+pub fn public_error_example(input: &str) -> Result<TcpListener, (ListenErr, String)> {
+    listen(input).er_split()
 }
+```
 
-pub fn public_error_example(input: &str) -> Result<TcpListener, ListenError> {
-    listen(input).er_into(|report| {
-        let text = report.er_report_string();
-        eprintln!("{text}");
+Here's the app using the same ports to offer another try. It can log the whole report even without Er.
 
-        (report.tree.top, text)
-    })
+```rust
+if let Err((error, report)) = public_error_example(input) {
+    eprintln!("{report}");
+
+    if let ListenErr::BindFailed { kind: io::ErrorKind::AddrInUse, available_ports, .. } = error {
+        show_available_ports(&available_ports);
+    }
 }
 ```
 
@@ -1161,6 +1154,7 @@ pub fn public_error_example(input: &str) -> Result<TcpListener, ApiError> {
             E4::D(source) => match context {
                 Some(context) => ApiError::BindFailed {
                     address: context.address,
+                    kind: source.kind(),
                     available_ports: context.available_ports.clone(),
                 },
                 None => ApiError::Other(source.to_string()),
@@ -1180,7 +1174,7 @@ This `ListenErr` already has the cases and fields we chose for the caller. They 
 
 ## Anyhow
 
-The context is text now, so there aren't typed stuff to get out, can still give the caller a plain error.
+This version put the available ports in a message. At the boundary we can give the caller that message.
 
 ```rust
 pub fn public_error_example(input: &str) -> Result<TcpListener, ApiError> {
@@ -1188,7 +1182,7 @@ pub fn public_error_example(input: &str) -> Result<TcpListener, ApiError> {
 }
 ```
 
-The parser and io errors are still in there and can be downcast, but sacred port and the available ports only exist in our messages. If the public caller needs those as real variants/data, we gotta make that typed before throwing it into Anyhow.
+Before this conversion we can downcast to the parser and io errors. To get the ports back as numbers too, we'd have to put a struct in the Anyhow context when we bind.
 
 ## SNAFU
 
@@ -1196,37 +1190,34 @@ The parser and io errors are still in there and can be downcast, but sacred port
 
 ## error-stack
 
-Our context already has the fields we want. For this public version, change the earlier derive to `#[derive(Debug, Clone, thiserror::Error)]`, then clone the error out of the report.
+Our context already has the fields we want. Add `Clone` to the earlier derive so we can get that context out next to the formatted report.
 
 ```rust
-pub type ListenError = ListenErr;
-
-pub fn public_error_example(input: &str) -> Result<TcpListener, ListenError> {
-    listen(input).map_err(|report| report.current_context().clone())
+pub fn public_error_example(input: &str) -> Result<TcpListener, (ListenErr, String)> {
+    listen(input).map_err(|report| (report.current_context().clone(), format!("{report:?}")))
 }
 ```
 
 ## rootcause
 
-Our context already has the fields we want. Rootcause lets us move it out.
+Rootcause lets us move the error out after we've printed the report to a string.
 
 ```rust
-pub type ListenError = ListenErr;
-
-pub fn public_error_example(input: &str) -> Result<TcpListener, ListenError> {
-    listen(input).map_err(|report| report.into_current_context())
+pub fn public_error_example(input: &str) -> Result<TcpListener, (ListenErr, String)> {
+    listen(input).map_err(|report| {
+        let text = report.to_string();
+        (report.into_current_context(), text)
+    })
 }
 ```
 
 ## exn
 
-Like error-stack, change the earlier derive to `#[derive(Debug, Clone, thiserror::Error)]` for this public version, then clone it out.
+Add `Clone` to `ListenErr` here too. Dereferencing the Exn gives us the top error to clone.
 
 ```rust
-pub type ListenError = ListenErr;
-
-pub fn public_error_example(input: &str) -> Result<TcpListener, ListenError> {
-    listen(input).map_err(|err| (*err).clone())
+pub fn public_error_example(input: &str) -> Result<TcpListener, (ListenErr, String)> {
+    listen(input).map_err(|error| ((*error).clone(), format!("{error:?}")))
 }
 ```
 
@@ -1247,6 +1238,7 @@ pub fn public_error_example(input: &str) -> Result<TcpListener, ApiError> {
             if let Some(details) = problem.attachment_of_type::<BindDetails>() {
                 return ApiError::BindFailed {
                     address: details.address,
+                    kind: details.kind,
                     available_ports: details.available_ports.clone(),
                 };
             }

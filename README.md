@@ -6,14 +6,14 @@ Design your error types around what your caller cares about, not what combinatio
 
 ```toml
 [dependencies]
-er = "0.8"
+er = "0.9"
 ```
 
 [Full examples / usage patterns](er/docs/examples.md)
 
 ## Simple example
 
-Use `.er()` on any result/error/option/tree, even on different types. A tree/report is built and the original typed error is below (file names and line numbers are also added).
+Use `.er()` on results, errors, options and trees, even on different types. Here a failed read puts `FileErr` on top and keeps the original I/O error underneath, with the file and line where you added context.
 
 ```rust
 use er::*;
@@ -27,7 +27,7 @@ pub struct FileErr {
 
 pub fn read_file(path: &Path) -> ErResult<String, FileErr> {
     // Extra context with 'path' + automatic source location
-    read_to_string(path).er(|_| path)
+    read_to_string(path).er(path)
 }
 ```
 
@@ -44,7 +44,7 @@ FileErr { path: "/file/path/missing.txt" } @ src/main.rs:11:26
 
 ```rust
 // er
-let port = input.parse::<u16>().er(|_| input)?;
+let port = input.parse::<u16>().er(input)?;
 
 // thiserror (typed but no tree/report)
 let port = input.parse::<u16>().map_err(|source| PortErr { input: input.into(), source })?;
@@ -179,8 +179,8 @@ pub struct ConfigErr {
 
 // variant 1: Exit on the first error
 pub fn check_config_exit_early(path: &Path, port: &str, enabled: &str) -> ErResult<(), ConfigErr> {
-    // Closures only run on failure
-    let e = |_| (port, enabled);
+    // Nothing gets built unless it fails
+    let e = (port, enabled);
 
     read_config_file(path).er(e)?;
     port.parse::<u16>().er(e)?;
@@ -191,7 +191,7 @@ pub fn check_config_exit_early(path: &Path, port: &str, enabled: &str) -> ErResu
 
 // variant 2: Aggregate/collect errors, runs all and errors if any failed
 pub fn check_config_collect(path: &Path, port: &str, enabled: &str) -> ErResult<(), ConfigErr> {
-    let e = |_| (port, enabled);
+    let e = (port, enabled);
 
     // Different error types are fine, adds the sub errors to the parent if anything fails
     er_all!(e, [
@@ -213,23 +213,21 @@ ConfigErr { port: "nope", enabled: "nah" } @ src/main.rs:46:5
 
 ## Using 'er'
 
-Check out the full [examples / patterns docs](er/docs/examples.md) which show most patterns you can use (but below are some important ideas).
+The [examples](er/docs/examples.md) go from wrapping one error to collecting a whole batch. The mistakes we keep seeing are in [good and bad](er/docs/good-and-bad.md).
 
 ### Helpers / constructors
 
-Structs: Use `.er(())` for empty structs, `.er(|_| path)` for 1 field structs, and `.er(|_| (port, enabled))` for 2 or more fields.
+Give `.er()` the fields in order. Use `.er(())` for an empty struct, `.er(path)` for one field or `.er((port, enabled))` for two. For an enum, choose the variant with `.er(|| ModeErr::unknown(mode))`.
 
-Enums: Need a variant specified like `.er(|| ModeErr::variant_name(arg1))`.
+Pass values like a path reference straight in when they implement `Copy + Debug`. Er converts the reference to your field type when the call fails. Pass owned fields in a closure. Put a lookup like `user.name()` there too, `.er(|_| (path, user.name()))`, so it only runs when the call fails.
 
-Just use the helpers then the type is inferred, but you can also manually write out `.er(|| MyTypeErr { a, b })`. The helpers take care of stuff like not having to call `.into()` or type the error name, which is why you should just do `.er(())?` instead of `.er(|| MyGoodError)?`.
+Your function's return type already says which struct to build, so `.er(())?` is enough. You can still write out `.er(|| MyTypeErr { a, b })` when you want the named fields.
 
 ### Making errors
 
 Most functions that deal with errors should have their own error type, directly above the function. That forces you to add what this function was doing with `.er()`, otherwise you can just `?` the same error all the way up.
 
 ```rust
-// Put your error type directly above your function.
-// You don't have to do '#[er(format)]' and you don't have to 'hide' what's going on. In many cases, errors are for internal use.
 #[derive(Er)]
 pub struct MyFuncErr;
 
@@ -238,67 +236,68 @@ pub fn my_func() -> ErResult<(), MyFuncErr> {
     // more real code
 }
 
-// Context which is relevant in your logs / to your consumer
 #[derive(Er)]
 pub struct MyOtherErr {
-    pub path: PathBuf, // What file didn't exist
-    // Include messages in the type itself, don't use `#[er(format)]` for that
-    pub msg: &'static str, // Bonus: even if it was an Option<>, Some(v)/.into() wouldn't be needed
+    pub path: PathBuf,
+    pub msg: &'static str,
 }
 
 pub fn other_func(path: &str) -> ErResult<(), MyOtherErr> {
-    // Usually pass values directly, no .as_ref()/.as_str(), and Option<T> takes T without Some().
     if path.is_empty() {
-        er_bail!(|_| (path, "no file given"));
+        er_bail!((path, "no file given"));
     }
-    my_func().er(|_| (path, "some cool msg"))
+    my_func().er((path, "some cool msg"))
 }
 ```
 
 Your errors should not be giant pyramids. Give your caller the cases and data they can actually use, the original errors are already in the tree below.
 
-Put messages on the type alongside the other data. The derive already prints those fields, you don't need `#[er(format)]` just to explain what happened.
+The derive already prints the fields. For messages you want in the report, put them on the type like any other data.
 
-Think about what your caller wants to 'match on', or what is relevant for the flow/logic of your code. Don't make state that can't exist and instead make variants with exactly why/what happened so the consumer can print it or react on it.
-
-You can carry data up instead of runtime searching(`.er_find()`) by using `.er_with(|err|)` to inspect the previous error. You can also use `ErShared<DataType>` on your fields in your error types to avoid cloning the value.
+If your caller can retry a busy device, give them a `Busy` variant to match on. Pick that variant one layer up with `.er_with(|err| ..)`. Making them dig through the tree with `.er_find()` means their retry quietly stops working the day you change the error underneath. Use `ErShared<T>` when several layers need to keep the same data.
 
 ### Don't use .map_err()
 
-Do NOT use `map_err` with Er. It's easy to accidentally nuke the tree/report, and there's `.er_into()` for the final boundary.
+Do NOT use `map_err` with Er. It's easy to accidentally nuke the tree/report. At your library boundary, `.er_split()` hands your caller both the typed error and its report.
 
-If the caller just wants text you can use `.er_report_string()` (for public boundaries / actual errors, look at the `Public errors` section in `examples.md`).
+### Printing
 
-### Picking between `Report` and `Top` (or unwrapping)
+Match on the Result. In the `Err(error)` arm, `error.top` is yours to match on and `error.er_report()` gives you the whole report to print. Calling `.er_report()` on the `ErResult` gives you `Result<T, String>`, so do that when text is all you came for. `.er_unwrap_report()` and `.er_expect_report("message")` panic with the report.
 
-To avoid Debug/Display implicitly meaning either a report or the top error, you need to specify which you want with `.er_report()` or `.er_top()`. But... if you really miss unwrapping there's `.unwrap_report()` or `.expect_report("message")`.
-
-For main you can write: `pub fn main() -> Result<(), ErReport<AppErr>>`, and for tests you can use `pub fn test_name() -> ErTest` and `?` errors without `.er()`.
+Return `ErMain` from main or `ErTest` from a test and a plain `?` prints the report on failure. Use `.er_test()?` on a library's `(Error, String)` result to keep its error and report.
 
 ### Give your public consumer a non 'er' error
 
-When you (as a library) want to give your consumer an error, don't give them an `ErReport` or an `ErTree`, give them a boring normal error (with `#[derive(Er)]`).
+Say your library opens a file. Your caller can do something about `OpenError::Denied`. When they send you a bug report you probably want the path, the OS error and where it happened too.
 
-Use `.er_into(|report| ...)` to construct your public error, you can manually print the report there or mark a report field with `#[er(into_report_string)]` and return `.er_into(|report| report)` to have it saved for you. `#[er(default)]` can auto fill a field, the [public error example](er/docs/examples.md#public-error) shows both ways, keeping ordinary Display and Debug small and the full report available through `{err:#}`.
+```rust
+pub fn open(path: &Path) -> Result<File, (OpenError, String)> {
+    open_file(path).er_split()
+}
+```
 
-You should still print / show your error in your applications of course, and I'll even argue that as a library, if you at least give a string report to your consumer, you're gonna have great bug reports from users and a much easier time fixing bugs. Printing a report is often times more valuable than a friendly message you made up. Don't destroy your type. Include the message in the type itself next to the other data instead.
+They can match on your enum and print the String whatever Er version either of you uses, even if they have no Er dependency. With Er 0.9 on their side, their usual `.er()` keeps your error and saves your report underneath. Keep the fields on that public error ordinary too. A public `ErShared<Device>` field still puts Er in their API.
+
+An HTTP service can use `.er_split_with(...)` to log the report where it runs and send just the public error to the client. [Public error examples](er/docs/examples.md#public-error).
 
 ## Philosophy
 
-The distinction should not be app/lib error handling, it should be public consumer/internal consumer based, and `er` does both.
+Use the tree anywhere the next piece of code is yours, in a library or in an app. At the public API you hand over the cases and data somebody else can use.
 
 Worse errors/types lead to worse logic/flow because error states get grouped into impossible cases. If a function cannot return a 'serde error', why does it return a type that says it can? Ergonomics are important to make this easier.
 
 The original inner error should not dictate your error type design or be given to your final consumer directly.
 
-It's not the user's fault when mistakes happen. There should be convenience and helpers to avoid footguns if possible (`.er_with(|err|)`, `.er_val()` for non errors, `.er_find::<SomeErr>()`, `ErTree` not having `Debug` / `Display`).
+A tree has no `Debug` or `Display` on purpose. It'd be way too easy to turn a typed error into text halfway up the stack.
+
+[A few odd things about Er, from the public tuple to the extra `.er()` before `?`](er/docs/special-design.md)
 
 ## Unsync / Single threaded platform
 
-If you've got a platform that uses Rc/RefCell you can use the `er-unsync` version of the crate.
+Use `er-unsync` to keep `Rc` in sub errors or to share trees on targets without pointer atomics. Keep the dependency name `er` so the derives can find it.
 
 ```toml
-er = { package = "er-unsync", version = "0.8" }
+er = { package = "er-unsync", version = "0.9" }
 ```
 
 ## Docs
@@ -307,7 +306,7 @@ er = { package = "er-unsync", version = "0.8" }
 
 [Examples / Patterns](er/docs/examples.md)
 
-[What pattern should I use?](er/docs/cases.md)
+[Good and bad](er/docs/good-and-bad.md)
 
 [Changelog](er/docs/changelog.md)
 
@@ -319,7 +318,7 @@ er = { package = "er-unsync", version = "0.8" }
 
 ### External links
 
-[Docs.rs](https://docs.rs/er/0.8.1/er/)
+[Docs.rs](https://docs.rs/er/0.9.0/er/)
 
 [Crates.io for the lib](https://crates.io/crates/er)
 

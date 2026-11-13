@@ -2,9 +2,10 @@ pub mod impls;
 
 use super::{
     Input,
-    attrs::{FieldMode, IntoField},
+    attrs::FieldMode,
     format::{FormatBody, FormatTrait, Output},
 };
+use crate::fields::option_inner;
 use crate::names::plain;
 use quote::ToTokens as _;
 use std::collections::HashSet;
@@ -61,30 +62,38 @@ pub fn format_generics(input: &Input<'_>) -> Generics {
                 continue;
             }
 
-            match case.formats.get(output) {
-                Some(FormatBody::Template(format)) => {
-                    for (argument, requirement) in &format.requirements {
-                        let field = &case.fields[argument.field];
-                        if let Some(ty) = member_type(&field.item.ty, &argument.members) {
-                            requirements.push((field, ty, *requirement));
-                        }
+            let tried = case.formats.tried(output);
+
+            for body in &tried.formats {
+                let FormatBody::Template(format) = body else {
+                    continue;
+                };
+
+                for (argument, requirement) in &format.requirements {
+                    let field = &case.fields[argument.field];
+                    let ty = match option_inner(&field.item.ty) {
+                        Some(inner) if argument.optional => inner,
+                        Some(_) | None => &field.item.ty,
+                    };
+
+                    if let Some(ty) = member_type(ty, &argument.members) {
+                        requirements.push((field, ty, *requirement));
                     }
                 }
-                Some(FormatBody::Function(_)) => (),
-                None => {
-                    requirements.extend(
-                        case.fields
-                            .iter()
-                            .map(|field| (field, &field.item.ty, FormatTrait::Debug)),
-                    );
-                }
+            }
+
+            if tried.default {
+                requirements.extend(
+                    case.fields
+                        .iter()
+                        .filter(|field| field.printed_by_default())
+                        .map(|field| (field, &field.item.ty, FormatTrait::Debug)),
+                );
             }
         }
 
         for (field, ty, format) in requirements {
-            if field.options.mode != FieldMode::Normal
-                || field.options.into == Some(IntoField::Snapshot)
-            {
+            if field.options.mode != FieldMode::Normal {
                 continue;
             }
 

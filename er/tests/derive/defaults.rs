@@ -82,7 +82,6 @@ fn fields() {
         empty.map(|result| result.unwrap_err().top.label),
         ["fallback"; 4]
     );
-    let _: Result<(), AllDefault> = Err::<(), _>(ErTree::from(fmt::Error)).er_into(|_| ());
 
     type Pair = ((u8, u8),);
 
@@ -103,7 +102,7 @@ fn fields() {
         85
     }
 
-    #[derive(ErFormat)]
+    #[derive(Er)]
     #[er(format = "{name}")]
     struct Data {
         name: String,
@@ -111,11 +110,11 @@ fn fields() {
         callback: fn() -> u8,
     }
 
-    fn data() -> Result<(), Data> {
-        value(Err("callback")).er_into(|report| report.er_top_string())
+    fn data() -> ErResult<(), Data> {
+        Err("callback").er_val(|v| v)
     }
 
-    assert_eq!((data().unwrap_err().callback)(), 85);
+    assert_eq!((data().unwrap_err().top.callback)(), 85);
 
     #[derive(Er)]
     struct Optional {
@@ -140,63 +139,13 @@ fn unit_field() {
     }
 
     fn omitted() -> ErResult<(), Optional> {
-        Err(7_u8).er_val::<Optional, ErDefaults>(|_| ())
+        Err(7_u8).er_val::<Optional, er::internal::ErDefaults>(|_| ())
     }
 
     fn supplied() -> ErResult<(), Optional> {
-        Err(7_u8).er_val::<Optional, ErFields>(|_| ())
+        Err(7_u8).er_val::<Optional, er::internal::ErFields>(|_| ())
     }
 
     assert!(omitted().unwrap_err().top.value.is_none());
     assert_eq!(supplied().unwrap_err().top.value, Some(()));
-
-    let empty: ErResult<(), Optional> = Err(fmt::Error).er(());
-    assert!(empty.unwrap_err().top.value.is_none());
-}
-
-#[derive(Er)]
-#[er(format = "{diagnostics}")]
-struct Saved<T> {
-    #[er(into_report_string)]
-    diagnostics: String,
-    #[er(default)]
-    data: T,
-}
-
-#[derive(Er)]
-#[er(format = "{diagnostics}")]
-struct Request<T> {
-    #[er(into_report_string)]
-    diagnostics: String,
-    request: String,
-    #[er(default)]
-    data: T,
-}
-
-#[test]
-fn reports() {
-    fn input() -> ErResult<(), Context<()>> {
-        Err(fmt::Error).er(|_| "settings")
-    }
-
-    fn saved() -> Result<(), Saved<()>> {
-        input().er_into(|report| report)
-    }
-
-    fn supplied() -> Result<(), Saved<Payload>> {
-        input().er_into(|report| (report, Payload))
-    }
-
-    fn request() -> Result<(), Request<()>> {
-        input().er_into(|report| (report, "request"))
-    }
-
-    let err = saved().unwrap_err();
-    assert!(err.diagnostics.contains("settings"));
-    let () = err.data;
-    let Payload = supplied().unwrap_err().data;
-
-    let err = request().unwrap_err();
-    assert_eq!(err.request, "request");
-    let () = err.data;
 }

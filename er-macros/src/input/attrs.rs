@@ -9,16 +9,15 @@ pub enum FieldMode {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum IntoField {
-    Top,
-    ReportString { single_line: bool },
-    Snapshot,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SourceMode {
     Normal,
     Deref,
+}
+
+#[derive(Clone, Copy)]
+pub struct SourceOptions {
+    pub mode: SourceMode,
+    pub show_in_parent: bool,
 }
 
 pub enum FieldDefault {
@@ -29,8 +28,7 @@ pub enum FieldDefault {
 pub struct FieldOptions {
     pub mode: FieldMode,
     pub exact: bool,
-    pub source: Option<SourceMode>,
-    pub into: Option<IntoField>,
+    pub source: Option<SourceOptions>,
     pub default: Option<FieldDefault>,
     pub src_location: bool,
 }
@@ -62,9 +60,8 @@ pub struct WrapOptions {
     pub std_error: bool,
 }
 
-#[derive(Default)]
 pub struct ContainerOptions {
-    pub er_path: Option<Path>,
+    pub er_path: Path,
     pub wrap: Option<WrapOptions>,
     pub format: FormatOptions,
     pub no_constructors: bool,
@@ -83,7 +80,7 @@ pub fn require_list(attribute: &Attribute, expected: &str) -> Result<()> {
     match &attribute.meta {
         Meta::List(list) if list.tokens.is_empty() => Err(Error::new_spanned(
             attribute,
-            format!("empty `#[er(...)]`; {expected}"),
+            format!("`#[er()]` is empty, {expected}"),
         )),
         Meta::List(_) => Ok(()),
         _ => Err(Error::new_spanned(attribute, expected.to_string())),
@@ -95,20 +92,23 @@ pub fn container(attributes: &[Attribute]) -> Result<ContainerOptions> {
         `#[er(display_alt = \"...\")]`, `#[er(debug = \"...\")]`, `#[er(crate = ...)]`, \
         `#[er(wrap)]`, or `#[er(no_constructors)]`";
 
-    let mut options = ContainerOptions::default();
+    let mut er_path = None;
+    let mut wrap_options = None;
+    let mut formats = FormatOptions::default();
+    let mut no_constructors = false;
 
     for attribute in er_attributes(attributes) {
         require_list(attribute, EXPECTED)?;
 
         attribute.parse_nested_meta(|meta| {
             if meta.path.is_ident("no_constructors") {
-                if options.no_constructors {
+                if no_constructors {
                     return Err(meta.error("`no_constructors` is set more than once"));
                 }
                 if !meta.input.is_empty() && !meta.input.peek(syn::token::Comma) {
                     return Err(meta.error("`no_constructors` takes no value"));
                 }
-                options.no_constructors = true;
+                no_constructors = true;
                 return Ok(());
             }
 
@@ -117,28 +117,32 @@ pub fn container(attributes: &[Attribute]) -> Result<ContainerOptions> {
                 || meta.path.is_ident("display_alt")
                 || meta.path.is_ident("debug")
             {
-                format(&meta, &mut options.format)?;
+                format(&meta, &mut formats)?;
                 return Ok(());
             }
 
             if meta.path.is_ident("crate") {
-                if options.er_path.is_some() {
+                if er_path.is_some() {
                     return Err(meta.error("`crate` is set more than once"));
                 }
-                options.er_path = Some(meta.value()?.parse()?);
+                er_path = Some(meta.value()?.parse()?);
                 return Ok(());
             }
 
             if meta.path.is_ident("wrap") {
-                if options.wrap.is_some() {
+                if wrap_options.is_some() {
                     return Err(meta.error("`wrap` is set more than once"));
                 }
-                options.wrap = Some(wrap(&meta)?);
+                wrap_options = Some(wrap(&meta)?);
                 return Ok(());
             }
 
             if meta.path.is_ident("default") || meta.path.is_ident("src_location") {
                 return Err(meta.error("put `default` or `src_location` on a field"));
+            }
+
+            if meta.path.is_ident("show_in_parent") {
+                return Err(meta.error("put `show_in_parent` on a source field"));
             }
 
             if meta.path.is_ident("skip")
@@ -149,28 +153,27 @@ pub fn container(attributes: &[Attribute]) -> Result<ContainerOptions> {
                 return Err(meta.error("put `skip`, `censor`, `exact`, or `source` on a field"));
             }
 
-            if meta.path.is_ident("into_top")
-                || meta.path.is_ident("into_report_string")
-                || meta.path.is_ident("into_snapshot")
-            {
-                return Err(meta
-                    .error("put `into_top`, `into_report_string`, or `into_snapshot` on a field"));
+            if meta.path.is_ident("into_report_string") {
+                return Err(meta.error("`into_report_string` is gone, hand the report out next to your error, `Result<T, (MyError, String)>` from `.er_split()`"));
             }
 
             Err(meta.error(EXPECTED))
         })?;
     }
 
-    Ok(options)
+    Ok(ContainerOptions {
+        er_path: er_path.unwrap_or_else(|| syn::parse_quote!(::er)),
+        wrap: wrap_options,
+        format: formats,
+        no_constructors,
+    })
 }
 
 pub fn wrap(meta: &syn::meta::ParseNestedMeta<'_>) -> Result<WrapOptions> {
     let mut options = WrapOptions::default();
 
     if meta.input.peek(syn::token::Eq) {
-        return Err(
-            meta.error("`wrap` takes no value; use `wrap(name = ...)` or `wrap(output = ...)`")
-        );
+        return Err(meta.error("write `wrap`, `wrap(name = MyName)` or `wrap(output = report)`"));
     }
 
     if !meta.input.peek(syn::token::Paren) {
@@ -221,7 +224,9 @@ pub fn wrap(meta: &syn::meta::ParseNestedMeta<'_>) -> Result<WrapOptions> {
     })?;
 
     if options.std_error && options.output.is_none() {
-        return Err(meta.error("`std_error` requires `output = top` or `output = report`"));
+        return Err(meta.error(
+            "`std_error` needs to know what to print, add `output = report` or `output = top`",
+        ));
     }
 
     Ok(options)
@@ -251,7 +256,7 @@ pub fn format_value(input: syn::parse::ParseStream<'_>) -> Result<FormatValue> {
         let path = input.parse().map_err(|_| {
             Error::new(
                 input.span(),
-                "expected a format string or formatting function path",
+                "give it a format string like `\"couldn't open {path}\"` or a function like `Self::summary`",
             )
         })?;
         Ok(FormatValue::Function(path))
@@ -281,13 +286,13 @@ pub fn variant(attributes: &[Attribute]) -> Result<FormatOptions> {
 }
 
 pub fn field(attributes: &[Attribute]) -> Result<FieldOptions> {
-    const EXPECTED: &str = "expected a field option: `skip`, `censor`, `exact`, `source`, \
-        `into_top`, `into_report_string`, `into_snapshot`, `default`, or `src_location`";
+    const EXPECTED: &str = "expected a field option: `skip`, `censor`, `exact`, `source`, `show_in_parent`, \
+        `default`, or `src_location`";
 
     let mut mode = FieldMode::Normal;
     let mut exact = false;
     let mut source = None;
-    let mut into = None;
+    let mut show_in_parent = None;
     let mut default = None;
     let mut src_location = false;
 
@@ -295,59 +300,20 @@ pub fn field(attributes: &[Attribute]) -> Result<FieldOptions> {
         require_list(attribute, EXPECTED)?;
 
         attribute.parse_nested_meta(|meta| {
-            let conversion = if meta.path.is_ident("into_top") {
-                Some(IntoField::Top)
-            } else if meta.path.is_ident("into_report_string") {
-                let mut single_line = false;
-                if meta.input.peek(syn::token::Paren) {
-                    meta.parse_nested_meta(|inner| {
-                        if !inner.path.is_ident("single_line") {
-                            return Err(inner.error("expected `single_line`"));
-                        }
-                        if single_line {
-                            return Err(inner.error("`single_line` is set more than once"));
-                        }
-                        if !inner.input.is_empty() && !inner.input.peek(syn::token::Comma) {
-                            return Err(inner.error("`single_line` takes no value"));
-                        }
+            if meta.path.is_ident("into_top") || meta.path.is_ident("into_snapshot") {
+                return Err(meta.error("`into_top` and `into_snapshot` are gone, hand the report out next to your error, `Result<T, (MyError, String)>` from `.er_split()`"));
+            }
 
-                        single_line = true;
-                        Ok(())
-                    })?;
-                    if !single_line {
-                        return Err(meta.error("expected `into_report_string(single_line)`"));
-                    }
-                }
-
-                Some(IntoField::ReportString { single_line })
-            } else if meta.path.is_ident("into_snapshot") {
-                Some(IntoField::Snapshot)
-            } else {
-                None
-            };
-            if let Some(conversion) = conversion {
-                if src_location {
-                    return Err(meta.error("`src_location` captures the caller; choose another field for `into_*`"));
-                }
-                if default.is_some() {
-                    return Err(meta.error("an `into_*` field is filled from the report; put `default` on an ordinary field"));
-                }
-                if into.is_some() {
-                    return Err(meta.error("choose one `into_*` option per field"));
-                }
-                if !meta.input.is_empty() && !meta.input.peek(syn::token::Comma) {
-                    return Err(meta.error("this option takes no value"));
-                }
-                into = Some(conversion);
-                return Ok(());
+            if meta.path.is_ident("into_report_string") {
+                return Err(meta.error("`into_report_string` is gone, hand the report out next to your error, `Result<T, (MyError, String)>` from `.er_split()`"));
             }
 
             if meta.path.is_ident("src_location") {
                 if src_location {
                     return Err(meta.error("`src_location` is set more than once"));
                 }
-                if into.is_some() || default.is_some() {
-                    return Err(meta.error("`src_location` captures the caller; it cannot also use `default` or `into_*`"));
+                if default.is_some() {
+                    return Err(meta.error("`src_location` fills itself in where the error is made, it can't have a `default` too"));
                 }
                 if !meta.input.is_empty() && !meta.input.peek(syn::token::Comma) {
                     return Err(meta.error("`src_location` takes no value"));
@@ -358,10 +324,7 @@ pub fn field(attributes: &[Attribute]) -> Result<FieldOptions> {
 
             if meta.path.is_ident("default") {
                 if src_location {
-                    return Err(meta.error("`src_location` captures the caller; it cannot also use `default`"));
-                }
-                if into.is_some() {
-                    return Err(meta.error("an `into_*` field is filled from the report; put `default` on an ordinary field"));
+                    return Err(meta.error("`src_location` fills itself in where the error is made, it can't have a `default` too"));
                 }
                 if default.is_some() {
                     return Err(meta.error("`default` is set more than once"));
@@ -407,6 +370,17 @@ pub fn field(attributes: &[Attribute]) -> Result<FieldOptions> {
                 return Ok(());
             }
 
+            if meta.path.is_ident("show_in_parent") {
+                if show_in_parent.is_some() {
+                    return Err(meta.error("`show_in_parent` is set more than once"));
+                }
+                if !meta.input.is_empty() && !meta.input.peek(syn::token::Comma) {
+                    return Err(meta.error("`show_in_parent` takes no value"));
+                }
+                show_in_parent = Some(meta.path.clone());
+                return Ok(());
+            }
+
             if meta.path.is_ident("exact") {
                 if exact {
                     return Err(meta.error("`exact` is set more than once"));
@@ -443,7 +417,7 @@ pub fn field(attributes: &[Attribute]) -> Result<FieldOptions> {
             };
 
             if mode != FieldMode::Normal {
-                return Err(meta.error("choose only one of `skip` or `censor`"));
+                return Err(meta.error("pick `skip` or `censor`, not both"));
             }
 
             if !meta.input.is_empty() && !meta.input.peek(syn::token::Comma) {
@@ -455,11 +429,37 @@ pub fn field(attributes: &[Attribute]) -> Result<FieldOptions> {
         })?;
     }
 
+    if let Some(flag) = &show_in_parent {
+        if source.is_none() {
+            return Err(Error::new_spanned(
+                flag,
+                "`show_in_parent` needs `source` on the same field",
+            ));
+        }
+        if mode == FieldMode::Skip {
+            return Err(Error::new_spanned(
+                flag,
+                "pick `show_in_parent` or `skip`, not both",
+            ));
+        }
+    }
+
+    if src_location && exact {
+        return Err(Error::new_spanned(
+            attributes.iter().find(|attr| attr.path().is_ident("er")),
+            "`src_location` isn't an argument, so there's nothing to make `exact`",
+        ));
+    }
+
+    let source = source.map(|mode| SourceOptions {
+        mode,
+        show_in_parent: show_in_parent.is_some(),
+    });
+
     Ok(FieldOptions {
         mode,
         exact,
         source,
-        into,
         default,
         src_location,
     })

@@ -10,10 +10,6 @@ pub struct Data {
 #[er(wrap)]
 pub struct Wrapped;
 
-#[derive(ErFormat)]
-#[er(crate = ::er)]
-pub struct RuntimePath;
-
 #[derive(Er)]
 #[er(no_constructors)]
 pub enum NoVariants {

@@ -15,21 +15,16 @@ categories = ["rust-patterns", "no-std"]
 doctest = false
 
 [features]
-default = ["src_locations", "macros", "test"]
+default = ["src_locations", "macros"]
 src_locations = []
 stack_traces = []
 small_path_src = []
 macros = ["dep:er-macros"]
-lazy = []
-test = []
-serde = ["dep:serde"]
 
 [dependencies]
-er-macros = { version = "=0.8.1", path = "../er-macros", optional = true }
-serde = { workspace = true, optional = true }
+er-macros = { version = "=0.9.0", path = "../er-macros", optional = true }
 
 [dev-dependencies]
-serde_json.workspace = true
 
 [lints]
 workspace = true

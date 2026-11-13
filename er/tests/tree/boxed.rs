@@ -32,9 +32,7 @@ pub fn ingestion() {
 
     let boxed: BoxError = Box::new(io::Error::from(io::ErrorKind::NotFound));
     let tree = boxed.er_with::<io::Error, _>(|err| {
-        er_built(io::Error::from(
-            err.downcast_ref::<io::Error>().unwrap().kind(),
-        ))
+        io::Error::from(err.downcast_ref::<io::Error>().unwrap().kind())
     });
     assert_eq!(tree.top.kind(), io::ErrorKind::NotFound);
 
@@ -45,6 +43,77 @@ pub fn ingestion() {
     let result: Result<(), &'static str> = Err("static message");
     let tree = result.er(StageErr::new).unwrap_err();
     assert!(tree.er_report().to_string().contains("static message"));
+}
+
+#[test]
+pub fn with_report() {
+    let boxed: BoxError = Box::new(io::Error::from(io::ErrorKind::PermissionDenied));
+    let result: Result<(), _> = Err((boxed, String::from("driver report")));
+    let tree = result.er(StageErr::new).unwrap_err();
+
+    assert!(tree.er_contains::<io::Error>());
+    assert!(tree.er_report().contains("driver report"));
+}
+
+#[test]
+pub fn saved_plain_error() {
+    let error = io::Error::from(io::ErrorKind::PermissionDenied);
+    let (error, report) = Err::<(), _>(error)
+        .er_save("request", |_| "opening preferences")
+        .er_split()
+        .unwrap_err();
+
+    assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+    assert!(report.contains("opening preferences"));
+}
+
+#[test]
+pub fn pair_presentation() {
+    fn failure() -> Result<(), (BoxError, String)> {
+        Err((
+            Box::new(DriverErr(io::Error::other("no access"))),
+            "driver report".into(),
+        ))
+    }
+
+    assert_eq!(failure().er_report().unwrap_err(), "driver report");
+
+    let saved = failure()
+        .er_save("request", |_| "opening preferences")
+        .er_save("request", |_| "opening preferences")
+        .er_save("retry", |_| "could not retry");
+
+    let borrowed = saved.as_ref().er_report().unwrap_err();
+    let (cause, report) = saved.er_split().unwrap_err();
+    assert!(cause.is::<DriverErr>());
+    assert_eq!(borrowed, report);
+    assert_eq!(
+        report,
+        "driver report\n\n---- Saved: request ----\nopening preferences\n\n---- Saved: retry ----\ncould not retry"
+    );
+
+    let failed = failure();
+    let snapshot = failed.as_ref().er_snapshot().unwrap_err();
+    assert_eq!(snapshot.er_entries().nth(1).unwrap().message, "no access");
+
+    #[cfg(target_has_atomic = "ptr")]
+    {
+        let shared = failure().er_share().unwrap_err();
+        let borrowed: ErTree<StageErr> = (&shared).er_with_tree(|_| ());
+        let tree: ErTree<StageErr> = shared.clone().er_with_tree(|_| ());
+
+        assert!(borrowed.er_contains_shared(&shared));
+        assert!(tree.er_contains_shared(&shared));
+        assert!(tree.er_contains::<DriverErr>());
+        assert!(tree.er_report().contains("driver report"));
+
+        let shared = failure().er_share().unwrap_err();
+        let owned = std::sync::Arc::into_inner(shared.tree).unwrap();
+        let (error, report) = Err::<(), _>(owned).er_split().unwrap_err();
+
+        assert!(error.is::<DriverErr>());
+        assert!(report.contains("driver report"));
+    }
 }
 
 #[test]
@@ -62,8 +131,8 @@ pub fn erased_nodes() {
 pub fn presentations() {
     macro_rules! check {
         ($convert:expr) => {
-            let child = ErTree::new(StageErr, [io::Error::other("source")]);
-            let boxed = Box::new(($convert)(child));
+            let sub = ErTree::new(StageErr, [io::Error::other("source")]);
+            let boxed = Box::new(($convert)(sub));
             let tree: ErTree<OuterErr> = Err::<(), _>(boxed).er(()).unwrap_err();
             assert!(tree.er_contains::<io::Error>());
 
@@ -74,6 +143,21 @@ pub fn presentations() {
     }
 
     check!(|tree| tree);
-    check!(ErTree::into_er_top);
-    check!(ErTree::into_er_report);
+    check!(|tree| {
+        let ErTree {
+            top,
+            nodes,
+            saved,
+            #[cfg(feature = "src_locations")]
+            src_location,
+        } = tree;
+
+        ErTree {
+            top: Box::new(top) as BoxError,
+            nodes,
+            saved,
+            #[cfg(feature = "src_locations")]
+            src_location,
+        }
+    });
 }

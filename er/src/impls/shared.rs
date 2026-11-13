@@ -1,13 +1,6 @@
-#[cfg(all(er_unsync, target_has_atomic = "ptr"))]
-use crate::ErSavedArc;
-use crate::{
-    ErDefaults, ErReport, ErSavedShared, ErShared, ErSnapshot, ErValFields, IntoErSnapshot,
-};
-use alloc::rc::Rc;
+use crate::ErShared;
 #[cfg(er_unsync)]
 use alloc::rc::Rc as Shared;
-#[cfg(target_has_atomic = "ptr")]
-use alloc::sync::Arc;
 #[cfg(not(er_unsync))]
 use alloc::sync::Arc as Shared;
 use core::{fmt, ops::Deref};
@@ -80,37 +73,3 @@ impl<T: fmt::Display + ?Sized> fmt::Display for ErShared<T> {
         fmt::Display::fmt(&**self, formatter)
     }
 }
-
-macro_rules! borrowed_presentation {
-    ($pointer:ident) => {
-        impl<'a, P: ?Sized> IntoErSnapshot for &'a $pointer<P>
-        where
-            &'a P: IntoErSnapshot,
-        {
-            type Top = <&'a P as IntoErSnapshot>::Top;
-            type Report = <&'a P as IntoErSnapshot>::Report;
-
-            fn into_er_snapshot(self) -> ErSnapshot {
-                <&'a P as IntoErSnapshot>::into_er_snapshot(self)
-            }
-
-            fn into_er_top(self) -> Self::Top {
-                <&'a P as IntoErSnapshot>::into_er_top(self)
-            }
-
-            fn into_er_report(self) -> Self::Report {
-                <&'a P as IntoErSnapshot>::into_er_report(self)
-            }
-        }
-    };
-}
-
-borrowed_presentation!(Rc);
-#[cfg(target_has_atomic = "ptr")]
-borrowed_presentation!(Arc);
-borrowed_presentation!(ErShared);
-
-crate::impls::construct::saved_outputs!(ErSavedShared, Shared<A>, Shared::new);
-
-#[cfg(all(er_unsync, target_has_atomic = "ptr"))]
-crate::impls::construct::saved_outputs!(ErSavedArc, Arc<A>, Arc::new);

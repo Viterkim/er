@@ -26,10 +26,19 @@ impl<'a> syn::visit::Visit<'a> for FormatBounds<'a, '_> {
         if !self.keep_type_bound
             && let Type::Path(path) = ty
             && path.qself.is_none()
-            && is_self_path(&path.path, self.name)
         {
-            self.recursive = true;
-            return;
+            if is_self_path(&path.path, self.name) {
+                self.recursive = true;
+                return;
+            }
+
+            // Bounding the type as a whole loops when it is this type, so bound what's inside it instead,
+            // like std's derives. That also holds up when it turns out to be someone else's type.
+            if is_qualified_self(&path.path, self.name) {
+                self.recursive = true;
+                syn::visit::visit_type(self, ty);
+                return;
+            }
         }
 
         let start = self.types.len();
@@ -116,6 +125,20 @@ pub fn is_self_path(path: &syn::Path, name: &str) -> bool {
         2 => path.segments[0].ident == "self" && plain(&path.segments[1].ident) == name,
         _ => false,
     }
+}
+
+/// `crate::Name<T>` or `super::Name<T>`, most likely this type spelled from the crate root. A derive can't see
+/// which module it's in, so it can also be another module's type with the same name.
+pub fn is_qualified_self(path: &syn::Path, name: &str) -> bool {
+    let first = &path.segments[0].ident;
+
+    path.leading_colon.is_none()
+        && path.segments.len() > 1
+        && (first == "crate" || first == "super")
+        && path
+            .segments
+            .last()
+            .is_some_and(|segment| plain(&segment.ident) == name)
 }
 
 pub fn mentions(tokens: &TokenStream, parameters: &HashSet<String>) -> bool {

@@ -1,76 +1,85 @@
 pub mod body;
-pub mod censor;
 
-use crate::generate::construct;
-use crate::input::{Input, attrs::FieldMode, bounds::format_generics, format::Output};
+use crate::generate::{construct, warnings::warnings};
+use crate::input::{Input, attrs::FieldMode, bounds::format_generics};
 use crate::names::{binding, shield_bindings};
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{DeriveInput, Error, Fields, Generics, Ident, Result};
+use syn::{DeriveInput, Error, Generics, Ident, Result};
 
 pub fn expand(item: &DeriveInput) -> Result<TokenStream> {
     let input = Input::parse(item)?;
     for field in input.cases.iter().flat_map(|case| &case.fields) {
-        if field.options.into.is_some() {
-            return Err(Error::new_spanned(
-                field.item,
-                "use derive(Er) for `into_*` fields",
-            ));
-        }
         if field.options.source.is_some() {
             return Err(Error::new_spanned(
                 field.item,
-                "use derive(Er) for `source`, ErFormat does not implement Error",
+                "`source` needs `#[derive(Er)]`, an `ErFormat` type isn't an error",
             ));
         }
     }
-    if input.options.wrap.is_some() || input.options.er_path.is_some() {
+    if input.options.wrap.is_some() {
         return Err(Error::new_spanned(
             &item.ident,
-            "use derive(Er) for `wrap` and `crate` options",
+            "`wrap` needs `#[derive(Er)]`",
         ));
     }
 
     let generics = format_generics(&input);
     let formatter = binding(&input.names, "__er_f");
-    let formatting = implementations(&input, &generics, &formatter);
-    let constructors = construct::methods(&input)?;
-    let fields = input
+    let mut bindings = Vec::new();
+    let mut field_names = Vec::new();
+    let formatting = implementations(&input, &generics, &formatter, &mut bindings);
+    let (shielded, constructors) = construct::methods_in_scope(&input, &mut field_names)?;
+
+    let needs_fields = input
         .cases
         .iter()
         .flat_map(|case| &case.fields)
-        .any(|field| field.options.default.is_some() || field.options.src_location)
-        .then(|| construct::from_fields(&input));
+        .any(|field| field.options.default.is_some() || field.options.src_location);
+    let (defaults, fields) = if needs_fields {
+        construct::from_fields(&input, &input.options.er_path, &mut bindings)
+    } else {
+        (TokenStream::new(), TokenStream::new())
+    };
+
+    let shields = shield_bindings(&bindings);
+    let by_field_name = construct::scoped(&field_names, quote!(#shielded #fields));
+    let warnings = warnings(&input);
+
     Ok(quote! {
-        #formatting
+        const _: () = {
+            #shields
+
+            #formatting
+            #defaults
+            #by_field_name
+            #warnings
+        };
         #constructors
-        #fields
     })
 }
 
-pub fn implementations(input: &Input<'_>, generics: &Generics, formatter: &Ident) -> TokenStream {
+pub fn implementations(
+    input: &Input<'_>,
+    generics: &Generics,
+    formatter: &Ident,
+    bindings: &mut Vec<Ident>,
+) -> TokenStream {
     let name = &input.item.ident;
-    let separate_normal = input
-        .cases
-        .iter()
-        .any(|case| case.formats.display.is_some() || case.formats.debug.is_some());
-    let alternate = input
-        .cases
-        .iter()
-        .any(|case| case.formats.display_alt.is_some());
-    let separate = separate_normal || alternate;
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
-    let debug = binding(&input.names, "__er_d");
-    let mut locals = vec![formatter.clone()];
-    if input.cases.iter().any(|case| match case.shape {
-        Fields::Unit => false,
-        Fields::Named(_) | Fields::Unnamed(_) => {
-            case.formats.get(Output::Display).is_none() || case.formats.get(Output::Debug).is_none()
-        }
-    }) {
-        locals.push(debug.clone());
-    }
+    bindings.push(formatter.clone());
     for case in &input.cases {
+        for argument in case
+            .formats
+            .templates()
+            .flat_map(|format| &format.arguments)
+        {
+            if argument.optional {
+                let name = format!("__er_some_{}", argument.field);
+                bindings.push(binding(&input.names, &name));
+            }
+        }
+
         if case.variant.is_none() {
             continue;
         }
@@ -79,51 +88,23 @@ pub fn implementations(input: &Input<'_>, generics: &Generics, formatter: &Ident
             if field.options.mode == FieldMode::Normal
                 && (!field.formats.is_empty() || field.used_in_format)
             {
-                locals.push(binding(&input.names, &format!("__er_{index}")));
+                bindings.push(binding(&input.names, &format!("__er_{index}")));
             }
         }
     }
-    let shields = shield_bindings(&locals);
-    let censor = censor::helper(input, formatter);
-    let display_body = if separate_normal {
-        body::body(input, Output::Display, formatter, &debug)
-    } else {
-        quote!(::core::fmt::Debug::fmt(self, #formatter))
-    };
-    let display_body = if alternate {
-        let alternate_body = body::body(input, Output::DisplayAlt, formatter, &debug);
-        quote! {
-            if #formatter.alternate() {
-                #alternate_body
-            } else {
+    let display_body = body::display(input, formatter);
+    let debug_body = body::debug(input, formatter);
+
+    quote! {
+        impl #impl_generics ::core::fmt::Debug for #name #type_generics #where_clause {
+            fn fmt(&self, #formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                #debug_body
+            }
+        }
+        impl #impl_generics ::core::fmt::Display for #name #type_generics #where_clause {
+            fn fmt(&self, #formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 #display_body
             }
         }
-    } else {
-        display_body
-    };
-    let display_body = if separate {
-        quote! { #censor #display_body }
-    } else {
-        display_body
-    };
-    let debug_body = body::body(input, Output::Debug, formatter, &debug);
-
-    quote! {
-        const _: () = {
-            #shields
-
-            impl #impl_generics ::core::fmt::Debug for #name #type_generics #where_clause {
-                fn fmt(&self, #formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                    #censor
-                    #debug_body
-                }
-            }
-            impl #impl_generics ::core::fmt::Display for #name #type_generics #where_clause {
-                fn fmt(&self, #formatter: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                    #display_body
-                }
-            }
-        };
     }
 }

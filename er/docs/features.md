@@ -1,84 +1,16 @@
 # Features
 
-The crate is `no_std` but requires `alloc`. `stack_traces` needs `std`.
+Er uses `alloc` and works without `std`. The default features are `macros` and `src_locations`.
 
-## default features
+- `macros` gives you the derives and macros like `er_new!`, `er_bail!` and `er_all!`.
+- `src_locations` records the file, line and column for the top and each stored sub error. Native `source()` entries use whatever location their own message gives.
+- `small_path_src` shortens the locations printed by `src_locations`. A path like `/home/me/projects/engine/src/lib.rs` prints as `engine/src/lib.rs`, with the original path still in the binary.
+- `stack_traces` needs `std` and lets you save backtraces. [Example](examples.md#stack-traces)
 
-`macros, src_locations, test`
+## er-unsync
 
-## non-default features
-
-`small_path_src, serde, lazy, stack_traces`
-
-## macros
-
-Convenience macros like `#[derive(Er)]`, `#[derive(ErFormat)]`, `er_all!`, `er_try!`, `er_add!` and `er_bail!`.
-
-## src_locations
-
-Enables capturing the file path, line number and column number at compile time.
-
-## small_path_src, off by default
-
-Usually you'll just get `src/lib.rs` or `engine/src/lib.rs` in a workspace(so you WONT need this), but on some setups if you use paths for dependencies, like a local crate on your pc, then you'll get the full path `/the/magic/src/folder/that/was/supposed/to/be/secret/src/a.rs`.
-
-So this turns it into `secret/src/a.rs`. It just looks for the last `src` and gives you the path one step back from that.
-
-If you don't want to restructure stuff you can enable it, but it only affects it when printing (it's still in your binary).
-
-## serde, off by default
-
-This only adds Serialize/Deserialize snapshots(converted string reports).
-
-Er does NOT turn it into JSON for you. You pick a format crate in your own app `serde_json`, `toml` etc.
+Use `er-unsync` to keep `Rc` in sub errors or share trees on targets without pointer atomics. Keep the name `er` on the left so the derives can find it.
 
 ```toml
-[dependencies]
-er = { version = "0.8", features = ["serde"] }
-serde_json = "1"
-```
-
-```rust
-// Just unwrapping for the example
-let snapshot = read_port("nope").unwrap_err().er_snapshot();
-
-let json = serde_json::to_string_pretty(&snapshot).unwrap();
-fs::write("/tmp/error.json", &json).unwrap();
-
-let snapshot: ErSnapshot = serde_json::from_str(&json).unwrap();
-println!("{}", snapshot.er_report());
-```
-
-If one side compiled `src_locations` out, the JSON just has no `src_location`. A locations build loads that as `None` (no `@ file:line`). Extra keys the other way get ignored.
-
-## lazy, off by default
-
-For small scripts or prototyping, i don't think you should use this [Examples](./extra/lazy.md).
-
-## stack_traces, off by default
-
-Needs `std`. [Capturing and printing traces](examples.md#stack-traces).
-
-## test
-
-`ErTest` lets tests use `?` to keep the original error and add the location, just return `-> ErTest`.
-
-## Examples
-
-```toml
-[dependencies]
-er = { version = "0.8", features = ["small_path_src"] }
-```
-
-```toml
-[dependencies]
-er = { version = "0.8", default-features = false, features = ["src_locations"] }
-```
-
-## Unsync / Single threaded platform
-
-If you've got a platform that uses Rc/RefCell you can use the `er-unsync` version of the crate.
-
-```toml
-er = { package = "er-unsync", version = "0.8" }
+er = { package = "er-unsync", version = "0.9" }
 ```

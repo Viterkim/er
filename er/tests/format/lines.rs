@@ -62,7 +62,7 @@ impl Error for IgnoresWriter {}
 pub fn callback_failure() {
     let tree = ErTree::from(IgnoresWriter);
     let mut calls = 0;
-    let result = tree.er_top().try_for_each_line(|_| {
+    let result = tree.try_for_each_line(|_| {
         calls += 1;
         Err(1)
     });
@@ -71,7 +71,7 @@ pub fn callback_failure() {
     assert_eq!(calls, 1);
 
     let mut lines = Vec::new();
-    let result = tree.into_er_report().try_for_each_line(|l| {
+    let result = tree.try_for_each_line(|l| {
         lines.push(l.to_owned());
 
         if lines.len() == 2 {
@@ -85,7 +85,7 @@ pub fn callback_failure() {
         lines::try_for_each_line(&"report", |_| Err(std::io::Error::other("sink closed")))
             .unwrap_err();
     let tree = ErTree::from(failure);
-    assert_eq!(tree.er_report_string().matches("sink closed").count(), 1);
+    assert_eq!(tree.er_report().matches("sink closed").count(), 1);
     assert!(tree.er_contains::<std::io::Error>());
 
     assert_eq!(result, Err(ErLineError::Callback(17)));
@@ -104,16 +104,15 @@ pub fn chunks() -> fmt::Result {
     let report = ErTree::from(WriteChunks {
         parts: &["first\nsec", "ond\n", "third"],
         calls: Cell::new(0),
-    })
-    .into_er_report();
-    let expected = report.to_string();
+    });
+    let expected = report.er_report();
 
-    report.tree.top.calls.set(0);
+    report.top.calls.set(0);
     let mut lines = Vec::new();
     report.for_each_line(|l| lines.push(l.to_owned()))?;
 
     assert_eq!(lines, expected.lines().collect::<Vec<_>>());
-    assert_eq!(report.tree.top.calls.get(), 1);
+    assert_eq!(report.top.calls.get(), 1);
 
     Ok(())
 }
@@ -131,16 +130,8 @@ impl Error for Broken {}
 #[test]
 pub fn format_failure() {
     let mut lines = Vec::new();
-    let outcome = ErTree::from(Broken)
-        .into_er_top()
-        .for_each_line(|l| lines.push(l.to_owned()));
+    let outcome = ErTree::from(Broken).for_each_line(|l| lines.push(l.to_owned()));
 
-    assert_eq!(outcome, Err(fmt::Error));
-    assert_eq!(lines, ["done"]);
-
-    let outcome = ErTree::from(Broken)
-        .into_er_top()
-        .try_for_each_line(|_| Ok::<(), ()>(()));
-
-    assert_eq!(outcome, Err(ErLineError::Format(fmt::Error)));
+    assert_eq!(outcome, Ok(()));
+    assert!(lines[1].starts_with("partialER_FMT_FAILED"));
 }

@@ -2,28 +2,18 @@
 /// Returns that tree even if nothing failed.
 ///
 /// `let error = er_add!(error, [rollback(), cleanup()]);`
-/// Or pass a collection of results: `er_add!(error, results)`.
+/// Or pass one error or Result, a collection like Vec or an iterator.
 #[macro_export]
 macro_rules! er_add {
+    ($tree:expr, [] $(,)?) => {{
+        $crate::IntoErTree::into_er_tree($tree)
+    }};
     ($tree:expr, [$($result:expr),* $(,)?] $(,)?) => {{
-        $crate::er_add!(
-            $tree,
-            $crate::__er_all_results!($crate, [$($result),*])
-                as [::core::result::Result<(), $crate::ErPart>; _],
-        )
+        $crate::aggregate::add_parts($tree, &mut $crate::__er_all_results!($crate, [$($result),*]))
     }};
     ($tree:expr, $results:expr $(,)?) => {{
-        $crate::IntoErTree::er_add(
-            $tree,
-            ::core::iter::Iterator::filter_map(
-                ::core::iter::IntoIterator::into_iter($results),
-                {
-                    #[allow(unused_imports)]
-                    use ::core::mem::drop as __er_item;
-
-                    |__er_item| $crate::ErAllItem::er_all_item(__er_item).err()
-                },
-            ),
+        $crate::internal::ErAggregateAdd::add(
+            0, $tree, $crate::aggregate::ErAggregateItems::er_items($results),
         )
     }};
 }

@@ -25,6 +25,11 @@ pub enum FormatBody {
     Function(ExprPath),
 }
 
+pub struct Tried<'a> {
+    pub formats: Vec<&'a FormatBody>,
+    pub default: bool,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FormatTrait {
     Display,
@@ -48,6 +53,7 @@ pub struct Format {
 pub struct FormatArgument {
     pub field: usize,
     pub members: Vec<Member>,
+    pub optional: bool,
 }
 
 pub enum ArgumentUse {

@@ -35,8 +35,8 @@ pub fn lookup() {
         (3, &[0, 1][..], 2),
         (4, &[1][..], 3),
     ] {
-        let by_index = tree.er_top().er_at_index(ErErrorIndex(index));
-        let by_path = tree.er_report().er_at_path(path);
+        let by_index = tree.er_at_index(ErErrorIndex(index));
+        let by_path = tree.er_at_path(path);
         assert_eq!((leaf(by_index), leaf(by_path)), (value, value));
     }
     assert!(tree.er_at_index(ErErrorIndex(6)).is_none());
@@ -52,16 +52,10 @@ pub fn walk() {
             ErTree::from(Leaf(3)).into_er_part(),
         ],
     );
-    let report = tree.into_er_report();
-    let _: ErFindAll<'_, Leaf> = report.as_ref().er_find_all();
+    let report = tree;
+    let _: ErFindAll<'_, Leaf> = report.er_find_all();
 
-    let entries: Vec<_> = report.as_ref().er_entries().collect();
-    let mut visited = Vec::new();
-    report
-        .er_top()
-        .er_for_each_entry(|entry| visited.push(entry.index));
-
-    assert!(visited.iter().eq(entries.iter().map(|entry| &entry.index)));
+    let entries: Vec<_> = report.er_entries().collect();
 
     use ErEntryKind::{Node, Root, Source};
 

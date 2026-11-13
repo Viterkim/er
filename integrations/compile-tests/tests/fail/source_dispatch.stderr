@@ -4,14 +4,14 @@ error[E0308]: mismatched types
 11 | #[derive(Er)]
    |          ^^
    |          |
-   |          expected `__ErSourceRef<'_, dyn Error>`, found `&dyn Error`
+   |          expected `ErSourceFound<'_>`, found `&dyn Error`
    |          arguments to this function are incorrect
    |
-   = note: expected struct `__ErSourceRef<'_, (dyn std::error::Error + 'static)>`
+   = note: expected struct `er::impls::source::ErSourceFound<'_>`
            found reference `&'static (dyn std::error::Error + 'static)`
-note: method defined here
-  --> tests/fail/source_dispatch.rs:11:10
+note: associated function defined here
+  --> $ER/src/impls/source.rs
    |
-11 | #[derive(Er)]
-   |          ^^
+   |     pub fn __er_finish(found: ErSourceFound<'_>) -> Option<&(dyn Error + 'static)> {
+   |            ^^^^^^^^^^^
    = note: this error originates in the derive macro `Er` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -3,75 +3,73 @@ use proc_macro2::{Delimiter, Span, TokenStream, TokenTree};
 use quote::{quote, quote_spanned};
 use syn::{Path, Token, parse::Parse, parse::ParseStream};
 
-pub struct Input {
-    pub er_path: Path,
-    pub results: Vec<TokenTree>,
-    pub top: Option<TokenTree>,
+pub enum Input {
+    Array(TokenStream),
+    Batch {
+        er_path: Path,
+        collected: TokenStream,
+        top: TokenTree,
+    },
 }
+
 impl Parse for Input {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
-        let er_path = input.parse()?;
+        let er_path: Path = input.parse()?;
         input.parse::<Token![,]>()?;
-        let content;
-        syn::bracketed!(content in input);
-        let results = content
-            .parse_terminated(TokenTree::parse, Token![,])?
-            .into_iter()
-            .collect();
-        let top = if input.peek(Token![,]) {
-            input.parse::<Token![,]>()?;
-            Some(input.parse()?)
+        let collected = if input.peek(syn::token::Bracket) {
+            let content;
+            syn::bracketed!(content in input);
+            let results = content.parse_terminated(TokenTree::parse, Token![,])?;
+            let items = results.iter().map(|result| {
+                let span = expression_span(result);
+                quote_spanned!(span=>
+                    <_ as #er_path::internal::ErAggregateItem<_, _>>::item(0, #result)
+                        .map(::core::mem::drop)
+                )
+            });
+            let array = quote!([#(#items),*]);
+            if input.is_empty() {
+                return Ok(Self::Array(array));
+            }
+
+            quote!(#er_path::aggregate::gather_parts(&mut #array))
         } else {
-            None
+            let expr: TokenTree = input.parse()?;
+            quote!(#expr)
         };
 
-        Ok(Self {
+        input.parse::<Token![,]>()?;
+        Ok(Self::Batch {
             er_path,
-            results,
-            top,
+            collected,
+            top: input.parse()?,
         })
     }
 }
 
-pub fn expand(
-    Input {
-        er_path,
-        results,
-        top,
-    }: Input,
-) -> TokenStream {
-    let trait_alias = syn::Ident::new("__ErAllItem", Span::call_site());
+pub fn expand(input: Input) -> TokenStream {
+    let (er_path, collected, top) = match input {
+        Input::Array(array) => return array,
+        Input::Batch {
+            er_path,
+            collected,
+            top,
+        } => (er_path, collected, top),
+    };
+    let errors = binding(&identifiers(quote!(#top #collected)), "__er_batch");
+    let shield = shield_bindings([&errors]);
 
-    let items = results.iter().map(|result| {
-        let span = expression_span(result);
-        let mut call_alias = trait_alias.clone();
-        call_alias.set_span(span);
-        quote_spanned! {span=>
-            ({
-                use #er_path::ErAllItem as #trait_alias;
-                #call_alias::er_all_item
-            })(#result).map(::core::mem::drop)
+    quote! {{
+        #shield
+        let #errors = #collected;
+        if #errors.is_empty() {
+            ::core::result::Result::Ok(())
+        } else {
+            ::core::result::Result::Err(#errors.into_tree(
+                #er_path::aggregate::ErBatchTop::into_batch_top(#top)
+            ))
         }
-    });
-    let array = quote!([#(#items),*]);
-    match top {
-        None => array,
-        Some(top) => {
-            let reserved = identifiers(quote!(#top #(#results)*));
-            let results = binding(&reserved, "__er_results");
-            let make = binding(&reserved, "__er_make");
-            let shields = shield_bindings([&results, &make]);
-
-            quote! {
-                ({
-                    #shields
-
-                    |#results: [::core::result::Result<(), #er_path::ErPart>; _], #make|
-                        #er_path::aggregate::collect(#make, #results)
-                })(#array, || #er_path::ErMake::er_make(#top))
-            }
-        }
-    }
+    }}
 }
 
 pub fn expression_span(result: &TokenTree) -> Span {

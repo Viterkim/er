@@ -10,8 +10,8 @@ pub fn read_port(input: &str) -> ErResult<u16, Error> {
 #[test]
 pub fn without_derives() {
     assert_eq!(read_port("85").er_report().unwrap(), 85);
-    read_port("85").unwrap_report();
-    read_port("85").expect_report("bad port");
+    read_port("85").er_unwrap_report();
+    read_port("85").er_expect_report("bad port");
 
     let results = [Err::<(), _>(Error::other("mode"))];
     let error: ErTree<Error> = aggregate::collect(|| Error::other("config"), results).unwrap_err();
@@ -32,23 +32,13 @@ pub fn without_derives() {
     }
 
     struct SavedText(String);
-    impl From<((String, Error),)> for SavedText {
-        fn from(((text, _),): ((String, Error),)) -> Self {
-            Self(text)
-        }
-    }
 
-    let saved: SavedText = read_port("bad")
-        .er_report()
-        .unwrap_err()
-        .single_line()
-        .er_into(|report| {
-            let text = report.er_report_string();
-            (text, report.tree.top)
-        });
+    let saved = read_port("bad")
+        .er_split_with(|(_, report)| SavedText(report))
+        .unwrap_err();
     assert!(saved.0.contains("invalid digit"));
 
-    let _: Result<u16, SavedText> = read_port("85").er_into(|_| -> (String, Error) {
+    let _: Result<u16, SavedText> = read_port("85").er_split_with(|_| -> SavedText {
         panic!("boundary constructor ran for a successful result");
     });
 
@@ -58,14 +48,14 @@ pub fn without_derives() {
 
 #[test]
 #[should_panic(expected = "invalid digit found in string")]
-pub fn unwrap_report() {
-    read_port("fakenumber").unwrap_report();
+pub fn er_unwrap_report() {
+    read_port("fakenumber").er_unwrap_report();
 }
 
 #[test]
 #[should_panic(expected = "bad port: port")]
-pub fn expect_report() {
-    read_port("fakenumber").expect_report("bad port");
+pub fn er_expect_report() {
+    read_port("fakenumber").er_expect_report("bad port");
 }
 
 #[test]
@@ -105,16 +95,12 @@ pub fn manual_wrap() {
     let tree = ErTree {
         top: text.as_str(),
         nodes: Vec::new(),
-        #[cfg(feature = "stack_traces")]
-        stack_traces: Vec::new(),
+        saved: ErSavedList::default(),
         #[cfg(feature = "src_locations")]
         src_location: std::panic::Location::caller(),
     };
 
-    let report = ManualWrap(tree).into_er_report();
-    let top = ManualWrap(report.tree).into_er_top();
-
-    let result: Result<(), ErTop<_>> = Err(top);
-    let tree = result.er_tree().er_report().unwrap_err().into_er_tree();
+    let result: Result<(), ManualWrap<_>> = Err(ManualWrap(tree));
+    let tree = result.er_tree().unwrap_err();
     assert_eq!(tree.top, "85");
 }

@@ -22,23 +22,77 @@ fn items<T: Error + 'static>(tree: &ErTree<T>) -> Vec<u8> {
 
 #[test]
 pub fn append() {
-    let child = ErTree::new(Item(1), [Item(2)]);
-    let tree = ErTree::from(Batch).er_add([child]);
+    let _: ErTree<Batch> = er_new!();
+    let sub = ErTree::new(Item(1), [Item(2)]);
+    let tree: ErTree<Batch> = er_new!((), [sub]);
     let tree = tree.er_add([io::Error::other("rollback failed")]);
-    let tree = tree.er_add([Item(3), Item(4)]);
+    let tree = tree.er_add([Err(Item(3)), Ok(()), Err(Item(4))]);
 
     assert_eq!(items(&tree), [1, 2, 3, 4]);
     assert!(tree.er_contains::<io::Error>());
 }
 
 #[test]
+pub fn direct_tree() {
+    let receipt = ErTree::new(Item(1), [Item(2)]);
+    let tree = ErTree::from(Batch).er_add(receipt);
+
+    assert_eq!(items(&tree), [1, 2]);
+}
+
+#[test]
+pub fn direct_result() {
+    fn backup(succeeded: bool) -> ErResult<String, Item> {
+        if succeeded {
+            Ok("archive.sqlite".to_owned())
+        } else {
+            Err(Item(7).into())
+        }
+    }
+
+    let success: ErResult<(), Batch> = er_all!(Batch, backup(true));
+    assert!(success.is_ok());
+    let failure: ErResult<(), Batch> = er_all!(Batch, backup(false));
+    assert_eq!(items(&failure.unwrap_err()), [7]);
+
+    assert!(ErTree::from(Batch).er_add(backup(true)).nodes.is_empty());
+    assert_eq!(items(&ErTree::from(Batch).er_add(backup(false))), [7]);
+}
+
+#[test]
+pub fn borrowed_failures() {
+    let mut shared = [ErTree::new(Item(1), [Item(2)]).er_share()];
+    let mut results = [Err::<(), _>(shared[0].clone())];
+
+    let tree: ErTree<Batch> = er_all!((), &mut results[0]).unwrap_err();
+    let tree = tree.er_add(&results[..]);
+    let tree = tree.er_add(results.iter_mut());
+    let tree = tree.er_add(shared.iter_mut());
+
+    assert_eq!(items(&tree), [1, 2, 1, 2, 1, 2, 1, 2]);
+}
+
+#[test]
 pub fn append_mixed() {
-    let tree = ErTree::new(Item(0), [Item(1)]);
-    let child = ErTree::new(Item(2), [Item(3)]);
+    #[derive(Er)]
+    struct Named(String);
+
+    #[derive(Er)]
+    struct WithSource(#[er(source)] io::Error);
+
+    #[derive(Er)]
+    struct NamedItem(String, u8);
+
+    let _: ErTree<Named> = er_new!("import");
+    let _: ErTree<NamedItem> = er_new!(("import", 85u8).er_save("server", "busy"));
+    let _: ErTree<Named> = er_new!(String::from("import"));
+    let _: ErTree<WithSource> = er_new!(|_| io::Error::other("source"));
+    let tree: ErTree<Item> = er_new!(0u8, [Item(1), Ok::<_, Item>(7)]);
+    let sub = ErTree::new(Item(2), [Item(3)]);
     let tree = er_add!(
         tree,
         [
-            child,
+            sub,
             io::Error::other("cleanup failed"),
             Err::<(), _>(Item(4)),
             Ok::<_, Item>(7),
@@ -77,7 +131,7 @@ pub fn every_result() {
 }
 
 #[test]
-pub fn no_failures() -> Result<(), ErReport<Batch>> {
+pub fn no_failures() -> ErTest {
     let parents = Cell::new(0);
     let parent = || {
         parents.set(parents.get() + 1);
@@ -85,9 +139,9 @@ pub fn no_failures() -> Result<(), ErReport<Batch>> {
     };
 
     let successes: Vec<Result<u8, Item>> = vec![Ok(7), Ok(8)];
-    er_all!(parent, successes).er_report()?;
-    er_all!(parent, []).er_report()?;
-    aggregate::collect((), [Ok::<_, Item>(7)]).er_report()?;
+    er_all!(parent, successes)?;
+    er_all!(parent, [])?;
+    aggregate::collect::<Batch, _, _, _, _, _>((), [Ok::<_, Item>(7)])?;
 
     let value = RefCell::new(0);
     er_all!(
@@ -96,8 +150,7 @@ pub fn no_failures() -> Result<(), ErReport<Batch>> {
             *value.borrow_mut() = 7;
             Ok::<_, Item>(())
         },]
-    )
-    .er_report()?;
+    )?;
     assert_eq!(parents.get(), 0);
 
     Ok(())
@@ -115,26 +168,36 @@ pub fn batch() {
 }
 
 #[test]
+pub fn inferred_batch() {
+    fn close() -> ErResult<(), Batch> {
+        let mut result = Ok(());
+
+        for index in 0..2 {
+            result = er_all!((), [result, Item(index)]);
+        }
+
+        result
+    }
+
+    assert_eq!(items(&close().unwrap_err()), [0, 1]);
+}
+
+#[test]
 pub fn mixed() {
     let success: Result<u16, Item> = Ok(10);
     let plain = Item(1);
     let boxed: Result<(), BoxError> = Err(Box::new(io::Error::other("disk gone")));
     let existing = ErTree::new(Item(2), [ErTree::from(Item(3))]);
     let wrapped = ItemWrap::from(ErTree::new(Item(4), [Item(5)]));
-    let report = ErTree::new(Item(6), [Item(7)]).into_er_report();
+    let report = ErTree::new(Item(6), [Item(7)]);
     let std_error = Err::<(), _>(StandardWrap::from(ErTree::new(Standard, [Item(8)])));
-    let recovered = Err::<(), _>(StandardWrap::from(ErTree::new(Standard, [Item(9)]))).er_tree();
 
     let tree: ErTree<Batch> = er_all!(
         (),
-        [
-            success, plain, boxed, existing, wrapped, report, std_error, recovered
-        ]
+        [success, plain, boxed, existing, wrapped, report, std_error]
     )
     .unwrap_err();
-
-    assert_eq!(items(&tree), [1, 2, 3, 4, 5, 6, 7, 9]);
-    assert!(tree.er_contains::<StandardWrap>());
+    assert_eq!(items(&tree), [1, 2, 3, 4, 5, 6, 7, 8]);
 
     fn recover(error: ErTree<Item>, reopen: Result<(), io::Error>) -> ErResult<u8, Batch> {
         er_all!((), [error, reopen])?;
@@ -177,6 +240,40 @@ pub fn collect() {
 }
 
 #[test]
+pub fn short_collection() {
+    struct First;
+    impl FromIterator<u8> for First {
+        fn from_iter<T: IntoIterator<Item = u8>>(values: T) -> Self {
+            values.into_iter().next();
+            Self
+        }
+    }
+
+    let result: ErResult<First, Batch> = [Ok(7), Err(Item(1))].into_iter().er_collect(());
+    assert!(result.is_err());
+}
+
+#[test]
+pub fn collection_stops_on_error() {
+    struct TryAgain;
+    impl FromIterator<u8> for TryAgain {
+        fn from_iter<T: IntoIterator<Item = u8>>(values: T) -> Self {
+            let mut values = values.into_iter();
+            values.next();
+            values.next();
+
+            Self
+        }
+    }
+
+    let mut pulled = 0;
+    let source = [Err(Item(1)), Ok(7)].into_iter().inspect(|_| pulled += 1);
+    let _: ErResult<TryAgain, Batch> = source.er_collect(());
+
+    assert_eq!(pulled, 1);
+}
+
+#[test]
 pub fn collect_all() {
     fn decode(input: &[&str]) -> ErResult<Vec<u8>, Batch> {
         input.iter().map(|value| value.parse()).er_collect_all(())
@@ -211,7 +308,7 @@ pub fn collect_all() {
 }
 
 #[test]
-pub fn try_values() -> Result<(), ErReport<Batch>> {
+pub fn try_values() -> ErTest {
     let parents = Cell::new(0);
     let text = String::from("borrowed");
     let owned = String::from("owned");
@@ -233,8 +330,8 @@ pub fn try_values() -> Result<(), ErReport<Batch>> {
     );
     assert_eq!(parents.get(), 0);
 
-    let (_,) = er_try!((), [Ok::<_, Item>(7)])?;
-    er_try!((), [])?;
+    let (_,): (u8,) = er_try!(Batch, [Ok::<_, Item>(7)])?;
+    er_try!(|| Batch, [])?;
     Ok(())
 }
 
@@ -255,7 +352,7 @@ pub mod constants {
     use names::*;
 
     #[test]
-    pub fn bindings() -> Result<(), ErReport<Batch>> {
+    pub fn bindings() -> ErTest {
         macro_rules! hidden {
             () => {
                 __er_results + __er_make
@@ -266,7 +363,7 @@ pub mod constants {
             (),
             [Ok::<_, Batch>(__er_value_0), Ok::<_, Batch>(__er_value_1)]
         );
-        assert_eq!(values.unwrap_report(), (85, 86));
+        assert_eq!(values.er_unwrap_report(), (85, 86));
 
         let mut number = 7;
         let _: ErResult<_, Batch> = er_try!(
@@ -291,7 +388,7 @@ pub mod constants {
         let result: ErResult<(), Batch> = er_all!((), [Ok::<_, Batch>(__er_item)].into_iter());
         result?;
 
-        let tree = er_add!(ErTree::from(Batch), [Ok::<_, Batch>(__er_tree)]);
+        let tree = er_add!(er_new!(Batch), [Ok::<_, Batch>(__er_tree)]);
         let _ = er_add!(tree, [Ok::<_, Batch>(__er_item)].into_iter());
 
         Ok(())
@@ -303,7 +400,7 @@ pub fn try_tree() {
     let result: ErResult<((), String, (), bool), Item> = er_try!(
         |_| 9u8,
         [
-            ErTree::new(Item(1), [Item(2)]).into_er_report(),
+            ErTree::new(Item(1), [Item(2)]),
             Ok::<_, Item>(String::from("discarded")),
             io::Error::other("disk"),
             Err::<bool, _>(Item(3)),

@@ -31,5 +31,5 @@ fn main() {
     assert_eq!(result.unwrap_err().top.0, 63);
 
     let result: ErResult<(u8, u8), Batch> = er_try!(|_| context!(), [input!(), input!()]);
-    assert_eq!(result.unwrap_report(), (21, 21));
+    assert_eq!(result.er_unwrap_report(), (21, 21));
 }

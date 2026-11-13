@@ -89,10 +89,9 @@ impl Relates<WhereBound<Token>> for Token {}
 
 #[test]
 pub fn self_bounds() {
-    let wrapped = Bound::<Token> {
+    let wrapped = BoundWrap::from(Bound::<Token> {
         marker: PhantomData,
-    }
-    .er_wrap();
+    });
 
     assert!(wrapped.to_string().starts_with("Bound"));
 

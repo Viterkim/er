@@ -1,41 +1,35 @@
-error: constructor `http_error` clashes with another variant or constructor
+error: two things would get the constructor `http_error`, rename one of them
  --> tests/fail/constructor_names.rs:6:5
   |
 6 |     HTTPError,
   |     ^^^^^^^^^
 
-error: constructor `file` clashes with another variant or constructor
+error: two things would get the constructor `file`, rename one of them
   --> tests/fail/constructor_names.rs:11:5
    |
 11 |     File,
    |     ^^^^
 
-error: constructor `type` clashes with another variant or constructor
+error: two things would get the constructor `type`, rename one of them
   --> tests/fail/constructor_names.rs:18:5
    |
 18 |     Type,
    |     ^^^^
 
-error: constructor `er_wrap` clashes with the generated Wrap method
-  --> tests/fail/constructor_names.rs:26:5
-   |
-26 |     ErWrap,
-   |     ^^^^^^
-
 error: the wrapper needs a different name from the error type
-  --> tests/fail/constructor_names.rs:30:18
+  --> tests/fail/constructor_names.rs:24:18
    |
-30 | #[er(wrap(name = r#SameErr))]
+24 | #[er(wrap(name = r#SameErr))]
    |                  ^^^^^^^^^
 
-error: wrapper name `Boundary` clashes with a type parameter; use `wrap(name = ...)` to choose another name
-  --> tests/fail/constructor_names.rs:34:18
+error: the Wrap would be called `Boundary`, which is already a type parameter here, pick another with `wrap(name = ...)`
+  --> tests/fail/constructor_names.rs:28:18
    |
-34 | #[er(wrap(name = r#Boundary))]
+28 | #[er(wrap(name = r#Boundary))]
    |                  ^^^^^^^^^^
 
-error: wrapper name `TaskErrWrap` clashes with a type parameter; use `wrap(name = ...)` to choose another name
-  --> tests/fail/constructor_names.rs:41:20
+error: the Wrap would be called `TaskErrWrap`, which is already a type parameter here, pick another with `wrap(name = ...)`
+  --> tests/fail/constructor_names.rs:35:20
    |
-41 | pub struct TaskErr<TaskErrWrap> {
+35 | pub struct TaskErr<TaskErrWrap> {
    |                    ^^^^^^^^^^^

@@ -31,7 +31,7 @@ impl IntoResponse for HandlerErrWrap {
             StatusCode::INTERNAL_SERVER_ERROR
         };
 
-        (status, self.er_top().to_string()).into_response()
+        (status, self.tree.top.to_string()).into_response()
     }
 }
 
@@ -47,7 +47,7 @@ pub mod tests {
         let response = handler("missing").into_response();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
-        let error = HandlerErr::new().er_wrap();
+        let error = HandlerErrWrap::from(HandlerErr::new());
         assert_eq!(
             error.into_response().status(),
             StatusCode::INTERNAL_SERVER_ERROR

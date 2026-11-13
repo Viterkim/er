@@ -65,11 +65,11 @@ pub fn chain(sources: usize) -> Message {
 #[test]
 pub fn native_errors() {
     let error = chain(1);
-    assert_eq!(error.er_top_string(), "link");
-    assert_eq!(error.er_report_string(), "link\n`- cause");
+    assert_eq!(error.to_string(), "link");
+    assert_eq!(error.er_report(), "link\n`- cause");
 
     let snapshot = error.er_snapshot();
-    assert_eq!(snapshot.er_report_string(), error.er_report_string());
+    assert_eq!(snapshot.er_report(), error.er_report());
     assert_eq!(snapshot.entries[1].kind, ErEntryKind::Source);
 
     let error: BoxError = Box::new(error);

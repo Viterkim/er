@@ -9,8 +9,8 @@ error[E0277]: the trait bound `BoundaryErrWrap: std::error::Error` is not satisf
 error[E0277]: the trait bound `ReportWrap: std::error::Error` is not satisfied
   --> tests/fail/boxed_default_wrap.rs:15:38
    |
-15 |     let _: &dyn core::error::Error = &Report::new().er_wrap();
-   |                                      ^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+15 |     let _: &dyn core::error::Error = &ReportWrap::from(Report::new());
+   |                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
    |
 help: the trait `std::error::Error` is not implemented for `ReportWrap`
   --> tests/fail/boxed_default_wrap.rs:3:10
@@ -23,8 +23,8 @@ help: the trait `std::error::Error` is not implemented for `ReportWrap`
 error[E0277]: the trait bound `TopWrap: std::error::Error` is not satisfied
   --> tests/fail/boxed_default_wrap.rs:16:38
    |
-16 |     let _: &dyn core::error::Error = &Top::new().er_wrap();
-   |                                      ^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+16 |     let _: &dyn core::error::Error = &TopWrap::from(Top::new());
+   |                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
    |
 help: the trait `std::error::Error` is not implemented for `TopWrap`
   --> tests/fail/boxed_default_wrap.rs:7:10
@@ -33,35 +33,3 @@ help: the trait `std::error::Error` is not implemented for `TopWrap`
    |          ^^
    = note: required for the cast from `&TopWrap` to `&dyn std::error::Error`
    = note: this error originates in the derive macro `Er` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error[E0277]: the trait bound `ErReportRef<'_, Report>: std::error::Error` is not satisfied
-  --> tests/fail/boxed_default_wrap.rs:19:38
-   |
-19 |     let _: &dyn core::error::Error = &tree.er_report();
-   |                                      ^^^^^^^^^^^^^^^^^ the trait `std::error::Error` is not implemented for `ErReportRef<'_, Report>`
-   |
-   = note: required for the cast from `&ErReportRef<'_, Report>` to `&dyn std::error::Error`
-
-error[E0277]: the trait bound `ErTopRef<'_, Report>: std::error::Error` is not satisfied
-  --> tests/fail/boxed_default_wrap.rs:20:38
-   |
-20 |     let _: &dyn core::error::Error = &tree.er_top();
-   |                                      ^^^^^^^^^^^^^^ the trait `std::error::Error` is not implemented for `ErTopRef<'_, Report>`
-   |
-   = note: required for the cast from `&ErTopRef<'_, Report>` to `&dyn std::error::Error`
-
-error[E0277]: the trait bound `ErReport<Report>: std::error::Error` is not satisfied
-  --> tests/fail/boxed_default_wrap.rs:21:38
-   |
-21 |     let _: &dyn core::error::Error = &ErTree::from(Report::new()).into_er_report();
-   |                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `std::error::Error` is not implemented for `ErReport<Report>`
-   |
-   = note: required for the cast from `&ErReport<Report>` to `&dyn std::error::Error`
-
-error[E0277]: the trait bound `ErTop<Top>: std::error::Error` is not satisfied
-  --> tests/fail/boxed_default_wrap.rs:22:38
-   |
-22 |     let _: &dyn core::error::Error = &ErTree::from(Top::new()).into_er_top();
-   |                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `std::error::Error` is not implemented for `ErTop<Top>`
-   |
-   = note: required for the cast from `&ErTop<Top>` to `&dyn std::error::Error`

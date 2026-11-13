@@ -37,33 +37,31 @@ pub fn main() {
     let tree = ErTree {
         top: BorrowedResponse { text: &text },
         nodes: Vec::new(),
+        saved: ErSavedList::default(),
         src_location: core::panic::Location::caller(),
     };
     let wrapped = BorrowedResponseWrap::from(tree);
-    let _ = wrapped.er_top_string();
 
     let mut lines = Vec::new();
     wrapped
         .for_each_line(|l| lines.push(l.to_owned()))
         .unwrap();
     let _ = wrapped.try_for_each_line(|_| Err(&text));
-    let _ = Err::<(), _>(&wrapped).er_top().unwrap_err();
 
     let wrapped = GenericResponseWrap::from(ErTree::new(
         GenericResponse::<_, 85>::new(7u8),
         [core::fmt::Error],
     ));
-    assert_eq!(wrapped.er_top_string(), "GenericResponse(7)");
+    assert_eq!(wrapped.to_string(), "GenericResponse(7)");
     let _ = wrapped.er_snapshot();
     let _ = wrapped.try_for_each_line(|_| Err(85));
 
-    let local = LocalErr::new(std::rc::Rc::new(7)).er_wrap();
+    let local = __ErNodeRoot::from(LocalErr::new(std::rc::Rc::new(7)));
     assert!(local.er_report().to_string().contains("LocalErr(7)"));
 
     // Wrap from another crate, its tree is still public.
     let wrapped = BoundaryErrWrap::from(ErTree::from(BoundaryErr));
 
-    let _ = wrapped.er_top();
     let _ = wrapped.er_report();
 
     let recovered = wrapped.tree;
@@ -74,7 +72,7 @@ pub fn main() {
     let _ = foreign.status_code();
     assert_eq!(foreign.to_string(), "ResponseErr");
     assert!(foreign.source().is_none());
-    assert!(wrapped.er_report_string().contains("formatting"));
+    assert!(wrapped.er_report().contains("formatting"));
     let result = Err::<(), _>(wrapped).er_wrap(BoundaryErr::new);
     assert!(result.is_err_and(|tree| tree.er_contains::<core::fmt::Error>()));
 }

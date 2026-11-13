@@ -1,4 +1,4 @@
-error: unused `ErReportRef` that must be used
+error: unused return value of `er::impls::tree::<impl er::ErTree<E>>::er_report` that must be used
   --> tests/fail/unused_values.rs:16:5
    |
 16 |     tree.er_report();
@@ -14,112 +14,68 @@ help: use `let _ = ...` to ignore the resulting value
 16 |     let _ = tree.er_report();
    |     +++++++
 
-error: unused `ErTopRef` that must be used
+error: unused `ErEntries` that must be used
   --> tests/fail/unused_values.rs:17:5
    |
-17 |     tree.er_top().single_line();
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-help: use `let _ = ...` to ignore the resulting value
-   |
-17 |     let _ = tree.er_top().single_line();
-   |     +++++++
-
-error: unused `ErEntries` that must be used
-  --> tests/fail/unused_values.rs:18:5
-   |
-18 |     tree.er_entries();
+17 |     tree.er_entries();
    |     ^^^^^^^^^^^^^^^^^
    |
 help: use `let _ = ...` to ignore the resulting value
    |
-18 |     let _ = tree.er_entries();
+17 |     let _ = tree.er_entries();
    |     +++++++
 
 error: unused `er::ErTree` that must be used
-  --> tests/fail/unused_values.rs:19:5
+  --> tests/fail/unused_values.rs:18:5
    |
-19 |     ErTree::from(AppErr);
+18 |     ErTree::from(AppErr);
    |     ^^^^^^^^^^^^^^^^^^^^
    |
 help: use `let _ = ...` to ignore the resulting value
    |
-19 |     let _ = ErTree::from(AppErr);
+18 |     let _ = ErTree::from(AppErr);
    |     +++++++
 
 error: unused return value of `from` that must be used
-  --> tests/fail/unused_values.rs:19:5
+  --> tests/fail/unused_values.rs:18:5
    |
-19 |     ErTree::from(AppErr);
+18 |     ErTree::from(AppErr);
    |     ^^^^^^^^^^^^^^^^^^^^
    |
 help: use `let _ = ...` to ignore the resulting value
    |
-19 |     let _ = ErTree::from(AppErr);
-   |     +++++++
-
-error: unused `ErNode` that must be used
-  --> tests/fail/unused_values.rs:20:5
-   |
-20 |     ErTree::from(AppErr).into_er_node();
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-help: use `let _ = ...` to ignore the resulting value
-   |
-20 |     let _ = ErTree::from(AppErr).into_er_node();
-   |     +++++++
-
-error: unused `ErReport` that must be used
-  --> tests/fail/unused_values.rs:21:5
-   |
-21 |     ErTree::from(AppErr).into_er_report();
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-help: use `let _ = ...` to ignore the resulting value
-   |
-21 |     let _ = ErTree::from(AppErr).into_er_report();
+18 |     let _ = ErTree::from(AppErr);
    |     +++++++
 
 error: unused `AppErrWrap` that must be used
-  --> tests/fail/unused_values.rs:22:5
+  --> tests/fail/unused_values.rs:19:5
    |
-22 |     AppErrWrap { tree: ErTree::from(AppErr) };
+19 |     AppErrWrap { tree: ErTree::from(AppErr) };
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
 help: use `let _ = ...` to ignore the resulting value
    |
-22 |     let _ = AppErrWrap { tree: ErTree::from(AppErr) };
+19 |     let _ = AppErrWrap { tree: ErTree::from(AppErr) };
    |     +++++++
 
 error: unused return value of `AppErr::new` that must be used
-  --> tests/fail/unused_values.rs:23:5
+  --> tests/fail/unused_values.rs:20:5
    |
-23 |     AppErr::new();
+20 |     AppErr::new();
    |     ^^^^^^^^^^^^^
    |
 help: use `let _ = ...` to ignore the resulting value
    |
-23 |     let _ = AppErr::new();
+20 |     let _ = AppErr::new();
    |     +++++++
 
 error: unused return value of `Kind::missing` that must be used
-  --> tests/fail/unused_values.rs:24:5
+  --> tests/fail/unused_values.rs:21:5
    |
-24 |     Kind::missing();
+21 |     Kind::missing();
    |     ^^^^^^^^^^^^^^^
    |
 help: use `let _ = ...` to ignore the resulting value
    |
-24 |     let _ = Kind::missing();
-   |     +++++++
-
-error: unused `AppErrWrap` that must be used
-  --> tests/fail/unused_values.rs:25:5
-   |
-25 |     AppErr.er_wrap();
-   |     ^^^^^^^^^^^^^^^^
-   |
-help: use `let _ = ...` to ignore the resulting value
-   |
-25 |     let _ = AppErr.er_wrap();
+21 |     let _ = Kind::missing();
    |     +++++++
