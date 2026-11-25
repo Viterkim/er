@@ -5,5 +5,4 @@ edition = "2024"
 publish = false
 
 [dependencies]
-er-macros = { path = "../../../er-macros" }
-old-er = { package = "er", version = "=0.7.0", default-features = false, features = ["macros"] }
+er = { path = "../../../er", default-features = false, features = ["macros"] }

@@ -26,9 +26,15 @@ impl<F: FnMut(&str) -> Result<(), E>, E> fmt::Write for Lines<F, E> {
 
         for part in text.split_inclusive('\n') {
             if let Some(line) = part.strip_suffix('\n') {
-                self.buffer.push_str(line);
-                let line = self.buffer.strip_suffix('\r').unwrap_or(&self.buffer);
-                if let Err(error) = (self.emit)(line) {
+                // A whole line in one piece goes straight out, only a line split over writes needs the buffer.
+                let emitted = if self.buffer.is_empty() {
+                    (self.emit)(line.strip_suffix('\r').unwrap_or(line))
+                } else {
+                    self.buffer.push_str(line);
+                    let line = self.buffer.strip_suffix('\r').unwrap_or(&self.buffer);
+                    (self.emit)(line)
+                };
+                if let Err(error) = emitted {
                     self.error = Some(error);
                     return Err(fmt::Error);
                 }

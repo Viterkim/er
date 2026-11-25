@@ -1,34 +1,34 @@
-error: `format` is set more than once
+error: you already set `format`, drop the duplicate
  --> tests/fail/custom_format.rs:4:24
   |
 4 | #[er(format = "first", format = "second")]
   |                        ^^^^^^
 
-error: expected a format string or formatting function path
+error: give it a format string like `"couldn't open {path}"` or a function like `Self::summary`
  --> tests/fail/custom_format.rs:8:15
   |
 8 | #[er(format = 7)]
   |               ^
 
-error: put `format = "..."` on each enum variant that needs it
+error: `format` doesn't go on the enum itself, put it on each variant that needs one
   --> tests/fail/custom_format.rs:12:15
    |
 12 | #[er(format = "enum")]
    |               ^^^^^^
 
-error: put `format = "..."` on the struct or enum variant
+error: `format` doesn't go on a field, put it on the struct or variant
   --> tests/fail/custom_format.rs:17:10
    |
 17 |     #[er(format = "field")]
    |          ^^^^^^
 
-error: no field `missing` in this format's struct or variant
+error: there's no field `missing` here, check the spelling
   --> tests/fail/custom_format.rs:22:15
    |
 22 | #[er(format = "{missing}")]
    |               ^^^^^^^^^^^
 
-error: format references skipped field `hidden`
+error: `hidden` has `skip` on it, take it out of the format or drop the `skip`
   --> tests/fail/custom_format.rs:26:15
    |
 26 | #[er(format = "{hidden}")]
@@ -40,43 +40,43 @@ error: censored field `secret` cannot set width or precision
 30 | #[er(format = "{value:secret$}")]
    |               ^^^^^^^^^^^^^^^^^
 
-error: unknown format trait `q`
+error: don't know the format `q`, try `{field}`, `{field:?}` or one of `x`, `X`, `o`, `b`, `e`, `E`, `p`
   --> tests/fail/custom_format.rs:34:15
    |
 34 | #[er(format = "{0:q}")]
    |               ^^^^^^^
 
-error: unclosed `{` in format
+error: there's a `{` without a `}`, write `{{` to print a brace
   --> tests/fail/custom_format.rs:38:15
    |
 38 | #[er(format = "{0")]
    |               ^^^^
 
-error: unmatched `}` in format; use `}}` for a literal brace
+error: there's a `}` without a `{`, write `}}` to print a brace
   --> tests/fail/custom_format.rs:42:15
    |
 42 | #[er(format = "bad }")]
    |               ^^^^^^^
 
-error: no field `1` in this format's struct or variant
+error: there's no field `1` here, tuple fields count from 0
   --> tests/fail/custom_format.rs:46:15
    |
 46 | #[er(format = "{1}")]
    |               ^^^^^
 
-error: expected precision after `.`
+error: a `.` needs a number after it, like `{value:.2}`
   --> tests/fail/custom_format.rs:50:15
    |
 50 | #[er(format = "{value:.}")]
    |               ^^^^^^^^^^^
 
-error: `format` is set more than once
+error: you already set `format`, drop the duplicate
   --> tests/fail/custom_format.rs:56:10
    |
 56 |     #[er(format = "two")]
    |          ^^^^^^
 
-error: format references skipped field `width`
+error: `width` has `skip` on it, take it out of the format or drop the `skip`
   --> tests/fail/custom_format.rs:61:15
    |
 61 | #[er(format = "{value:width$}")]

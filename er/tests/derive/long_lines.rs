@@ -67,14 +67,13 @@ pub fn long_lines() -> fmt::Result {
     let tree = ErTree::from(WideErr::new(value));
     let expected = format!("WideErr {{ value: {expected} }}");
 
-    assert_eq!(tree.er_top().to_string(), expected);
+    assert_eq!(tree.top.to_string(), expected);
 
     let report = tree.er_report().to_string();
     assert!(report.starts_with(&expected));
 
     let mut lines = Vec::new();
-    tree.er_report()
-        .for_each_line(|l| lines.push(l.to_owned()))?;
+    tree.for_each_line(|l| lines.push(l.to_owned()))?;
 
     assert_eq!(lines, [report]);
 

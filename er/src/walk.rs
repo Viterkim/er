@@ -1,23 +1,23 @@
 use crate::types::ErNode;
 #[cfg(feature = "src_locations")]
 use crate::types::ErSrcLocation;
-use alloc::vec::Vec;
+use alloc::{collections::BTreeSet, vec::Vec};
 use core::error::Error;
-use core::marker::PhantomData;
+use core::{marker::PhantomData, slice};
 
 /// Native source hops per root or stored node. Doesn't limit Er tree depth.
 pub const MAX_SOURCE_HOPS: usize = 256;
 
 /// Kind of entry in the tree
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ErEntryKind {
     Root,
     Node,
     Source,
 }
 
-/// One error, possibly with a multiline message. Indices belong to this traversal, including native sources.
+/// One error, whose message can span several lines. Indices are for this traversal and count
+/// native sources.
 #[derive(Clone, Copy, Debug)]
 pub struct ErEntry<'a> {
     pub error: &'a (dyn Error + 'static),
@@ -33,19 +33,29 @@ pub struct ErEntry<'a> {
 }
 
 #[derive(Clone, Copy)]
-pub struct Pending<'a> {
-    pub entry: ErEntry<'a>,
-    pub nodes: &'a [ErNode],
+pub struct PendingError<'a> {
+    pub error: &'a (dyn Error + 'static),
+    pub depth: usize,
     pub sources_left: usize,
+    pub is_last: bool,
+    #[cfg(feature = "src_locations")]
+    pub src_location: Option<ErSrcLocation>,
 }
 
-/// Each error, then its native sources and stored sub errors.
-/// Longer native chains stop at [`MAX_SOURCE_HOPS`], setting the last entry's `source_truncated`.
-/// Filtering keeps the original indices, links between entries, depths, and `is_last` values.
+#[derive(Clone, Copy)]
+pub struct PendingNodes<'a> {
+    pub siblings: &'a [ErNode],
+    pub parent: usize,
+    pub depth: usize,
+}
+
+/// Walks every error in the tree, including native `source()` chains (capped at 256 hops).
 #[derive(Clone)]
 #[must_use]
 pub struct ErEntries<'a> {
-    pub pending: Vec<Pending<'a>>,
+    pub next_error: Option<PendingError<'a>>,
+    pub nodes: PendingNodes<'a>,
+    pub pending: Vec<PendingNodes<'a>>,
     pub next_index: usize,
 }
 
@@ -53,10 +63,13 @@ pub struct ErEntries<'a> {
 #[derive(Clone)]
 #[must_use]
 pub struct ErNodes<'a> {
-    pub pending: Vec<&'a ErNode>,
+    pub nodes: slice::Iter<'a, ErNode>,
+    pub pending: Vec<slice::Iter<'a, ErNode>>,
+    /// The shared trees already walked, set when each one should only be walked once.
+    pub seen: Option<BTreeSet<usize>>,
 }
 
-/// Up to [`MAX_SOURCE_HOPS`] errors in a native `Error::source()` chain.
+/// Walk a native `Error::source()` chain (capped at 256 hops).
 #[derive(Clone)]
 #[must_use]
 pub struct ErSources<'a> {
@@ -72,7 +85,6 @@ pub struct ErFindAll<'a, T> {
     pub error: Option<&'a (dyn Error + 'static)>,
     pub yielded_error: bool,
     pub sources_left: usize,
-    pub nodes: &'a [ErNode],
-    pub pending: Vec<&'a [ErNode]>,
+    pub nodes: ErNodes<'a>,
     pub marker: PhantomData<fn() -> T>,
 }

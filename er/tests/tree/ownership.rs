@@ -5,6 +5,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
+use std::thread::Builder;
 
 #[derive(Er)]
 #[er(wrap)]
@@ -30,19 +31,44 @@ impl Error for LegacyErr {
 
 #[test]
 pub fn owned_context() {
-    let child = ErTree::new(StageErr, [fmt::Error]);
+    let sub = ErTree::new(StageErr, [fmt::Error]);
     let cause = io::Error::new(io::ErrorKind::TimedOut, "timeout");
-    let inner = ErTree::new(LegacyErr { cause }, [child]);
+    let inner = ErTree::new(LegacyErr { cause }, [sub]);
     let outer = inner.er(OuterErr::new);
 
-    let children: Vec<_> = outer
+    let below: Vec<_> = outer
         .er_descendants()
         .map(|node| node.error.to_string())
         .collect();
     assert_eq!(
-        children,
+        below,
         ["legacy", "StageErr", fmt::Error.to_string().as_str()]
     );
+}
+
+#[test]
+pub fn borrowed_context() {
+    let stored = Err::<String, _>(io::Error::other("offline").er_share());
+    let source = stored.as_ref().unwrap_err();
+
+    let first: ErTree<OuterErr> = source.er_with(|_: &io::Error| OuterErr);
+    let second = source.er_with_tree(|_: &ErSharedTree<io::Error>| OuterErr);
+    let third = stored.as_ref().er(()).unwrap_err();
+
+    for tree in [first, second, third] {
+        assert!(tree.er_contains_shared(source));
+    }
+}
+
+#[test]
+fn shared_identity() {
+    let first = StageErr.er_share();
+    let second = StageErr.er_share();
+    let nested = er_new!(OuterErr, [&first]).er_share();
+    let report = er_new!(OuterErr, [nested]);
+
+    assert!(report.er_contains_shared(&first));
+    assert!(!report.er_contains_shared(&second));
 }
 
 pub struct Tracked {
@@ -71,32 +97,43 @@ pub fn drop_once() {
     shared::<ErTree<StageErr>>();
     shared::<StageErrWrap>();
 
-    for top in [false, true] {
-        let drops = Arc::new(AtomicUsize::new(0));
-        let first = ErTree::from(Tracked {
+    let drops = Arc::new(AtomicUsize::new(0));
+    let first = ErTree::from(Tracked {
+        drops: Arc::clone(&drops),
+    });
+    let second = ErTree::from(Tracked {
+        drops: Arc::clone(&drops),
+    });
+
+    let error = ErTree::new(
+        Tracked {
             drops: Arc::clone(&drops),
-        });
-        let second = ErTree::from(Tracked {
-            drops: Arc::clone(&drops),
-        });
+        },
+        [first.into_er_part(), second.into_er_part()],
+    );
 
-        let error = ErTree::new(
-            Tracked {
-                drops: Arc::clone(&drops),
-            },
-            [first.into_er_part(), second.into_er_part()],
-        );
+    let wrapped = StageErrWrap::from(ErTree::new(StageErr, [error]));
+    drop(wrapped);
 
-        let wrapped = StageErrWrap::from(ErTree::new(StageErr, [error]));
-        let recovered = wrapped.tree;
-        let report = recovered.into_er_report();
+    assert_eq!(drops.load(Ordering::Relaxed), 3);
+}
 
-        if top {
-            drop(report.tree.into_er_top());
-        } else {
-            drop(report);
-        }
+#[test]
+pub fn shared_drop() {
+    Builder::new()
+        .stack_size(512 * 1024)
+        .spawn(|| {
+            let mut tree = OuterErr.er_share();
+            let mut weak = Vec::new();
 
-        assert_eq!(drops.load(Ordering::Relaxed), 3);
-    }
+            for _ in 0..20_000 {
+                weak.push(Arc::downgrade(&tree.tree));
+                tree = tree.er(OuterErr::new).er_share();
+            }
+
+            drop(tree);
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }

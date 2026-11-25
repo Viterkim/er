@@ -1,19 +1,18 @@
-use crate::{types::Layout, walk::ErEntryKind};
-use alloc::{string::String, vec::Vec};
+use crate::{ErSaved, walk::ErEntryKind};
+use alloc::{borrow::Cow, string::String, vec::Vec};
 
-/// Saved messages and locations, no original error values.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+/// A copy of the tree's messages and locations that outlives the original errors.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[must_use]
 pub struct ErSnapshot {
-    /// Tree order, with indices linking each error to the one above it.
-    /// Don't reorder these unless you also fix everything that says where they belong in the tree.
+    /// Tree order, with parent indices linking each error to the one above it.
     pub entries: Vec<ErSnapshotEntry>,
+    /// The tree's saved reports/traces
+    pub saved: Vec<ErSaved>,
 }
 
 /// One saved error, not one printed line.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ErSnapshotEntry {
     pub message: String,
     pub kind: ErEntryKind,
@@ -21,50 +20,15 @@ pub struct ErSnapshotEntry {
     pub parent: Option<usize>,
     pub depth: usize,
     pub is_last: bool,
-    /// The native source walk stopped here, the saved tree is incomplete.
     pub source_truncated: bool,
     #[cfg(feature = "src_locations")]
-    #[cfg_attr(feature = "serde", serde(default))]
     pub src_location: Option<ErSnapshotLocation>,
 }
 
 /// File, line, column.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ErSnapshotLocation {
-    pub file: String,
+    pub file: Cow<'static, str>,
     pub line: u32,
     pub column: u32,
-}
-
-/// The whole saved report, borrows the snapshot.
-#[derive(Clone, Copy)]
-#[must_use]
-pub struct ErSnapshotReportRef<'a> {
-    pub snapshot: &'a ErSnapshot,
-    pub layout: Layout,
-}
-
-/// Just the saved outer error, borrows the snapshot.
-#[derive(Clone, Copy)]
-#[must_use]
-pub struct ErSnapshotTopRef<'a> {
-    pub snapshot: &'a ErSnapshot,
-    pub layout: Layout,
-}
-
-/// The whole saved report, owns the snapshot.
-#[derive(Clone)]
-#[must_use]
-pub struct ErSnapshotReport {
-    pub snapshot: ErSnapshot,
-    pub layout: Layout,
-}
-
-/// Just the saved outer error, owns the snapshot.
-#[derive(Clone)]
-#[must_use]
-pub struct ErSnapshotTop {
-    pub snapshot: ErSnapshot,
-    pub layout: Layout,
 }

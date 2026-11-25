@@ -72,14 +72,20 @@ pub fn bail() {
         er_bail!(|_| path);
     }
 
-    fn job(path: &str) -> Result<(), ErTop<JobErr>> {
-        er_bail!(|| JobErr::file(path, "bad"));
+    fn job(path: &str) -> ErResult<(), JobErr> {
+        er_bail!(|| {
+            if path.is_empty() {
+                return JobErr::Forbidden;
+            }
+
+            JobErr::file(path, "bad")
+        });
     }
 
     let file = file(Path::new("config.toml")).unwrap_err();
     assert_eq!(file.top.path, PathBuf::from("config.toml"));
 
-    let job = job("config.toml").unwrap_err().tree.top;
+    let job = job("config.toml").unwrap_err().top;
     assert!(matches!(job, JobErr::File { msg, .. } if msg == "bad"));
 }
 
@@ -93,13 +99,13 @@ pub fn built_or_fields() {
 
     let original = BoxConstructErr::new(std::io::Error::other("original"));
     let wrapped: ErResult<(), BoxConstructErr> =
-        Err::<(), std::fmt::Error>(std::fmt::Error).er(|_| original);
+        Err::<(), std::fmt::Error>(std::fmt::Error).er(|_| ErBoxError::from(original));
     let wrapped = wrapped.unwrap_err();
     assert!(wrapped.top.source.is::<BoxConstructErr>());
 
     let original = BoxConstructErr::new(std::io::Error::other("original"));
     let used: ErResult<(), BoxConstructErr> =
-        Err::<(), _>(std::fmt::Error).er_with(|_| er_built(original));
+        Err::<(), _>(std::fmt::Error).er_with(|_| original.source);
     assert!(used.unwrap_err().top.source.is::<std::io::Error>());
 }
 
@@ -166,7 +172,7 @@ pub enum JobErr {
 }
 #[test]
 pub fn constructors() {
-    let _ = ManualErr::new(84).er_wrap();
+    let _: ManualErrWrap = ManualErr::new(84).into();
     let _ = ManualData::pair(7);
 
     let path = PathBuf::from("config.toml");
@@ -294,11 +300,6 @@ pub mod constants {
 
     #[derive(Er)]
     pub enum Boundary {
-        Saved {
-            #[er(into_report_string)]
-            diagnostics: String,
-            tag: u8,
-        },
         Source(#[er(source)] io::Error),
     }
 
@@ -306,19 +307,13 @@ pub mod constants {
     pub struct Data(pub u8);
 
     #[test]
-    pub fn bindings() -> Result<(), BoxError> {
+    pub fn bindings() -> Result<(), ErBoxError> {
         let result: ErResult<(), Root> = Err::<(), _>(io::Error::other("stopped")).er(|_| "task");
         let wrapped_error = RootWrap::from(result.unwrap_err());
 
         let mut lines = Vec::new();
         wrapped_error.for_each_line(|l| lines.push(l.to_owned()))?;
         assert!(lines.iter().any(|line| line.contains("stopped")));
-
-        let saved: Boundary = wrapped_error.er_into(|saved| (saved, value));
-        match saved {
-            Boundary::Saved { diagnostics, .. } => assert!(diagnostics.contains("stopped")),
-            Boundary::Source(_) => panic!("wrong variant"),
-        }
 
         let source = Boundary::source(io::Error::other("source"));
         assert_eq!(source.er_snapshot().entries.len(), 2);

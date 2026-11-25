@@ -2,7 +2,7 @@
 
 Same bad port for every library. First the easy version, then one with the input added so we can actually see what went wrong.
 
-Links on this page: [thiserror](#thiserror-2020), [error-stack](#error-stack-080), [Er](#er-081), [Anyhow](#anyhow-10104), [SNAFU](#snafu-092), [rootcause](#rootcause-0130),
+Links on this page: [thiserror](#thiserror-2020), [error-stack](#error-stack-080), [Er](#er-090), [Anyhow](#anyhow-10104), [SNAFU](#snafu-092), [rootcause](#rootcause-0130),
 [exn](#exn-031), [Eros](#eros-080), [Problemo](#problemo-0013), [Nightly std::error::Report](#nightly-stderrorreport), [Others](#others)
 
 For the messy version with several errors and a public boundary, see the [tricky comparison](tricky-error-comparison.md).
@@ -174,7 +174,7 @@ I love the typed context and keeping the original errors. But you still need to 
 
 Error-stack needs Send + Sync so no Rc/RefCell errors (`er-unsync` can).
 
-## Er (0.8.1)
+## Er (0.9.0)
 
 (hey that's this one)
 
@@ -210,7 +210,7 @@ pub struct PortErr {
 }
 
 pub fn read_port(input: &str) -> ErResult<u16, PortErr> {
-    let port: u16 = input.parse().er(|_| input)?;
+    let port: u16 = input.parse().er(input)?;
     Ok(port)
 }
 
@@ -322,7 +322,7 @@ Pretty easy, but the input is text, not a field.
 Or a small struct, SNAFU fills in the source and location:
 
 ```rust
-use snafu::Snafu;
+use snafu::{ResultExt, Snafu};
 use std::num::ParseIntError;
 
 #[derive(Debug, Snafu)]
@@ -335,7 +335,7 @@ pub struct PortErr {
 }
 
 pub fn read_port(input: &str) -> Result<u16, PortErr> {
-    input.parse().context(PortSnafu { input })
+    input.parse().context(PortErrSnafu { input })
 }
 ```
 
@@ -496,7 +496,9 @@ If we also want the input from our `PortErr` in the next error:
 #[derive(Er)]
 pub struct ConfigErr(pub String);
 
-read_port(input).er_with(|err| err.input.clone())?;
+pub fn config_port(input: &str) -> ErResult<u16, ConfigErr> {
+    read_port(input).er_with(|err| err.input.clone())
+}
 ```
 
 Still keeps the old error and everything below it. A `map_err` that makes a fresh tree loses that history, which is really easy to do by accident.
@@ -513,13 +515,12 @@ Snapshots in Er for storing/having owned string version of the reports:
 
 ```rust
 let saved = error.er_snapshot();
-let json = serde_json::to_string(&saved).unwrap();
+drop(error);
 
-let saved: ErSnapshot = serde_json::from_str(&json).unwrap();
 println!("{}", saved.er_report());
 ```
 
-There's `.single_line()` and `for_each_line()` for printing too, mostly because logging multiline errors can be [complete shit](extra/systemd.md).
+There's `for_each_line()` for printing too, mostly because logging multiline errors can be [complete shit](extra/systemd.md).
 
 You don't HAVE to make an error type per function with Exn or Er. But i like distinct types because then the caller can't just `?` the error up unchanged.
 
@@ -627,6 +628,8 @@ The parser error is no more, F in the chat.
 You can combine error types without making another enum, which i think is cool. The tuple names the possible types, not three errors all sitting there at runtime. `map_inner` can group them into your own error type if the caller needs your cases instead.
 
 ```rust
+use eros::{IntoUnion, ReshapeUnion};
+
 type FilePortErr = (io::Error, Utf8Error, ParseIntError);
 
 fn file_port(path: &str) -> eros::Result<u16, FilePortErr> {
@@ -636,7 +639,7 @@ fn file_port(path: &str) -> eros::Result<u16, FilePortErr> {
 }
 ```
 
-The union gives the caller the original errors, not necessarily the cases you want them to handle. If you want your own typed context, you still have to make and map those types. The [tricky example](tricky-error-comparison.md#eros-080--thiserror-1) does that at the public boundary.
+The union gives the caller the original errors, not necessarily the cases you want them to handle. If you want your own typed context, you still have to make and map those types. The [tricky example](tricky-error-comparison.md#eros-2) does that at the public boundary.
 
 ## Problemo (0.0.13)
 
@@ -744,7 +747,7 @@ Leave the source in Display and it prints twice, thats twice the value for half 
 
 Report prints what you already have, it doesn't add context. Single line by default, `.pretty(true)` for this output.
 
-[Nightly Docs](https://doc.rust-lang.org/std/error/struct.Report.html)
+[Nightly Docs](https://doc.rust-lang.org/nightly/std/error/struct.Report.html)
 
 ## Others
 

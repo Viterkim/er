@@ -27,36 +27,28 @@ pub fn nested_helpers() {
     let error = outer().unwrap_err();
     assert_eq!(error.er_find_all::<ErTestError>().count(), 1);
 
-    #[cfg(feature = "stack_traces")]
-    {
-        let error = Err::<(), _>(error).er_trace().unwrap_err();
-        let error = Err::<(), _>(error.into_er_report()).er_test().unwrap_err();
-        assert_eq!(error.tree.stack_traces[0].error_index, ErErrorIndex(0));
-    }
+    let error = Err::<(), _>(io::Error::other("port").er_save("kept", "report"))
+        .er_test()
+        .unwrap_err();
+    assert_eq!(error.tree.saved[0].title, "kept");
 }
 
 #[test]
-pub fn tree_and_report() {
-    for report in [false, true] {
-        let source = ErTree::new(
-            std::io::Error::other("ports"),
-            [
-                "bad".parse::<u16>().unwrap_err(),
-                "65536".parse::<u16>().unwrap_err(),
-            ],
-        );
+pub fn tree() {
+    let source = ErTree::new(
+        std::io::Error::other("ports"),
+        [
+            "bad".parse::<u16>().unwrap_err(),
+            "65536".parse::<u16>().unwrap_err(),
+        ],
+    );
 
-        let result = (|| -> ErTest {
-            if report {
-                Err::<(), _>(source.into_er_report())?;
-            } else {
-                Err::<(), _>(source)?;
-            }
-            Ok(())
-        })();
+    let result = (|| -> ErTest {
+        Err::<(), _>(source)?;
+        Ok(())
+    })();
 
-        assert_eq!(result.unwrap_err().tree.nodes[0].nodes.len(), 2);
-    }
+    assert_eq!(result.unwrap_err().tree.nodes[0].nodes.len(), 2);
 }
 
 #[test]
@@ -90,7 +82,7 @@ pub fn helpers() -> ErTest {
     assert!(error.er_contains::<ParseIntError>());
 
     let error = read_port("bad")
-        .er_with::<io::Error, _>(|err| er_built(io::Error::other(err.to_string())))
+        .er_with::<io::Error, _>(|err| io::Error::other(err.to_string()))
         .unwrap_err();
     assert_eq!(error.top.to_string(), "TestError");
 
@@ -98,9 +90,7 @@ pub fn helpers() -> ErTest {
 
     let error = read_port("bad")
         .er_with_tree::<io::Error, _>(|tree| {
-            er_built(io::Error::other(
-                tree.er_find::<ParseIntError>().unwrap().to_string(),
-            ))
+            io::Error::other(tree.er_find::<ParseIntError>().unwrap().to_string())
         })
         .unwrap_err();
     assert!(error.top.to_string().contains("invalid digit"));
@@ -163,6 +153,38 @@ pub fn macros() -> ErTest {
 
     let error = (|| -> ErTest { er_bail!(|_| "bad port") })().unwrap_err();
     assert!(error.to_string().contains("bad port"));
+
+    let error = (|| -> ErTest {
+        let failure: ErBoxError = Box::new(io::Error::other("bad port"));
+        er_bail!((failure, String::from("driver report")))
+    })()
+    .unwrap_err();
+    assert!(error.er_contains::<io::Error>());
+    assert!(error.er_report().contains("driver report"));
+
+    Ok(())
+}
+
+#[cfg(feature = "macros")]
+#[derive(Er)]
+pub enum PortErr {
+    Missing,
+    Bad,
+}
+#[cfg(feature = "macros")]
+#[test]
+pub fn assert_err() -> ErTest {
+    assert_eq!(er_assert_err!(Err::<(), _>(85_u8)), 85);
+
+    let missing = || Err::<(), _>(ErTree::from(PortErr::Missing));
+    er_assert_err!(missing(), PortErr::Missing);
+
+    let error = (|| -> ErTest {
+        er_assert_err!(missing(), PortErr::Bad);
+        Ok(())
+    })()
+    .unwrap_err();
+    assert!(error.er_contains::<ErTestWrongErr>());
 
     Ok(())
 }

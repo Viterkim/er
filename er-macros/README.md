@@ -1,30 +1,5 @@
 # er-macros
 
-Derives for [Er](https://docs.rs/er/0.8.1/er/).
-
-If you want `.er()` and the tree, then use `er`.
-
-If you only want the macros like `#[derive(Er)]` and `#[derive(ErFormat)]` for stuff like Display, Debug, constructors, then you can just use this.
-
-```rust
-use er_macros::{Er, ErFormat};
-
-#[derive(ErFormat)]
-struct File {
-    name: String,
-}
-
-#[derive(Er)]
-struct ReadErr {
-    file: File,
-}
-
-let error = ReadErr::new(File::new("missing.txt"));
-println!("{error}");
-```
-
-```text
-ReadErr { file: File { name: "missing.txt" } }
-```
+Derives for [Er](https://docs.rs/er/0.9.0/er/). Use them through `er` or `er-unsync`.
 
 More options: [macros.md](https://github.com/Viterkim/er/blob/main/er/docs/macros.md) (`format`, `skip`, `censor`, `wrap`, etc).

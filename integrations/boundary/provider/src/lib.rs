@@ -1,50 +1,31 @@
-pub mod frozen;
+use er::*;
 
-#[derive(old_er::Er)]
+#[derive(Er)]
 pub struct ReadErr;
 
-#[derive(er_macros::Er)]
+#[derive(Er)]
 #[er(
     format = "provider failed",
     debug = "provider failed, secret {secret}",
-    display_alt = "{diagnostics}"
+    display_alt = "{message}"
 )]
 pub struct Failure<T = ()> {
-    #[er(into_top, source)]
-    pub kind: ReadErr,
-    #[er(into_report_string)]
-    pub diagnostics: String,
-    #[er(into_report_string(single_line))]
-    pub single_line: String,
+    pub message: String,
     #[er(default, skip)]
     pub data: T,
     #[er(default = String::from("secret sentinel"), censor)]
     pub secret: String,
 }
 
-pub fn read() -> Result<u8, Failure> {
-    use old_er::*;
-
+pub fn read() -> Result<u8, (ReadErr, String)> {
     let result: ErResult<u8, ReadErr> = Err(std::fmt::Error).er(());
-    match result {
-        Ok(value) => Ok(value),
-        Err(tree) => {
-            let diagnostics = tree.er_report_string();
-            let single_line = tree.er_report().single_line().to_string();
-            Err(Failure::new(
-                tree.top,
-                diagnostics,
-                single_line,
-                (),
-                "secret sentinel",
-            ))
-        }
-    }
+
+    result.er_split()
 }
 
 type Cause<E> = std::sync::Arc<E>;
 
-#[derive(er_macros::Er)]
+#[derive(Er)]
 pub enum OpenError {
     #[er(display = "access denied for {0}")]
     Denied(String),
@@ -54,7 +35,7 @@ pub enum OpenError {
     },
 }
 
-#[derive(er_macros::Er)]
+#[derive(Er)]
 #[er(no_constructors)]
 pub struct ManualError {
     #[er(exact)]
@@ -66,17 +47,17 @@ impl ManualError {
     }
 }
 
-#[derive(er_macros::Er)]
+#[derive(Er)]
 #[er(no_constructors)]
 pub struct NoConstructors {
     pub code: u8,
 }
 
-#[derive(er_macros::ErFormat)]
+#[derive(ErFormat)]
 #[er(display = "revision {0}")]
 pub struct Revision(pub u64);
 
-#[derive(er_macros::Er)]
+#[derive(Er)]
 #[er(display = Self::summary)]
 pub struct FunctionError {
     pub revision: Revision,
@@ -87,7 +68,7 @@ impl FunctionError {
     }
 }
 
-#[derive(er_macros::Er)]
+#[derive(Er)]
 #[er(format = "invalid {value:?} @ {location}")]
 pub struct LocatedError {
     pub value: String,

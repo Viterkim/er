@@ -1,8 +1,7 @@
 #[cfg(test)]
 mod tests {
     use boundary_provider::{
-        Failure, FunctionError, LocatedError, ManualError, NoConstructors, OpenError, ReadErr,
-        Revision,
+        Failure, FunctionError, LocatedError, ManualError, NoConstructors, OpenError, Revision,
     };
     use std::{error::Error, io, sync::Arc};
 
@@ -13,18 +12,11 @@ mod tests {
         let location: &'static std::panic::Location<'static> = diagnostic.location;
         assert_eq!((location.file(), location.line()), (file!(), line));
 
-        let err = boundary_provider::read().unwrap_err();
+        let err = Failure::new("provider message", (), "secret");
         assert_eq!(format!("{err:?}"), "provider failed, secret *CENSORED*");
-        assert!(err.source().unwrap().is::<ReadErr>());
 
         struct Payload;
-        let supplied = Failure::new(
-            err.kind,
-            err.diagnostics,
-            err.single_line,
-            Payload,
-            "supplied",
-        );
+        let supplied = Failure::new(err.message, Payload, "supplied");
         let Payload = supplied.data;
 
         let denied = OpenError::denied("archive");

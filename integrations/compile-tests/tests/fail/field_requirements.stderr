@@ -1,11 +1,15 @@
 error[E0277]: `NotDebug` doesn't implement `Debug`
- --> tests/fail/field_requirements.rs:7:9
+ --> tests/fail/field_requirements.rs:7:18
   |
+5 | #[derive(Er)]
+  |          -- in this derive macro expansion
+6 | pub struct VisibleErr {
 7 |     pub details: NotDebug,
-  |         ^^^^^^^^^^^^^^^^^ the trait `Debug` is not implemented for `NotDebug`
+  |                  ^^^^^^^^ the trait `Debug` is not implemented for `NotDebug`
   |
   = note: required for `&NotDebug` to implement `Debug`
   = note: required for the cast from `&&NotDebug` to `&dyn Debug`
+  = note: this error originates in the derive macro `Er` (in Nightly builds, run with -Z macro-backtrace for more info)
 help: consider annotating `NotDebug` with `#[derive(Debug)]`
   |
 3 + #[derive(Debug)]

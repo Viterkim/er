@@ -33,26 +33,16 @@ pub fn causal_chain() {
 
 #[test]
 pub fn panic_output() {
-    for top in [false, true] {
-        let tree = ErTree::new(Message("context"), [Message("cause")]);
-        let expected = if top {
-            tree.er_top().to_string()
-        } else {
-            tree.er_report().to_string()
-        };
-        let result: ErResult<(), Message> = Err(tree);
-        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            if top {
-                result.er_top().expect("operation failed");
-            } else {
-                result.er_report().expect("operation failed");
-            }
-        }))
-        .unwrap_err();
-        let message = panic.downcast_ref::<String>().expect("expect panic text");
+    let tree = ErTree::new(Message("context"), [Message("cause")]);
+    let expected = tree.er_report();
+    let result: ErResult<(), Message> = Err(tree);
+    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        result.er_expect("operation failed");
+    }))
+    .unwrap_err();
+    let message = panic.downcast_ref::<String>().expect("expect panic text");
 
-        assert_eq!(message, &format!("operation failed: {expected}"));
-    }
+    assert_eq!(message, &format!("operation failed: {expected}"));
 }
 
 pub struct Message(pub &'static str);
@@ -74,7 +64,7 @@ pub struct WrapErr;
 pub fn multiline() {
     for (message, expected) in [
         ("first\nsecond\nthird", "first\n   second\n   third"),
-        ("alpha\n\nbeta", "alpha\n   \n   beta"),
+        ("alpha\n\nbeta", "alpha\n\n   beta"),
         ("alpha\nbeta\n", "alpha\n   beta"),
     ] {
         let tree = ErTree::new(WrapErr, [Message(message)]);
@@ -90,17 +80,17 @@ pub fn multiline() {
 
     let tree = ErTree::new(
         Message("root one\nroot two"),
-        [ErTree::from(Message("child"))],
+        [ErTree::from(Message("sub"))],
     );
 
     #[cfg(feature = "src_locations")]
     let expected = format!(
-        "root one\nroot two @ {}\n`- child @ {}",
+        "root one\nroot two @ {}\n`- sub @ {}",
         tree.src_location, tree.nodes[0].src_location,
     );
 
     #[cfg(not(feature = "src_locations"))]
-    let expected = "root one\nroot two\n`- child";
+    let expected = "root one\nroot two\n`- sub";
 
     assert_eq!(tree.er_report().to_string(), expected);
 }
@@ -128,31 +118,15 @@ pub fn branches() {
     let expected = "WrapErr\n|- MidErr\n|  `- alpha\n|     beta\n`- gamma";
 
     assert_eq!(tree.er_report().to_string(), expected);
-
-    #[cfg(feature = "src_locations")]
-    let expected = format!(
-        "WrapErr @ {} [MidErr @ {} [alpha beta] | gamma @ {}]",
-        tree.src_location, tree.nodes[0].src_location, tree.nodes[1].src_location,
-    );
-
-    #[cfg(not(feature = "src_locations"))]
-    let expected = "WrapErr [MidErr [alpha beta] | gamma]";
-
-    assert_eq!(tree.er_report().single_line().to_string(), expected);
 }
 
 #[test]
 pub fn message_text() {
-    for (message, indented, flat) in [
-        (
-            "request @ backend",
-            "request @ backend",
-            "request @ backend",
-        ),
+    for (message, indented) in [
+        ("request @ backend", "request @ backend"),
         (
             "OuterErr @ other.rs:1:1\n`- InnerErr @ other.rs:2:2 [retry | later]",
             "OuterErr @ other.rs:1:1\n   `- InnerErr @ other.rs:2:2 [retry | later]",
-            "OuterErr @ other.rs:1:1 `- InnerErr @ other.rs:2:2 [retry | later]",
         ),
     ] {
         let tree = ErTree::new(Message(message), [Message(message)]);
@@ -164,14 +138,6 @@ pub fn message_text() {
         let expected = format!("{message}\n`- {indented}");
 
         assert_eq!(tree.er_report().to_string(), expected);
-
-        #[cfg(feature = "src_locations")]
-        let expected = format!("{flat} @ {} [{flat}]", tree.src_location,);
-
-        #[cfg(not(feature = "src_locations"))]
-        let expected = format!("{flat} [{flat}]");
-
-        assert_eq!(tree.er_report().single_line().to_string(), expected);
     }
 }
 
@@ -210,21 +176,9 @@ pub fn chunks() {
 
         let mut text = String::new();
         let writer: &mut dyn fmt::Write = &mut text;
-        render::write_report(writer, &tree.top, &[], Layout::Multiline, None).unwrap();
+        tree.er_write_report(writer).unwrap();
 
-        assert_eq!(text, "alpha\nbeta");
-        text.clear();
-        let value: &dyn fmt::Display = &tree.top;
-        render::write_top(&mut text as &mut dyn fmt::Write, value, Layout::SingleLine).unwrap();
-
-        assert_eq!(text, "alpha beta");
-
-        text.clear();
-        let mut writer = render::LineWriter::indent(&mut text as &mut dyn fmt::Write, "  ");
-        writer.wrap = render::Wrap::Flatten;
-        fmt::write(&mut writer, format_args!("{value}")).unwrap();
-
-        assert_eq!(text, "alpha beta");
+        assert_eq!(text, expected);
     }
 }
 
@@ -237,65 +191,43 @@ pub fn partitions() -> fmt::Result {
         .map(|(index, _)| index)
         .collect();
 
-    for wrap in [render::Wrap::Indent("  "), render::Wrap::Flatten] {
-        let render = |parts: &[&str]| -> Result<String, fmt::Error> {
-            let mut text = String::new();
-            let mut writer = render::LineWriter::indent(&mut text, "  ");
-            writer.wrap = wrap;
+    let render = |parts: &[&str]| -> Result<String, fmt::Error> {
+        let mut text = String::new();
+        let mut writer = er_internal::render::LineWriter::indent(&mut text, "  ");
 
-            for part in parts {
-                writer.write_str("")?;
-                writer.write_str(part)?;
-            }
+        for part in parts {
             writer.write_str("")?;
-            writer.write_char('!')?;
-            Ok(text)
-        };
-        let expected = render(&[input])?;
-
-        let mut characters = String::new();
-        let mut writer = render::LineWriter::indent(&mut characters, "  ");
-        writer.wrap = wrap;
-        for ch in input.chars().chain(['!']) {
-            writer.write_char(ch)?;
+            writer.write_str(part)?;
         }
-        assert_eq!(characters, expected);
+        writer.write_str("")?;
+        writer.write_char('!')?;
+        Ok(text)
+    };
+    let expected = render(&[input])?;
 
-        // Each bit chooses a cut between two characters.
-        for cuts in 0..1 << boundaries.len() {
-            let mut parts = Vec::new();
-            let mut start = 0;
-            for (bit, end) in boundaries.iter().copied().enumerate() {
-                if cuts & (1 << bit) != 0 {
-                    parts.push(&input[start..end]);
-                    start = end;
-                }
+    let mut characters = String::new();
+    let mut writer = er_internal::render::LineWriter::indent(&mut characters, "  ");
+    for ch in input.chars().chain(['!']) {
+        writer.write_char(ch)?;
+    }
+    assert_eq!(characters, expected);
+
+    // Each bit chooses a cut between two characters.
+    for cuts in 0..1 << boundaries.len() {
+        let mut parts = Vec::new();
+        let mut start = 0;
+        for (bit, end) in boundaries.iter().copied().enumerate() {
+            if cuts & (1 << bit) != 0 {
+                parts.push(&input[start..end]);
+                start = end;
             }
-            parts.push(&input[start..]);
-
-            assert_eq!(render(&parts)?, expected, "{parts:?}");
         }
+        parts.push(&input[start..]);
+
+        assert_eq!(render(&parts)?, expected, "{parts:?}");
     }
 
     Ok(())
-}
-
-#[test]
-pub fn single_line() {
-    for (chunks, expected) in [
-        (&["a\nb\r\nc\rd\0e"][..], "a b c d e"),
-        (&["a\r", "\nb"], "a b"),
-        (&["a\n", "\r\0"], "a"),
-        (&["kølig 😀 værdi\ttab"], "kølig 😀 værdi\ttab"),
-    ] {
-        let tree = ErTree::from(Chunked(chunks));
-        assert_eq!(tree.er_top().single_line().to_string(), expected);
-
-        let top = tree.into_er_top().single_line();
-        assert_eq!(format!("{top:#?}"), expected);
-    }
-
-    assert_eq!(ErTree::from(Message("a\nb")).er_top().to_string(), "a\nb");
 }
 
 #[derive(Debug)]
@@ -316,16 +248,13 @@ pub fn display_includes_source() {
     let cause = io::Error::new(io::ErrorKind::TimedOut, "connect timeout");
     let tree = ErTree::new(WrapErr, [LegacyErr(cause)]);
 
-    for layout in [Layout::Multiline, Layout::SingleLine] {
-        assert_eq!(
-            tree.er_report()
-                .layout(layout)
-                .to_string()
-                .matches("connect timeout")
-                .count(),
-            2
-        );
-    }
+    assert_eq!(
+        tree.er_report()
+            .to_string()
+            .matches("connect timeout")
+            .count(),
+        2
+    );
 }
 
 pub struct Budget {
@@ -346,16 +275,13 @@ impl fmt::Write for Budget {
 
 #[test]
 pub fn writer_failure() {
-    use fmt::Write as _;
-    let tree = ErTree::new(WrapErr, [Message("a fairly long child message")]);
+    let tree = ErTree::from(Chunked(&["kept", "too long"]));
 
-    for layout in [Layout::Multiline, Layout::SingleLine] {
-        let mut sink = Budget {
-            remaining: 12,
-            written: String::new(),
-        };
+    let mut sink = Budget {
+        remaining: 4,
+        written: String::new(),
+    };
 
-        assert!(write!(sink, "{}", tree.er_report().layout(layout)).is_err());
-        assert!(!sink.written.contains("fairly long"));
-    }
+    assert!(tree.er_write_report(&mut sink).is_err());
+    assert_eq!(sink.written, "kept");
 }

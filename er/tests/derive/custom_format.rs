@@ -21,7 +21,7 @@ pub fn nested_data() {
     let expected =
         "ConnectErr { connection: Connection { host: \"ComputerKatten\", password: *CENSORED* } }";
 
-    assert_eq!(tree.er_top().to_string(), expected);
+    assert_eq!(tree.top.to_string(), expected);
 }
 
 #[derive(Er)]
@@ -176,7 +176,7 @@ pub fn alternate_output() {
     assert_eq!(format!("{err:#?}"), "lifecycle failed");
 
     let tree = ErTree::from(err);
-    assert!(!tree.er_report_string().contains("first failure"));
+    assert!(!tree.er_report().contains("first failure"));
     let NotPrintable = tree.top.data;
 
     struct DisplayOnly;
@@ -365,10 +365,10 @@ pub fn field_bounds() {
     assert_eq!(NumberErr::new(10u8).to_string(), "10 / 10 / a / 1010");
 
     #[derive(Er)]
-    #[er(format = "{value} [{children:?}]")]
+    #[er(format = "{value} [{below:?}]")]
     pub struct RecursiveErr<T> {
         pub value: T,
-        pub children: Vec<Self>,
+        pub below: Vec<Self>,
     }
 
     let error = RecursiveErr::new(
@@ -410,7 +410,7 @@ pub struct SecretErr<T> {
 pub fn censor_and_skip() {
     let tree = ErTree::from(SecretErr::new("login", Secret, Secret));
     assert_eq!(
-        tree.er_top().to_string(),
+        tree.top.to_string(),
         "login: *CENSORED* / *CENSORED* / *CENSORED* / *C / 🦀🦀🦀🦀*CENSORED*"
     );
 
@@ -476,11 +476,9 @@ pub fn names_and_wrap() {
         pub café: u8,
     }
 
-    let tree = NamesErr::<1, 2, _>::new(OnlyDisplay(7), "ok", 3, 4)
-        .er_wrap()
-        .tree;
+    let wrapped = NamesErrWrap::from(NamesErr::<1, 2, _>::new(OnlyDisplay(7), "ok", 3, 4));
 
-    assert_eq!(tree.er_top().to_string(), "7 ok 3 4");
+    assert_eq!(wrapped.tree.top.to_string(), "7 ok 3 4");
 }
 
 #[derive(Er)]
@@ -545,8 +543,7 @@ pub fn projected_and_borrowed_fields() {
     let tree = ErTree {
         top: BorrowedErr::new(&text),
         nodes: Vec::new(),
-        #[cfg(feature = "stack_traces")]
-        stack_traces: Vec::new(),
+        saved: ErSavedList::default(),
         #[cfg(feature = "src_locations")]
         src_location: std::panic::Location::caller(),
     };
@@ -581,4 +578,21 @@ pub fn numeric_traits() {
             42u16
         )
     );
+}
+
+#[test]
+pub fn option_field() {
+    #[derive(Er)]
+    #[er(format = "start failed", display_alt = "{diagnostics}")]
+    struct Start {
+        diagnostics: Option<String>,
+    }
+
+    let report = Start {
+        diagnostics: Some("report".to_owned()),
+    };
+    assert_eq!(format!("{report:#}"), "report");
+
+    let plain = Start { diagnostics: None };
+    assert_eq!(format!("{plain:#}"), "start failed");
 }

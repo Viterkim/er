@@ -21,7 +21,7 @@ impl<T> HasValue for Projected<T> {
 pub struct ProjectionTree<T> {
     #[er(skip)]
     pub marker: PhantomData<T>,
-    pub children: Vec<(Self, <Self as HasValue>::Value)>,
+    pub below: Vec<(Self, <Self as HasValue>::Value)>,
 }
 impl<T> HasValue for ProjectionTree<T> {
     type Value = u8;
@@ -39,16 +39,16 @@ pub fn self_projection() {
     pub struct NotDebug;
     let leaf = ProjectionTree::<NotDebug> {
         marker: PhantomData,
-        children: Vec::new(),
+        below: Vec::new(),
     };
     let tree = ProjectionTree {
         marker: PhantomData,
-        children: vec![(leaf, 7)],
+        below: vec![(leaf, 7)],
     };
 
     assert_eq!(
         tree.to_string(),
-        "ProjectionTree { children: [(ProjectionTree { children: [] }, 7)] }"
+        "ProjectionTree { below: [(ProjectionTree { below: [] }, 7)] }"
     );
 }
 
@@ -77,8 +77,7 @@ pub fn lifetime_projection() {
     let tree = ErTree {
         top: error,
         nodes: Vec::new(),
-        #[cfg(feature = "stack_traces")]
-        stack_traces: Vec::new(),
+        saved: ErSavedList::default(),
         #[cfg(feature = "src_locations")]
         src_location: std::panic::Location::caller(),
     };
@@ -181,10 +180,7 @@ pub struct BytesErr<
 }
 #[test]
 pub fn const_names() {
-    let wrapped: BytesErrWrap<2, 3, 4, 5, 6, 7, 8> = BytesErr::new([1, 2]).er_wrap();
-    let wrapped = BytesErrWrap::from(wrapped.into_er_top());
-    let report: ErReport<_> = wrapped.into();
-    let wrapped = BytesErrWrap::from(report);
+    let wrapped: BytesErrWrap<2, 3, 4, 5, 6, 7, 8> = BytesErr::new([1, 2]).into();
 
     assert!(wrapped.to_string().contains("[1, 2]"));
 }
@@ -285,7 +281,7 @@ pub struct PlainValueErr<r#T> {
 #[derive(Er)]
 pub struct r#RawTree<T> {
     pub value: T,
-    pub children: Vec<self::RawTree<T>>,
+    pub below: Vec<self::RawTree<T>>,
 }
 #[test]
 pub fn raw_type_names() {
@@ -298,7 +294,7 @@ pub fn raw_type_names() {
     assert_eq!(plain.to_string(), "PlainValueErr { value: 8 }");
 
     let tree = RawTree::new(9u8, Vec::new());
-    assert_eq!(tree.to_string(), "RawTree { value: 9, children: [] }");
+    assert_eq!(tree.to_string(), "RawTree { value: 9, below: [] }");
 }
 
 #[derive(Er)]

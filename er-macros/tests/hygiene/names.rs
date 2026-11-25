@@ -55,7 +55,10 @@ pub struct AliasErr {
 }
 #[test]
 pub fn field_type_name_collision() {
-    let _: AliasErr = ("hello",).into();
+    let _ =
+        <AliasErr as er::er_internal::ErFromFields<_, er::er_internal::ErFields>>::er_from_fields(
+            "hello",
+        );
 }
 
 mod bound_name {
@@ -137,4 +140,31 @@ pub mod source_paths {
                 .is::<core::fmt::Error>()
         );
     }
+}
+
+fn check(text: &str) -> usize {
+    text.len()
+}
+
+macro_rules! checked {
+    () => {
+        check("four")
+    };
+}
+
+// The macro hides `check` from the derive, it must still mean the function above and not the field's shield.
+#[derive(Er)]
+pub struct MacroDefault {
+    pub check: String,
+    #[er(default = checked!())]
+    pub code: usize,
+}
+#[test]
+pub fn default_macro_names() {
+    let error = <MacroDefault as er::er_internal::ErFromFields<
+        _,
+        er::er_internal::ErDefaults<0>,
+    >>::er_from_fields("a");
+
+    assert_eq!(error.code, 4);
 }

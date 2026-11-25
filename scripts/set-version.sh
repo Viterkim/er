@@ -28,7 +28,7 @@ for doc in README.md er-unsync/README.md er-macros/README.md er/docs/**/*.md; do
 done
 
 # Only our versions (no upgrading other dependencies)
-for manifest in Cargo.toml integrations/Cargo.toml integrations/no-src-locations/Cargo.toml er-macros/bench/Cargo.toml; do
+for manifest in Cargo.toml integrations/Cargo.toml integrations/no-src-locations/Cargo.toml; do
     cargo metadata --offline --format-version 1 --manifest-path "$manifest" > /dev/null
 done
 

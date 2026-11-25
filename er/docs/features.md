@@ -1,18 +1,22 @@
 # Features
 
-The crate is `no_std` but requires `alloc`. `stack_traces` needs `std`.
+The crate is `no_std` but requires `alloc`.
 
 ## default features
 
-`macros, src_locations, test`
+`macros, src_locations`
 
 ## non-default features
 
-`small_path_src, serde, lazy, stack_traces`
+`std, small_path_src, stack_traces`
+
+## std, off by default
+
+Lets an `ErShared<PathBuf>` field take a `&Path`, like a plain `PathBuf` field does. Without it you pass a `&PathBuf`.
 
 ## macros
 
-Convenience macros like `#[derive(Er)]`, `#[derive(ErFormat)]`, `er_all!`, `er_try!`, `er_add!` and `er_bail!`.
+Convenience macros like `#[derive(Er)]`, `#[derive(ErFormat)]`, `er_new!`, `er_all!`, `er_try!`, `er_add!`, `er_bail!` and `er_assert_err!`.
 
 ## src_locations
 
@@ -26,59 +30,26 @@ So this turns it into `secret/src/a.rs`. It just looks for the last `src` and gi
 
 If you don't want to restructure stuff you can enable it, but it only affects it when printing (it's still in your binary).
 
-## serde, off by default
-
-This only adds Serialize/Deserialize snapshots(converted string reports).
-
-Er does NOT turn it into JSON for you. You pick a format crate in your own app `serde_json`, `toml` etc.
-
-```toml
-[dependencies]
-er = { version = "0.8", features = ["serde"] }
-serde_json = "1"
-```
-
-```rust
-// Just unwrapping for the example
-let snapshot = read_port("nope").unwrap_err().er_snapshot();
-
-let json = serde_json::to_string_pretty(&snapshot).unwrap();
-fs::write("/tmp/error.json", &json).unwrap();
-
-let snapshot: ErSnapshot = serde_json::from_str(&json).unwrap();
-println!("{}", snapshot.er_report());
-```
-
-If one side compiled `src_locations` out, the JSON just has no `src_location`. A locations build loads that as `None` (no `@ file:line`). Extra keys the other way get ignored.
-
-## lazy, off by default
-
-For small scripts or prototyping, i don't think you should use this [Examples](./extra/lazy.md).
-
 ## stack_traces, off by default
 
-Needs `std`. [Capturing and printing traces](examples.md#stack-traces).
-
-## test
-
-`ErTest` lets tests use `?` to keep the original error and add the location, just return `-> ErTest`.
+Turns on `std`. [Capturing and printing traces](examples.md#stack-traces).
 
 ## Examples
 
 ```toml
 [dependencies]
-er = { version = "0.8", features = ["small_path_src"] }
+er = { version = "0.9", features = ["small_path_src"] }
 ```
 
 ```toml
 [dependencies]
-er = { version = "0.8", default-features = false, features = ["src_locations"] }
+er = { version = "0.9", default-features = false, features = ["src_locations"] }
 ```
 
 ## Unsync / Single threaded platform
 
-If you've got a platform that uses Rc/RefCell you can use the `er-unsync` version of the crate.
+If you've got a platform that uses Rc/RefCell you can use the `er-unsync` version of the crate. Keep the name `er` so the derives can find it.
 
 ```toml
-er = { package = "er-unsync", version = "0.8" }
+er = { package = "er-unsync", version = "0.9" }
 ```

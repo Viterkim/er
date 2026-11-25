@@ -1,3 +1,4 @@
+use er::er_internal::{ErFields, ErFromFields};
 use er::*;
 use std::{cell::Cell, fmt, panic::Location};
 
@@ -17,7 +18,7 @@ fn constructors() {
     assert!(err.to_string().contains(file!()));
 
     let expected = line!() + 1;
-    let err = Located::from(("banana",));
+    let err = <Located as ErFromFields<_, ErFields>>::er_from_fields("banana");
     assert_eq!(err.location.line(), expected);
 
     let creation_line = line!() + 1;
@@ -50,7 +51,7 @@ fn constructors() {
     assert_eq!(err.location.line(), expected);
 
     let expected = line!() + 1;
-    let err = Empty::from(());
+    let err = <Empty as ErFromFields<(), ErFields>>::er_from_fields(());
     assert_eq!(err.location.line(), expected);
 }
 
@@ -152,30 +153,4 @@ fn helpers() {
     let explicit = explicit.unwrap_err().top;
     assert_eq!(explicit.location.line(), expected);
     assert_eq!(explicit.retries, 85);
-
-    #[derive(Er)]
-    #[er(format = "saved")]
-    struct Saved {
-        #[er(into_report_string)]
-        diagnostics: String,
-        #[er(src_location)]
-        location: ErSrcLocation,
-        #[er(default)]
-        data: (),
-    }
-
-    fn boundary(line: &Cell<u32>) -> Result<(), Saved> {
-        let input = context(line);
-        line.set(line!() + 1);
-        input.er_into(|report| report)
-    }
-
-    let input = context(&line);
-    let expected = line!() + 1;
-    let saved: Saved = input.unwrap_err().er_into(|report| report);
-    assert_eq!(saved.location.line(), expected);
-    assert!(saved.diagnostics.contains("context"));
-    let () = saved.data;
-    let saved = boundary(&line).unwrap_err();
-    assert_eq!(saved.location.line(), line.get());
 }

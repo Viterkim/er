@@ -26,10 +26,19 @@ impl<'a> syn::visit::Visit<'a> for FormatBounds<'a, '_> {
         if !self.keep_type_bound
             && let Type::Path(path) = ty
             && path.qself.is_none()
-            && is_self_path(&path.path, self.name)
         {
-            self.recursive = true;
-            return;
+            if is_self_path(&path.path, self.name) {
+                self.recursive = true;
+                return;
+            }
+
+            // Bounding the type as a whole loops when it is this type, so bound what's inside it instead,
+            // like std's derives. That also holds up when it turns out to be someone else's type.
+            if is_qualified_self(&path.path, self.name) {
+                self.recursive = true;
+                syn::visit::visit_type(self, ty);
+                return;
+            }
         }
 
         let start = self.types.len();
@@ -66,6 +75,10 @@ impl<'a> syn::visit::Visit<'a> for FormatBounds<'a, '_> {
 
     fn visit_ident(&mut self, ident: &'a Ident) {
         self.uses_parameters |= ident == "Self" || self.parameters.contains(&plain(ident));
+    }
+
+    fn visit_lifetime(&mut self, lifetime: &'a syn::Lifetime) {
+        self.uses_parameters |= self.parameters.contains(&super::lifetime_name(lifetime));
     }
 
     fn visit_macro(&mut self, mac: &'a syn::Macro) {
@@ -118,10 +131,38 @@ pub fn is_self_path(path: &syn::Path, name: &str) -> bool {
     }
 }
 
+/// `crate::Name<T>` or `super::Name<T>`, most likely this type spelled from the crate root. A derive can't see
+/// which module it's in, so it can also be another module's type with the same name.
+pub fn is_qualified_self(path: &syn::Path, name: &str) -> bool {
+    let first = &path.segments[0].ident;
+
+    path.leading_colon.is_none()
+        && path.segments.len() > 1
+        && (first == "crate" || first == "super")
+        && path
+            .segments
+            .last()
+            .is_some_and(|segment| plain(&segment.ident) == name)
+}
+
 pub fn mentions(tokens: &TokenStream, parameters: &HashSet<String>) -> bool {
-    tokens.clone().into_iter().any(|token| match token {
-        TokenTree::Ident(ident) => ident == "Self" || parameters.contains(&plain(&ident)),
-        TokenTree::Group(group) => mentions(&group.stream(), parameters),
-        _ => false,
+    // A lifetime comes through as `'` and then its name, and only counts with the `'` in front.
+    let mut lifetime = false;
+
+    tokens.clone().into_iter().any(|token| {
+        let quoted = core::mem::take(&mut lifetime);
+
+        match token {
+            TokenTree::Ident(ident) if quoted => {
+                parameters.contains(&format!("'{}", plain(&ident)))
+            }
+            TokenTree::Ident(ident) => ident == "Self" || parameters.contains(&plain(&ident)),
+            TokenTree::Group(group) => mentions(&group.stream(), parameters),
+            TokenTree::Punct(punct) => {
+                lifetime = punct.as_char() == '\'';
+                false
+            }
+            TokenTree::Literal(_) => false,
+        }
     })
 }
