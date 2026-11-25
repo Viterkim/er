@@ -15,7 +15,27 @@ where
         C: FromIterator<T>,
         A: Error + 'static,
     {
-        self.collect::<Result<C, E>>().er(error)
+        let mut remaining = self.fuse();
+        let mut failure = None;
+        let values = remaining
+            .by_ref()
+            .map_while(|result| match result {
+                Ok(value) => Some(value),
+                Err(error) => {
+                    failure = Some(error);
+                    None
+                }
+            })
+            .fuse()
+            .collect();
+
+        match failure.or_else(|| remaining.find_map(Result::err)) {
+            Some(failure) => {
+                drop(values);
+                Err(failure).er(error)
+            }
+            None => Ok(values),
+        }
     }
 
     #[track_caller]
@@ -24,15 +44,32 @@ where
         C: FromIterator<T>,
         A: Error + 'static,
     {
-        let mut values = Vec::new();
-        let failures = aggregate::gather(self.map(|result| result.map(|value| values.push(value))));
+        // Growing from empty took twice as long for 64 successes. The room gets reserved at the first success, so a
+        // first item that fails reserves nothing, and capped, so a million items don't reserve a million up front.
+        let room = self.size_hint().0.min(1024);
+        let mut values = Some(Vec::new());
+        let failures = aggregate::gather(self.map(|result| match result {
+            Ok(value) => {
+                if let Some(values) = &mut values {
+                    if values.is_empty() {
+                        values.reserve_exact(room);
+                    }
+                    values.push(value);
+                }
+                Ok(())
+            }
+            Err(error) => {
+                values = None;
+                Err(error)
+            }
+        }));
 
-        if failures.is_empty() {
-            drop(error);
-            Ok(values.into_iter().collect())
-        } else {
-            drop(values);
-            Err(failures.into_tree(error.er_make()))
+        match values {
+            Some(values) => {
+                drop(error);
+                Ok(values.into_iter().collect())
+            }
+            None => Err(failures.into_tree(error.er_make())),
         }
     }
 }

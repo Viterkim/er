@@ -48,4 +48,10 @@ pub enum VariantWithUnknown {
     Misplaced(u8),
 }
 
+#[derive(Er)]
+pub struct CensoredSource {
+    #[er(censor, source)]
+    cause: std::io::Error,
+}
+
 pub fn main() {}

@@ -1,22 +1,22 @@
-error: `exact` is set more than once
+error: you already set `exact`, drop the duplicate
  --> tests/fail/exact_options.rs:5:17
   |
 5 |     #[er(exact, exact)]
   |                 ^^^^^
 
-error: `exact` takes no value
+error: `exact` doesn't take a value, just write `#[er(exact)]`
   --> tests/fail/exact_options.rs:11:10
    |
 11 |     #[er(exact = true)]
    |          ^^^^^
 
-error: put `skip`, `censor`, `exact`, or `source` on a field
+error: `skip`, `censor`, `exact` and `source` go on a field, not on the type
   --> tests/fail/exact_options.rs:16:6
    |
 16 | #[er(exact)]
    |      ^^^^^
 
-error: expected `format = "..."`, `display = "..."`, `display_alt = "..."`, or `debug = "..."`; put `skip`, `censor`, `exact`, or `source` on a field, or `wrap`/`crate` on the enum
+error: a variant takes `format`, `display`, `display_alt` or `debug`, field options go on a field and `wrap` or `crate` on the enum
   --> tests/fail/exact_options.rs:23:10
    |
 23 |     #[er(exact)]

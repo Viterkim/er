@@ -4,8 +4,7 @@ use std::{fs::read_to_string, path::PathBuf};
 #[derive(Er)]
 pub struct FileErr(pub PathBuf);
 pub fn read_file(path: &str) -> ErResult<String, FileErr> {
-    let text = read_to_string(path).er(|_| path)?;
-    Ok(text)
+    read_to_string(path).er(path)
 }
 
 #[derive(Er)]
@@ -19,8 +18,7 @@ pub struct PortErr {
     pub invalid_port: String,
 }
 pub fn read_port(input: &str) -> ErResult<u16, PortErr> {
-    let port: u16 = input.parse().er(|_| input)?;
-    Ok(port)
+    input.parse().er(input)
 }
 
 #[derive(Er)]
@@ -38,7 +36,7 @@ pub fn authenticate(machine: &str, token: &str) -> ErResult<(), AuthErr> {
     if token == format!("{machine}_token") {
         Ok(())
     } else {
-        er_bail!(|_| machine);
+        er_bail!(machine);
     }
 }
 
@@ -54,7 +52,7 @@ pub fn read_config(
     port: &str,
     mode: Option<&str>,
 ) -> ErResult<(), ConfigErr> {
-    let e = |_| (machine, token);
+    let e = (machine, token);
 
     authenticate(machine, token).er(e)?;
     read_port(port).er(e)?;
@@ -67,7 +65,7 @@ pub fn read_config(
 pub struct StartupErr(pub String);
 pub fn startup() -> ErResult<(), StartupErr> {
     er_all!(
-        |_| "some config checks failed",
+        "some config checks failed",
         [
             read_config(
                 "HaandboldFuglen",
@@ -77,8 +75,7 @@ pub fn startup() -> ErResult<(), StartupErr> {
             ),
             read_config("ComputerKatten", "ComputerKatten_token", "85", None),
         ],
-    )?;
-    Ok(())
+    )
 }
 
 #[derive(Er)]
@@ -93,16 +90,16 @@ pub fn bingo(input: &str) -> ErResult<u8, BingoErr> {
 pub fn main() {
     if let Err(e) = read_file("/tmp/file.txt") {
         eprintln!("{}", e.er_report());
-        eprintln!("{}", e.er_top());
+        eprintln!("{}", e.top);
     }
     if let Err(e) = analyze() {
         eprintln!("{}", e.er_report());
     }
     if let Err(e) = startup() {
         eprintln!("{}", e.er_report());
-        eprintln!("{}", e.er_top());
+        eprintln!("{}", e.top);
     }
     if let Err(e) = bingo("aint_even_a_number_cmon_man") {
-        eprintln!("{}", e.er_top());
+        eprintln!("{}", e.top);
     }
 }

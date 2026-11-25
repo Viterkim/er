@@ -77,12 +77,6 @@ That gives continuation lines two spaces instead of the whole prefix width. But 
 
 ## The options all kinda suck
 
-`.single_line()` avoids the indentation, but a big tree becomes one giant sausage:
-
-```text
-ConfigErr { machine: "ComputerKatten" } [ReadErr { path: "/etc/haandbold.toml" } [No such file or directory]]
-```
-
 `for_each_line()` can send every rendered line separately. That looks better in normal `journalctl`, but now one error is several events and they can interleave(you might get random bs between).
 
-Log the normal report and try to not give up with the spaces for now. Use `-o cat`, `.single_line()`, or separate lines when one of those tradeoffs are ok (i don't like it).
+Log the normal report and try to not give up with the spaces for now. Use `-o cat` or separate lines when one of those tradeoffs are ok (i don't like it).

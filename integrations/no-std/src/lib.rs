@@ -22,21 +22,11 @@ pub struct FirmwareErr {
 pub fn diagnostic() -> FirmwareErrWrap {
     let device = Device::new(85, Secret);
 
-    FirmwareErr::new(device).er_wrap()
+    FirmwareErr::new(device).into()
 }
 
-#[derive(Er)]
-#[er(format = "{report}")]
-pub struct FirmwareError {
-    #[er(into_top)]
-    pub kind: FirmwareErr,
-    #[er(into_report_string)]
-    pub report: alloc::string::String,
-    #[er(into_snapshot)]
-    pub snapshot: ErSnapshot,
-}
-pub fn saved_diagnostic() -> Result<(), FirmwareError> {
-    Err::<(), _>(diagnostic()).er_into(|report| report)
+pub fn saved_diagnostic() -> Result<(), (FirmwareErr, alloc::string::String)> {
+    Err::<(), _>(diagnostic()).er_split()
 }
 
 #[cfg(target_has_atomic = "ptr")]
@@ -59,7 +49,7 @@ pub mod tests {
     pub fn downstream_no_std() {
         let error = diagnostic();
         assert_eq!(
-            error.er_top().to_string(),
+            error.tree.top.to_string(),
             "FirmwareErr { device: Device { bus: 85, key: *CENSORED* } }"
         );
 
@@ -81,11 +71,10 @@ pub mod tests {
             |_| Device::new(85, Secret),
             ["85".parse::<u8>(), "true".parse::<bool>()],
         );
-        assert_eq!(values.unwrap_report(), (85, true));
+        assert_eq!(values.er_unwrap(), (85, true));
 
-        let saved = saved_diagnostic().unwrap_err();
-        assert_eq!(saved.report, saved.snapshot.er_report().to_string());
-        assert_eq!(saved.kind.device.bus, 85);
+        let (_, report) = saved_diagnostic().unwrap_err();
+        assert_eq!(report, diagnostic().er_report());
 
         #[cfg(target_has_atomic = "ptr")]
         {

@@ -73,7 +73,7 @@ done
 cd -- "$release_dir"
 cargo publish --workspace --dry-run
 
-printf '\nDry run bingo! You are in %s\n' "$release_dir\n"
+printf '\nDry run bingo! You are in %s\n' "$release_dir"
 printf 'Bash:\n'
 printf 'cargo publish -p er-macros && cargo publish -p er && cargo publish -p er-unsync\n'
 printf 'Nushell:\n'

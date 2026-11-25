@@ -1,104 +1,76 @@
+#[cfg(any(er_unsync, target_has_atomic = "ptr"))]
+use crate::ErSharedTree;
+use crate::aggregate::ErAggregateItems;
+use crate::impls::result::{context, context_with, context_with_tree};
+use crate::impls::saved::ReportText;
+use crate::internal::{
+    ErAllItem, ErInput, ErReportError, ErTreeContext, ErValFields, ErWithFields, er_make_cold,
+};
 use crate::{
-    BoxError, ErNode, ErPart, ErReport, ErReportRef, ErResult, ErSnapshot, ErTop, ErTopRef, ErTree,
+    ErErrorWithSaved, ErFindAll, ErPart, ErResult, ErSavedList, ErSnapshot, ErTree,
     impls::tree::with_source,
 };
-#[cfg(feature = "test")]
-use crate::{ErTest, ErTestFailure};
+use crate::{ErMake, ErSaveInput, ErSaveRef, ErTest};
 use alloc::string::String;
 use core::error::Error;
 
-/// A finished error for `.er_with()`, `.er_val()`, `.er_into()` and the tree and Wrap forms.
-pub struct ErBuilt<E>(pub E);
-
-/// Use this error directly instead of building it from fields.
-pub const fn er_built<E>(error: E) -> ErBuilt<E> {
-    ErBuilt(error)
-}
-
-#[doc(hidden)]
-pub struct ErReady;
-
-/// Build the new top error from the fields returned by the closure.
-pub struct ErFields;
-
-#[doc(hidden)]
-pub struct ErSaved<Fields, const TAG: usize>(core::marker::PhantomData<Fields>);
-
-#[doc(hidden)]
-pub struct ErSavedBox<Fields, const TAG: usize>(core::marker::PhantomData<Fields>);
-
-#[doc(hidden)]
-pub struct ErSavedShared<Fields, const TAG: usize>(core::marker::PhantomData<Fields>);
-
-#[cfg(er_unsync)]
-#[doc(hidden)]
-pub struct ErSavedArc<Fields, const TAG: usize>(core::marker::PhantomData<Fields>);
-
-#[doc(hidden)]
-pub struct ErDefaults;
-
-#[cfg(er_unsync)]
-#[doc(hidden)]
-pub struct ErBoxedInput;
-
-/// How `.er()` makes its new top error.
-pub trait ErMake<A, Mode> {
-    #[track_caller]
-    fn er_make(self) -> A;
-}
-
-#[doc(hidden)]
-pub trait ErWithFields<E: ?Sized, A, Mode>: for<'a> FnOnce(&'a E) -> Self::Input {
-    type Input;
-
-    #[track_caller]
-    fn er_with_fields(self, error: &E) -> A;
-}
-
-#[doc(hidden)]
-pub trait ErValFields<E, A, Mode>: FnOnce(E) -> Self::Input {
-    type Input;
-
-    #[track_caller]
-    fn er_val_fields(self, value: E) -> A;
-}
-
-/// Add a new top error above a raw error.
-pub trait ErErrorContextExt<Mode, Input = ()>: IntoErPart<Input> + Sized {
-    /// Put your error above this one, keeping the original below.
+/// Add a new top error above an error or a tree.
+pub trait ErErrorContextExt<Mode, Input = ()>: ErInput<Input> + Sized {
+    /// Put your error above this one, keeping everything below it.
     #[track_caller]
     fn er<A>(self, error: impl ErMake<A, Mode>) -> ErTree<A>
     where
         A: Error + 'static,
     {
-        ErTree::new(error.er_make(), [self])
+        // The same split as `.er()` on a Result, this usually sits in a branch of a function that succeeds.
+        if er_make_cold(&error) {
+            context(error, self)
+        } else {
+            with_source(error.er_make(), self)
+        }
     }
 }
 
 /// Build context using the old error.
 pub trait ErErrorExt<Input = ()>: IntoErPart<Input> + Sized {
-    /// Build the new top from fields taken from this error.
+    /// Build the new top from this error. For an `(Error, String)` pair, the closure gets the error and the report is kept.
     ///
     /// `er_bail!(device.er_with(|err| err.code));`
     #[track_caller]
-    fn er_with<A, Mode>(self, fields: impl ErWithFields<Self, A, Mode>) -> ErTree<A>
+    fn er_with<A, Mode>(self, fields: impl ErWithFields<Self::Error, A, Mode>) -> ErTree<A>
     where
         A: Error + 'static,
     {
-        let top = fields.er_with_fields(&self);
-        ErTree::new(top, [self])
+        if core::mem::needs_drop::<A>() {
+            context_with(fields, self)
+        } else {
+            with_source(fields.er_with_fields(self.er_error()), self)
+        }
     }
 }
 
-/// Print or save a plain error and its native sources.
-pub trait ErErrorPresentationExt {
+/// Print, save or share a plain error and its native sources.
+pub trait ErErrorPresentationExt<Input = ()> {
+    /// Share this error as an `ErSharedTree` so multiple places can keep it.
+    #[cfg(any(er_unsync, target_has_atomic = "ptr"))]
+    #[track_caller]
+    fn er_share(self) -> ErSharedTree<Self>
+    where
+        Self: ErReportError<Input> + Sized,
+    {
+        ErTree::from_top(self).er_share()
+    }
+
     /// The whole report as text.
-    fn er_report_string(&self) -> String
+    #[must_use]
+    fn er_report(&self) -> String
     where
         Self: 'static;
 
-    /// Just this error as text.
-    fn er_top_string(&self) -> String;
+    /// Write the report straight to a buffer. The writer can return `fmt::Error` to stop early.
+    fn er_write_report(&self, writer: &mut (impl core::fmt::Write + ?Sized)) -> core::fmt::Result
+    where
+        Self: 'static;
 
     /// Save the messages and source structure.
     fn er_snapshot(&self) -> ErSnapshot
@@ -110,26 +82,20 @@ pub trait ErErrorPresentationExt {
 pub trait ErContextExt<Mode, Input = ()> {
     type Ok;
 
-    /// Add your error on the top, move everything else below it.
-    /// Only happens on Err or None.
+    /// On Err or None, add your error on top and keep any original errors underneath.
     ///
     /// ```rust,ignore
     /// result.er(())?; // Empty struct
-    /// result.er(|_| path)?; // One field
-    /// result.er(|_| (machine, token))?; // More fields
-    /// result.er(|| EnumErr::variant_name(arg1))?; // Enum variant
+    /// result.er(path)?; // One field
+    /// result.er((machine, "connect"))?; // More fields
+    /// result.er(|_| (path, user.name()))?; // Compute fields on failure
+    /// result.er(|| EnumErr::variant_name(arg1))?; // Return the whole error
     /// ```
+    ///
+    /// When your return type picks the error, you can skip `.er::<MyErr>(..)`.
+    /// Pass `Copy + Debug` inputs directly. Er converts them on failure, so a `&Path` can fill a `PathBuf`.
     #[track_caller]
     fn er<A>(self, error: impl ErMake<A, Mode>) -> ErResult<Self::Ok, A>
-    where
-        A: Error + 'static;
-}
-
-/// Add a new top error above an existing tree.
-pub trait ErTreeContextExt<Mode> {
-    /// Add your error on top, keeping the old tree below it.
-    #[track_caller]
-    fn er<A>(self, error: impl ErMake<A, Mode>) -> ErTree<A>
     where
         A: Error + 'static;
 }
@@ -139,8 +105,9 @@ pub trait ErResultExt<Input = ()> {
     type Ok;
     type Err;
 
-    /// Build the new top from the old error. On an ErResult, you get its typed top.
-    /// Return fields, an enum constructor, or `er_built(MyErr { ... })`.
+    /// Build the new top from the old error. On an ErResult, the closure gets its typed top.
+    /// For an `(Error, String)` pair, the closure gets the error and Er saves the report.
+    /// Return fields or the finished error.
     #[track_caller]
     fn er_with<A, Mode>(
         self,
@@ -153,10 +120,12 @@ pub trait ErResultExt<Input = ()> {
     {
         match self.er_result_input() {
             Ok(value) => Ok(value),
-            Err(source) => {
+            // Same split as `.er()`. Building a String here made every successful call twice as slow.
+            Err(source) if !core::mem::needs_drop::<A>() => {
                 let error = fields.er_with_fields(source.er_input_error());
                 Err(with_source(error, source))
             }
+            Err(source) => Err(context_with(fields, source)),
         }
     }
 
@@ -173,10 +142,11 @@ pub trait ErResultExt<Input = ()> {
     {
         match self.er_result_input() {
             Ok(value) => Ok(value),
-            Err(source) => {
+            Err(source) if !core::mem::needs_drop::<A>() => {
                 let error = fields.er_with_fields(&source);
                 Err(with_source(error, source))
             }
+            Err(source) => Err(context_with_tree(fields, source)),
         }
     }
 
@@ -190,9 +160,10 @@ pub trait ErValueExt {
     type Err;
 
     /// For values that can't go in the tree, like `Err(85)`.
-    /// Takes ownership of the value. Return fields, an enum constructor, or `er_built(MyErr { ... })`.
+    /// Takes ownership of the value. Return fields or the finished error.
     ///
-    /// ! WARNING ! Don't use this to add context to an error or tree, you'll nuke it. Use `.er()` or `.er_with()` for that.
+    /// ! WARNING ! This drops the old error, including any tree or report it carried.
+    /// Use `.er()` or `.er_with()` to keep it.
     ///
     /// ```rust,ignore
     /// device_status().er_val(|v| v)?;
@@ -205,7 +176,9 @@ pub trait ErValueExt {
     {
         match self.er_value_input() {
             Ok(value) => Ok(value),
-            Err(value) => Err(ErTree::from(fields.er_val_fields(value))),
+            // No cold split here, unlike `.er()`. This sits where a plain value becomes an error, and building it
+            // in a cold call measured slower on success and on failure.
+            Err(value) => Err(fields.er_val_fields(value).into_tree()),
         }
     }
 
@@ -224,8 +197,7 @@ pub trait ErIteratorExt<Mode, Input = ()>: Sized {
         C: FromIterator<Self::Ok>,
         A: Error + 'static;
 
-    /// Keep the successful values until the iterator finishes. If anything failed,
-    /// keep every error and drop the collected values.
+    /// Go through the whole iterator and keep every error, dropping the oks if anything fails.
     #[track_caller]
     fn er_collect_all<C, A>(self, error: impl ErMake<A, Mode>) -> ErResult<C, A>
     where
@@ -233,131 +205,113 @@ pub trait ErIteratorExt<Mode, Input = ()>: Sized {
         A: Error + 'static;
 }
 
-/// Get the tree or pick the output for a Result with a tree, Wrap or owned presentation.
-pub trait ErPresentationExt {
+/// Print, unwrap, split or share a Result holding a tree, a Wrap or an error with saved reports.
+pub trait ErPresentationExt<Kind = ()> {
     type Ok;
     type Err;
 
     /// Get the normal Er result back.
+    #[track_caller]
     fn er_tree(self) -> ErResult<Self::Ok, Self::Err>;
 
-    /// Just the outer error, leaves Ok alone.
-    ///
-    /// `read_port("85").er_top()?;`
-    fn er_top(self) -> Result<Self::Ok, ErTop<Self::Err>>;
-
-    /// The whole report, leaves Ok alone.
-    ///
-    /// `read_port("85").er_report()?;`
-    fn er_report(self) -> Result<Self::Ok, ErReport<Self::Err>>;
-
-    /// Print the whole report, leaves Ok alone.
-    fn er_report_string(self) -> Result<Self::Ok, String>
+    /// The whole report as text, leaves Ok alone.
+    #[track_caller]
+    fn er_report<Input>(self) -> Result<Self::Ok, String>
     where
-        Self::Err: Error + 'static;
-
-    /// Print just the outer error, leaves Ok alone.
-    fn er_top_string(self) -> Result<Self::Ok, String>
-    where
-        Self::Err: core::fmt::Display;
+        Self: Sized,
+        Self::Err: ErReportError<Input>,
+    {
+        match self.er_tree() {
+            Ok(value) => Ok(value),
+            Err(tree) => Err(tree.er_report()),
+        }
+    }
 
     /// Save the failed tree as messages, leaves Ok alone.
-    fn er_snapshot(self) -> Result<Self::Ok, ErSnapshot>
-    where
-        Self::Err: Error + 'static;
-
-    /// Build your value from the failed report. Leaves Ok alone.
-    /// Return fields, or the report itself to fill `into_*` fields automatically.
-    /// Extra fields go beside the report: `|report| (report, (request_id, path))`.
     #[track_caller]
-    fn er_into<A, Mode>(
+    fn er_snapshot<Input>(self) -> Result<Self::Ok, ErSnapshot>
+    where
+        Self: Sized,
+        Self::Err: ErReportError<Input>,
+    {
+        match self.er_tree() {
+            Ok(value) => Ok(value),
+            Err(tree) => Err(tree.er_snapshot()),
+        }
+    }
+
+    /// Return the top error with its whole report. Leaves Ok alone.
+    #[track_caller]
+    fn er_split<Input>(self) -> Result<Self::Ok, (Self::Err, String)>
+    where
+        Self: Sized,
+        Self::Err: ErReportError<Input>,
+    {
+        self.er_split_with(core::convert::identity)
+    }
+
+    /// On Err, give the top error and its report to the closure. Leaves Ok alone.
+    #[track_caller]
+    fn er_split_with<A, Input>(
         self,
-        fields: impl ErValFields<ErReport<Self::Err>, A, Mode>,
+        into: impl FnOnce((Self::Err, String)) -> A,
     ) -> Result<Self::Ok, A>
     where
         Self: Sized,
+        Self::Err: ErReportError<Input>,
     {
-        match self.er_report() {
+        match self.er_tree() {
             Ok(value) => Ok(value),
-            Err(report) => Err(fields.er_val_fields(report)),
+            Err(tree) => Err(tree.er_split_with(into)),
+        }
+    }
+
+    /// Freeze the failed tree so you can clone it and put it below other errors. Leaves Ok alone.
+    #[cfg(any(er_unsync, target_has_atomic = "ptr"))]
+    #[track_caller]
+    fn er_share(self) -> Result<Self::Ok, ErSharedTree<Self::Err>>
+    where
+        Self: Sized,
+    {
+        match self.er_tree() {
+            Ok(value) => Ok(value),
+            Err(tree) => Err(tree.er_share()),
         }
     }
 
     /// Get the Ok value, or panic with the whole report.
     ///
-    /// Same as `.er_report().unwrap()`.
-    ///
     /// # Panics
     /// Panics if the result is Err.
     #[track_caller]
-    fn unwrap_report(self) -> Self::Ok
+    fn er_unwrap<Input>(self) -> Self::Ok
     where
         Self: Sized,
-        Self::Err: Error + 'static,
+        Self::Err: ErReportError<Input>,
     {
-        self.er_report().unwrap()
+        self.er_report().map_err(ReportText).unwrap()
     }
 
     /// Get the Ok value, or panic with your message and the whole report.
     ///
-    /// Same as `.er_report().expect(message)`.
-    ///
     /// # Panics
     /// Panics if the result is Err.
     #[track_caller]
-    fn expect_report(self, message: &str) -> Self::Ok
+    fn er_expect<Input>(self, message: &str) -> Self::Ok
     where
         Self: Sized,
-        Self::Err: Error + 'static,
+        Self::Err: ErReportError<Input>,
     {
-        self.er_report().expect(message)
-    }
-
-    /// Take the tree out of a Wrap with `std_error` and add context. Leaves Ok alone.
-    ///
-    /// !WARNING! `.er()` and `.er_with()` box a Wrap with `std_error`, so you can't find the errors inside it.
-    #[track_caller]
-    fn er_wrap<A, Mode>(self, error: impl ErMake<A, Mode>) -> ErResult<Self::Ok, A>
-    where
-        Self: Sized,
-        Self::Err: Error + Into<BoxError> + 'static,
-        A: Error + 'static,
-    {
-        self.er_tree().er(error)
-    }
-
-    /// Take the tree out of a Wrap and build fields from its old top.
-    #[track_caller]
-    fn er_with_wrap<A, Mode>(
-        self,
-        fields: impl ErWithFields<Self::Err, A, Mode>,
-    ) -> ErResult<Self::Ok, A>
-    where
-        Self: Sized,
-        Self::Err: Error + Into<BoxError> + 'static,
-        A: Error + 'static,
-    {
-        self.er_tree().er_with(fields)
+        self.er_report().map_err(ReportText).expect(message)
     }
 }
 
-/// Pick the output for a Result with a saved snapshot or its presentation.
-pub trait ErSnapshotPresentationExt {
+/// Print or unwrap a Result holding a snapshot, or a library's `(Error, String)`.
+pub trait ErSnapshotPresentationExt<Input = ()> {
     type Ok;
-    type Top: core::fmt::Display + core::fmt::Debug;
-    type Report: core::fmt::Display + core::fmt::Debug;
 
-    /// Just the saved outer error, leaves Ok alone.
-    fn er_top(self) -> Result<Self::Ok, Self::Top>;
-
-    /// The whole saved report, leaves Ok alone.
-    fn er_report(self) -> Result<Self::Ok, Self::Report>;
-
-    /// Print the whole saved report, leaves Ok alone.
-    fn er_report_string(self) -> Result<Self::Ok, String>;
-
-    /// Print just the saved outer error, leaves Ok alone.
-    fn er_top_string(self) -> Result<Self::Ok, String>;
+    /// The whole saved report as text, leaves Ok alone.
+    fn er_report(self) -> Result<Self::Ok, String>;
 
     /// Get the saved entries back, leaves Ok alone.
     fn er_snapshot(self) -> Result<Self::Ok, ErSnapshot>;
@@ -367,11 +321,11 @@ pub trait ErSnapshotPresentationExt {
     /// # Panics
     /// Panics if the result is Err.
     #[track_caller]
-    fn unwrap_report(self) -> Self::Ok
+    fn er_unwrap(self) -> Self::Ok
     where
         Self: Sized,
     {
-        self.er_report().unwrap()
+        self.er_report().map_err(ReportText).unwrap()
     }
 
     /// Get the Ok value, or panic with your message and the whole saved report.
@@ -379,15 +333,51 @@ pub trait ErSnapshotPresentationExt {
     /// # Panics
     /// Panics if the result is Err.
     #[track_caller]
-    fn expect_report(self, message: &str) -> Self::Ok
+    fn er_expect(self, message: &str) -> Self::Ok
     where
         Self: Sized,
     {
-        self.er_report().expect(message)
+        self.er_report().map_err(ReportText).expect(message)
     }
 }
 
-/// Pick the output for a Result that borrows a tree or its presentation.
+/// Keep a library's error and report together when several places need the same failure.
+#[cfg(any(er_unsync, target_has_atomic = "ptr"))]
+pub trait ErShareReportExt<Input = ()> {
+    type Shared;
+
+    #[track_caller]
+    fn er_share(self) -> Self::Shared;
+}
+
+/// Add context using a shared tree or a reference to it.
+#[cfg(any(er_unsync, target_has_atomic = "ptr"))]
+pub trait ErSharedTreeRefExt<E, Input = ()> {
+    /// Build a new top from the whole shared tree and keep that tree as its cause.
+    #[track_caller]
+    fn er_with_tree<A, Mode>(
+        self,
+        fields: impl ErWithFields<ErSharedTree<E>, A, Mode>,
+    ) -> ErTree<A>
+    where
+        A: Error + 'static;
+}
+
+/// Find concrete errors in a tree whose top is a boxed error.
+pub trait ErBoxedTreeExt {
+    /// Returns the first match, including the boxed top and native sources.
+    fn er_find<T: Error + 'static>(&self) -> Option<&T>;
+
+    /// Finds all the instances of an error type.
+    fn er_find_all<T: Error + 'static>(&self) -> ErFindAll<'_, T>;
+
+    /// True if this type is anywhere in the tree or its native sources.
+    fn er_contains<T: Error + 'static>(&self) -> bool {
+        self.er_find::<T>().is_some()
+    }
+}
+
+/// Print or unwrap a Result that borrows a tree.
 pub trait ErBorrowedPresentationExt<'a> {
     type Ok;
     type Err: 'a;
@@ -395,38 +385,27 @@ pub trait ErBorrowedPresentationExt<'a> {
     /// Get the borrowed tree back, leaves Ok alone.
     fn er_tree(self) -> Result<Self::Ok, &'a ErTree<Self::Err>>;
 
-    /// Just the outer error, leaves Ok alone.
-    fn er_top(self) -> Result<Self::Ok, ErTopRef<'a, Self::Err>>;
-
-    /// The whole report, leaves Ok alone.
-    fn er_report(self) -> Result<Self::Ok, ErReportRef<'a, Self::Err>>;
-
-    /// Print the whole report, leaves Ok alone.
-    fn er_report_string(self) -> Result<Self::Ok, String>
+    /// The whole report as text, leaves Ok alone.
+    fn er_report<Input>(self) -> Result<Self::Ok, String>
     where
-        Self::Err: Error + 'static;
-
-    /// Print just the outer error, leaves Ok alone.
-    fn er_top_string(self) -> Result<Self::Ok, String>
-    where
-        Self::Err: core::fmt::Display;
+        Self::Err: ErReportError<Input>;
 
     /// Save the failed tree as messages, leaves Ok alone.
-    fn er_snapshot(self) -> Result<Self::Ok, ErSnapshot>
+    fn er_snapshot<Input>(self) -> Result<Self::Ok, ErSnapshot>
     where
-        Self::Err: Error + 'static;
+        Self::Err: ErReportError<Input>;
 
     /// Get the Ok value, or panic with the whole report.
     ///
     /// # Panics
     /// Panics if the result is Err.
     #[track_caller]
-    fn unwrap_report(self) -> Self::Ok
+    fn er_unwrap<Input>(self) -> Self::Ok
     where
         Self: Sized,
-        Self::Err: Error + 'static,
+        Self::Err: ErReportError<Input>,
     {
-        self.er_report().unwrap()
+        self.er_report().map_err(ReportText).unwrap()
     }
 
     /// Get the Ok value, or panic with your message and the whole report.
@@ -434,57 +413,47 @@ pub trait ErBorrowedPresentationExt<'a> {
     /// # Panics
     /// Panics if the result is Err.
     #[track_caller]
-    fn expect_report(self, message: &str) -> Self::Ok
+    fn er_expect<Input>(self, message: &str) -> Self::Ok
     where
         Self: Sized,
-        Self::Err: Error + 'static,
+        Self::Err: ErReportError<Input>,
     {
-        self.er_report().expect(message)
+        self.er_report().map_err(ReportText).expect(message)
     }
 }
 
-/// Borrow a tree or change its borrowed presentation, keeping an existing layout.
+/// Borrow a tree from `&ErTree`, `&Arc<ErTree>`, etc.
 pub trait IntoErTreeRef<'a>: Sized {
     type Error: 'a;
 
-    /// Borrow the whole report.
-    fn into_er_report_ref(self) -> ErReportRef<'a, Self::Error>;
-
-    /// Borrow just the outer error.
-    fn into_er_top_ref(self) -> ErTopRef<'a, Self::Error> {
-        self.into_er_report_ref().er_top()
-    }
-
-    /// Borrow the tree. Leaves the layout behind.
-    fn into_er_tree_ref(self) -> &'a ErTree<Self::Error> {
-        self.into_er_report_ref().tree
-    }
+    /// Borrow the tree.
+    fn into_er_tree_ref(self) -> &'a ErTree<Self::Error>;
 }
 
-/// Move a snapshot or change its presentation, keeping an existing layout.
-pub trait IntoErSnapshot {
-    type Top: core::fmt::Display + core::fmt::Debug;
-    type Report: core::fmt::Display + core::fmt::Debug;
-
+/// Anything that can become a snapshot, a snapshot itself or a library's `(Error, String)`.
+pub trait IntoErSnapshot<Input = ()> {
     /// Take the saved entries out. Borrowed snapshots copy their entries.
     fn into_er_snapshot(self) -> ErSnapshot;
 
-    /// Just the saved outer error.
-    fn into_er_top(self) -> Self::Top;
+    /// The report as text. A library's `(Error, String)` already has one, so it hands that back.
+    #[doc(hidden)]
+    fn into_er_report_text(self) -> String
+    where
+        Self: Sized,
+    {
+        self.into_er_snapshot().er_report()
+    }
 
-    /// The whole saved report.
-    fn into_er_report(self) -> Self::Report;
-}
-
-#[cfg(feature = "test")]
-#[doc(hidden)]
-pub trait ErTestInput<Input = ()>: Sized {
-    #[track_caller]
-    fn into_er_test_failure(self) -> ErTestFailure;
+    #[doc(hidden)]
+    fn into_er_report_with_saved(self, saved: ErSavedList) -> String
+    where
+        Self: Sized,
+    {
+        crate::impls::saved::append_saved_report(self.into_er_report_text(), &saved)
+    }
 }
 
 /// Turn an Option or Result into ErTest. Existing test failures pass through.
-#[cfg(feature = "test")]
 pub trait ErTestExt<Input = ()> {
     type Ok;
 
@@ -501,57 +470,27 @@ pub trait IntoErPart<Input = ()> {
     /// Borrow the error, or the top if this is a tree.
     fn er_error(&self) -> &Self::Error;
 
-    /// Move the error and its traces into a subtree.
+    /// Move the error and its saved reports into a subtree.
     #[track_caller]
     fn into_er_part(self) -> ErPart;
 }
 
-// Test failures are inputs too, but IntoErPart would overlap their From<Self>.
-#[doc(hidden)]
-pub trait ErInput<Input = ()> {
-    type Error: ?Sized;
-
-    fn er_input_error(&self) -> &Self::Error;
-
-    #[track_caller]
-    fn into_er_input(self) -> ErPart;
-}
-
-/// Get the tree or presentation out of a tree, Wrap or owned presentation.
+/// Get the tree out of a tree or a Wrap.
 pub trait IntoErTree {
     type Error;
 
-    /// Take the tree out, keeping its errors and traces. Leaves the layout behind.
+    /// Take the tree out, keeping its errors and saved reports.
     fn into_er_tree(self) -> ErTree<Self::Error>;
-
-    /// Add context after taking the tree out of its presentation or Wrap.
-    #[track_caller]
-    fn er_wrap<A, Mode>(self, error: impl ErMake<A, Mode>) -> ErTree<A>
-    where
-        Self: Sized,
-        Self::Error: Error + Into<BoxError> + 'static,
-        A: Error + 'static,
-    {
-        self.into_er_tree().er(error)
-    }
-
-    /// Take the tree out and build fields from its old top.
-    #[track_caller]
-    fn er_with_wrap<A, Mode>(self, fields: impl ErWithFields<Self::Error, A, Mode>) -> ErTree<A>
-    where
-        Self: Sized,
-        Self::Error: Error + Into<BoxError> + 'static,
-        A: Error + 'static,
-    {
-        self.into_er_tree().er_with(fields)
-    }
 
     /// Build the new top from fields taken from the old top.
     #[track_caller]
-    fn er_with<A, Mode>(self, fields: impl ErWithFields<Self::Error, A, Mode>) -> ErTree<A>
+    fn er_with<A, Mode>(
+        self,
+        fields: impl ErWithFields<Self::Error, A, <ErTree<Self::Error> as ErTreeContext<Mode>>::Fields>,
+    ) -> ErTree<A>
     where
         Self: Sized,
-        Self::Error: Error + Into<BoxError> + 'static,
+        ErTree<Self::Error>: ErTreeContext<Mode>,
         A: Error + 'static,
     {
         self.into_er_tree().er_with(fields)
@@ -561,89 +500,81 @@ pub trait IntoErTree {
     #[track_caller]
     fn er_with_tree<A, Mode>(
         self,
-        fields: impl ErWithFields<ErTree<Self::Error>, A, Mode>,
+        fields: impl ErWithFields<
+            ErTree<Self::Error>,
+            A,
+            <ErTree<Self::Error> as ErTreeContext<Mode>>::Fields,
+        >,
     ) -> ErTree<A>
     where
         Self: Sized,
-        Self::Error: Error + Into<BoxError> + 'static,
+        ErTree<Self::Error>: ErTreeContext<Mode>,
         A: Error + 'static,
     {
         self.into_er_tree().er_with_tree(fields)
     }
 
-    /// Add errors below the current top.
+    /// Add an error or several failures below the current top. Successful Results are skipped.
     #[track_caller]
-    fn er_add<Input>(
+    fn er_add<Mode, Kind>(
         self,
-        nodes: impl IntoIterator<Item = impl ErInput<Input>>,
+        items: impl ErAggregateItems<Kind, Item: ErAllItem<Mode>>,
     ) -> ErTree<Self::Error>
     where
         Self: Sized,
     {
-        self.into_er_tree().er_add(nodes)
+        self.into_er_tree().er_add(items)
     }
 
-    /// Erase the top, drops its traces. Use `into_er_tree().into_er_part()` to keep them.
-    fn into_er_node(self) -> ErNode
-    where
-        Self: Sized,
-        Self::Error: Error + Into<BoxError> + 'static,
-    {
-        self.into_er_tree().into_er_node()
-    }
-
-    /// Build your value from the owned report, keeping its chosen layout.
-    /// Return fields, or the report itself to fill `into_*` fields automatically.
-    /// Extra fields go beside the report: `|report| (report, (request_id, path))`.
+    /// Take the top error and its whole report out of the tree.
+    #[must_use]
     #[track_caller]
-    fn er_into<A, Mode>(self, fields: impl ErValFields<ErReport<Self::Error>, A, Mode>) -> A
+    fn er_split<Input>(self) -> (Self::Error, String)
     where
         Self: Sized,
+        Self::Error: ErReportError<Input>,
     {
-        fields.er_val_fields(self.into_er_report())
+        self.into_er_tree().er_split()
     }
 
-    /// Just the outer error, moves the tree and keeps an existing layout.
-    fn into_er_top(self) -> ErTop<Self::Error>
+    /// Give the top error and its report to the closure.
+    #[track_caller]
+    fn er_split_with<A, Input>(self, into: impl FnOnce((Self::Error, String)) -> A) -> A
     where
         Self: Sized,
+        Self::Error: ErReportError<Input>,
     {
-        let report = self.into_er_report();
-        ErTop {
-            tree: report.tree,
-            layout: report.layout,
-        }
-    }
-
-    /// The whole report, moves the tree and keeps an existing layout.
-    fn into_er_report(self) -> ErReport<Self::Error>
-    where
-        Self: Sized,
-    {
-        self.into_er_tree().into_er_report()
+        self.into_er_tree().er_split_with(into)
     }
 }
 
-/// Add stack traces to errors.
-#[cfg(feature = "stack_traces")]
-pub trait ErTraceExt: Sized {
-    /// Capture the current stack for this layer. Leaves Ok alone.
-    #[track_caller]
-    fn er_trace(self) -> Self;
+/// Save a report on an error or on the fields you build it from.
+///
+/// A single field still goes in a tuple, `.er(|_| (path,).er_save(..))`.
+pub trait ErSaveExt<Mode = ()>: Sized {
+    type Value;
+
+    /// `er_bail!(SyncErr::server(code).er_save("server", report))`
+    ///
+    /// `er_bail!((&path, "close database").er_save("server", report))`
+    fn er_save(
+        self,
+        title: impl Into<String>,
+        saved: impl ErSaveInput,
+    ) -> ErErrorWithSaved<Self::Value>;
 }
 
-#[cfg(feature = "macros")]
-#[doc(hidden)]
-pub trait ErBail<T, Mode> {
-    #[track_caller]
-    fn er_bail(self) -> T;
-}
-
-#[cfg(feature = "macros")]
-#[doc(hidden)]
-pub trait ErAllItem<Mode> {
+/// Save a report borrowed from a failed Result.
+pub trait ErResultSaveExt: Sized {
     type Ok;
+    type Err;
 
-    #[track_caller]
-    fn er_all_item(self) -> Result<Self::Ok, ErPart>;
+    /// The closure gets the whole error from the Result.
+    ///
+    /// `client.send(request).er_save("server", |err| &err.report).er(id)?;`
+    fn er_save<S: ErSaveRef + ?Sized>(
+        self,
+        title: impl Into<String>,
+        saved: impl FnOnce(&Self::Err) -> &S,
+    ) -> Result<Self::Ok, ErErrorWithSaved<Self::Err>>;
 }

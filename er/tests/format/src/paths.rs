@@ -29,7 +29,7 @@ fn paths() {
     ] {
         let mut snapshot = ErTree::from(Message("error")).er_snapshot();
         let location = ErSnapshotLocation {
-            file: file.to_owned(),
+            file: file.into(),
             line: 7,
             column: 9,
         };
@@ -41,10 +41,7 @@ fn paths() {
         };
         let expected = format!("error @ {printed}:7:9");
 
-        for layout in [Layout::Multiline, Layout::SingleLine] {
-            let report = snapshot.er_report().layout(layout);
-            assert_eq!(report.to_string(), expected);
-        }
+        assert_eq!(snapshot.er_report().to_string(), expected);
     }
 }
 
@@ -68,15 +65,11 @@ fn live_and_saved() {
         snapshot.entries[0]
             .src_location
             .as_ref()
-            .map(|location| location.file.as_str()),
+            .map(|location| location.file.as_ref()),
         Some(file!())
     );
 
-    for layout in [Layout::Multiline, Layout::SingleLine] {
-        let live = tree.er_report().layout(layout);
-        let saved = snapshot.er_report().layout(layout);
-        assert_eq!(live.to_string(), expected);
-        assert_eq!(saved.to_string(), expected);
-    }
-    assert_eq!(tree.er_top().to_string(), message);
+    assert_eq!(tree.er_report().to_string(), expected);
+    assert_eq!(snapshot.er_report().to_string(), expected);
+    assert_eq!(tree.top.to_string(), message);
 }

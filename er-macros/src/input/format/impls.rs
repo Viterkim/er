@@ -1,6 +1,8 @@
 use super::{
     ArgumentUse, Format, FormatArgument, FormatBody, FormatParser, FormatTrait, Formats, Output,
+    Tried,
 };
+use crate::fields::option_inner;
 use crate::input::attrs::{FormatOptions, FormatValue};
 use crate::input::{Field, attrs::FieldMode};
 use crate::names::plain;
@@ -18,15 +20,43 @@ impl Formats {
         })
     }
 
-    pub fn get(&self, output: Output) -> Option<&FormatBody> {
-        match output {
-            Output::Display => self.display.as_ref().or(self.shared.as_ref()),
-            Output::DisplayAlt => self
-                .display_alt
-                .as_ref()
-                .or_else(|| self.get(Output::Display)),
-            Output::Debug => self.debug.as_ref().or(self.shared.as_ref()),
+    pub fn tried(&self, output: Output) -> Tried<'_> {
+        let order = match output {
+            Output::Display => [&None, &self.display, &self.shared],
+            Output::DisplayAlt => [&self.display_alt, &self.display, &self.shared],
+            Output::Debug => [&None, &self.debug, &self.shared],
+        };
+        let mut formats = Vec::new();
+
+        for body in order.into_iter().flatten() {
+            formats.push(body);
+
+            let always = match body {
+                FormatBody::Template(format) => !format.optional(),
+                FormatBody::Function(_) => true,
+            };
+            if always {
+                return Tried {
+                    formats,
+                    default: false,
+                };
+            }
         }
+
+        Tried {
+            formats,
+            default: true,
+        }
+    }
+
+    pub fn templates(&self) -> impl Iterator<Item = &Format> {
+        [&self.shared, &self.display, &self.display_alt, &self.debug]
+            .into_iter()
+            .flatten()
+            .filter_map(|body| match body {
+                FormatBody::Template(format) => Some(format),
+                FormatBody::Function(_) => None,
+            })
     }
 }
 
@@ -52,7 +82,12 @@ impl FormatTrait {
             "e" => Ok(Self::LowerExp),
             "E" => Ok(Self::UpperExp),
             "p" => Ok(Self::Pointer),
-            _ => Err(Error::new(span, format!("unknown format trait `{text}`"))),
+            _ => Err(Error::new(
+                span,
+                format!(
+                    "don't know the format `{text}`, try `{{field}}`, `{{field:?}}` or one of `x`, `X`, `o`, `b`, `e`, `E`, `p`"
+                ),
+            )),
         }
     }
 
@@ -104,7 +139,7 @@ impl Format {
                 } else {
                     return Err(Error::new(
                         literal.span(),
-                        "unmatched `}` in format; use `}}` for a literal brace",
+                        "there's a `}` without a `{`, write `}}` to print a brace",
                     ));
                 }
             } else {
@@ -121,6 +156,10 @@ impl Format {
             requirements,
         })
     }
+
+    pub fn optional(&self) -> bool {
+        self.arguments.iter().any(|argument| argument.optional)
+    }
 }
 
 impl FormatParser<'_, '_> {
@@ -130,13 +169,20 @@ impl FormatParser<'_, '_> {
             self.next_implicit += 1;
             index
         } else if name.bytes().all(|ch| ch.is_ascii_digit()) {
-            name.parse::<usize>()
-                .map_err(|_| Error::new(self.span, "field index is too large"))?
-        } else {
-            return self.named_fields.get(name).copied().ok_or_else(|| {
+            name.parse::<usize>().map_err(|_| {
                 Error::new(
                     self.span,
-                    format!("no field `{name}` in this format's struct or variant"),
+                    "that field number is way too big, nobody has a tuple that long",
+                )
+            })?
+        } else {
+            // `{r#type}` names the same field as `type`, the way `format!` takes it.
+            let field = name.strip_prefix("r#").unwrap_or(name);
+
+            return self.named_fields.get(field).copied().ok_or_else(|| {
+                Error::new(
+                    self.span,
+                    format!("there's no field `{name}` here, check the spelling"),
                 )
             });
         };
@@ -152,7 +198,7 @@ impl FormatParser<'_, '_> {
 
         Err(Error::new(
             self.span,
-            format!("no field `{index}` in this format's struct or variant"),
+            format!("there's no field `{index}` here, tuple fields count from 0"),
         ))
     }
 
@@ -161,24 +207,38 @@ impl FormatParser<'_, '_> {
         let field = self.field_index(parts.next().unwrap_or_default())?;
         let members = parts
             .map(|part| {
-                syn::parse_str::<syn::Member>(part).map_err(|_| {
+                let mut member = syn::parse_str::<syn::Member>(part).map_err(|_| {
                     Error::new(
                         self.span,
-                        format!("invalid field access `{name}` in format"),
+                        format!("can't reach `{name}`, write a field like `{{path}}` or something inside it like `{{details.message}}`"),
                     )
-                })
+                })?;
+
+                // Point type errors in a nested access at the format string, not the derive.
+                match &mut member {
+                    syn::Member::Named(ident) => ident.set_span(self.span),
+                    syn::Member::Unnamed(index) => index.span = self.span,
+                }
+
+                Ok(member)
             })
             .collect::<Result<Vec<_>>>()?;
 
-        Ok(FormatArgument { field, members })
+        Ok(FormatArgument {
+            field,
+            members,
+            optional: false,
+        })
     }
 
-    pub fn argument(&mut self, argument: FormatArgument, usage: ArgumentUse) -> Result<usize> {
+    pub fn argument(&mut self, mut argument: FormatArgument, usage: ArgumentUse) -> Result<usize> {
         let field_index = argument.field;
-        let field = self
-            .fields
-            .get(field_index)
-            .ok_or_else(|| Error::new(self.span, format!("no field at index {field_index}")))?;
+        let field = self.fields.get(field_index).ok_or_else(|| {
+            Error::new(
+                self.span,
+                format!("there's no field `{field_index}`, tuple fields count from 0"),
+            )
+        })?;
         if field.options.mode == FieldMode::Skip
             || (field.options.mode == FieldMode::Censor && matches!(usage, ArgumentUse::Count))
         {
@@ -187,12 +247,21 @@ impl FormatParser<'_, '_> {
                 None => field_index.to_string(),
             };
             let message = if field.options.mode == FieldMode::Skip {
-                format!("format references skipped field `{name}`")
+                format!("`{name}` has `skip` on it, take it out of the format or drop the `skip`")
             } else {
                 format!("censored field `{name}` cannot set width or precision")
             };
             return Err(Error::new(self.span, message));
         }
+
+        let inside = match usage {
+            ArgumentUse::Value(FormatTrait::Debug) => !argument.members.is_empty(),
+            ArgumentUse::Value(_) => true,
+            ArgumentUse::Count => false,
+        };
+        argument.optional = inside
+            && field.options.mode == FieldMode::Normal
+            && option_inner(&field.item.ty).is_some();
 
         match usage {
             ArgumentUse::Value(format) => {
@@ -209,9 +278,12 @@ impl FormatParser<'_, '_> {
     }
 
     pub fn placeholder(&mut self, rest: &mut &str, output: &mut String) -> Result<()> {
-        let end = rest
-            .find([':', '}'])
-            .ok_or_else(|| Error::new(self.span, "unclosed `{` in format"))?;
+        let end = rest.find([':', '}']).ok_or_else(|| {
+            Error::new(
+                self.span,
+                "there's a `{` without a `}`, write `{{` to print a brace",
+            )
+        })?;
         let name = &rest[..end];
         *rest = &rest[end..];
 
@@ -224,7 +296,10 @@ impl FormatParser<'_, '_> {
         };
         *rest = rest.trim_start();
         if next_char(rest) != Some('}') {
-            return Err(Error::new(self.span, "expected `}` after format argument"));
+            return Err(Error::new(
+                self.span,
+                "close the field with `}`, like `{path}` or `{path:?}`",
+            ));
         }
 
         // In "{:.*}", precision comes before the value.
@@ -272,12 +347,16 @@ impl FormatParser<'_, '_> {
                     FormatArgument {
                         field: field_index,
                         members: Vec::new(),
+                        optional: false,
                     },
                     ArgumentUse::Count,
                 )?;
                 output.push_str(&format!("{position}$"));
             } else if !self.width_or_precision(rest, output)? {
-                return Err(Error::new(self.span, "expected precision after `.`"));
+                return Err(Error::new(
+                    self.span,
+                    "a `.` needs a number after it, like `{value:.2}`",
+                ));
             }
         }
 
@@ -292,7 +371,12 @@ impl FormatParser<'_, '_> {
     }
 
     pub fn take_char(&self, text: &mut &str) -> Result<char> {
-        next_char(text).ok_or_else(|| Error::new(self.span, "unexpected end of format"))
+        next_char(text).ok_or_else(|| {
+            Error::new(
+                self.span,
+                "the format stops in the middle of a `{...}`, close it with `}`",
+            )
+        })
     }
 
     pub fn copy_char(&self, text: &mut &str, output: &mut String) -> Result<()> {
@@ -316,6 +400,7 @@ impl FormatParser<'_, '_> {
                 FormatArgument {
                     field: field_index,
                     members: Vec::new(),
+                    optional: false,
                 },
                 ArgumentUse::Count,
             )?;

@@ -1,16 +1,15 @@
-#[cfg(all(er_unsync, target_has_atomic = "ptr"))]
-use crate::ErSavedArc;
-use crate::{
-    ErDefaults, ErReport, ErSavedShared, ErShared, ErSnapshot, ErValFields, IntoErSnapshot,
-};
-use alloc::rc::Rc;
+use crate::ErShared;
 #[cfg(er_unsync)]
 use alloc::rc::Rc as Shared;
-#[cfg(target_has_atomic = "ptr")]
-use alloc::sync::Arc;
 #[cfg(not(er_unsync))]
 use alloc::sync::Arc as Shared;
-use core::{fmt, ops::Deref};
+use core::{
+    borrow::Borrow,
+    cmp::Ordering,
+    fmt,
+    hash::{Hash, Hasher},
+    ops::Deref,
+};
 
 impl<T> ErShared<T> {
     /// Share the value without copying it.
@@ -34,6 +33,19 @@ impl<T> From<T> for ErShared<T> {
 impl<T: Clone> From<&T> for ErShared<T> {
     fn from(value: &T) -> Self {
         Self::new(value.clone())
+    }
+}
+// A `PathBuf` or `String` field takes the borrowed form too, and wrapping it in ErShared shouldn't take that away.
+// An `AsRef<Path>` version would collide with `From<&T>` on a `&PathBuf`, `.er(path.as_ref())` covers it.
+impl From<&str> for ErShared<alloc::string::String> {
+    fn from(value: &str) -> Self {
+        Self::new(value.into())
+    }
+}
+#[cfg(feature = "std")]
+impl From<&std::path::Path> for ErShared<std::path::PathBuf> {
+    fn from(value: &std::path::Path) -> Self {
+        Self::new(value.to_path_buf())
     }
 }
 impl<T: ?Sized> From<Shared<T>> for ErShared<T> {
@@ -70,6 +82,38 @@ impl<T: ?Sized> AsRef<T> for ErShared<T> {
         self
     }
 }
+impl<T: ?Sized> Borrow<T> for ErShared<T> {
+    fn borrow(&self) -> &T {
+        self
+    }
+}
+// Compare and hash the value like Arc does, so a type holding one can derive these.
+impl<T: PartialEq + ?Sized> PartialEq for ErShared<T> {
+    fn eq(&self, other: &Self) -> bool {
+        **self == **other
+    }
+}
+impl<T: Eq + ?Sized> Eq for ErShared<T> {}
+impl<T: PartialOrd + ?Sized> PartialOrd for ErShared<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        (**self).partial_cmp(&**other)
+    }
+}
+impl<T: Ord + ?Sized> Ord for ErShared<T> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (**self).cmp(&**other)
+    }
+}
+impl<T: Hash + ?Sized> Hash for ErShared<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        (**self).hash(state);
+    }
+}
+impl<T: Default> Default for ErShared<T> {
+    fn default() -> Self {
+        Self::new(T::default())
+    }
+}
 impl<T: fmt::Debug + ?Sized> fmt::Debug for ErShared<T> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&**self, formatter)
@@ -80,37 +124,3 @@ impl<T: fmt::Display + ?Sized> fmt::Display for ErShared<T> {
         fmt::Display::fmt(&**self, formatter)
     }
 }
-
-macro_rules! borrowed_presentation {
-    ($pointer:ident) => {
-        impl<'a, P: ?Sized> IntoErSnapshot for &'a $pointer<P>
-        where
-            &'a P: IntoErSnapshot,
-        {
-            type Top = <&'a P as IntoErSnapshot>::Top;
-            type Report = <&'a P as IntoErSnapshot>::Report;
-
-            fn into_er_snapshot(self) -> ErSnapshot {
-                <&'a P as IntoErSnapshot>::into_er_snapshot(self)
-            }
-
-            fn into_er_top(self) -> Self::Top {
-                <&'a P as IntoErSnapshot>::into_er_top(self)
-            }
-
-            fn into_er_report(self) -> Self::Report {
-                <&'a P as IntoErSnapshot>::into_er_report(self)
-            }
-        }
-    };
-}
-
-borrowed_presentation!(Rc);
-#[cfg(target_has_atomic = "ptr")]
-borrowed_presentation!(Arc);
-borrowed_presentation!(ErShared);
-
-crate::impls::construct::saved_outputs!(ErSavedShared, Shared<A>, Shared::new);
-
-#[cfg(all(er_unsync, target_has_atomic = "ptr"))]
-crate::impls::construct::saved_outputs!(ErSavedArc, Arc<A>, Arc::new);

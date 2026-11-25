@@ -45,13 +45,15 @@ pub struct MutableError<'a, E: ?Sized> {
 pub type Cause = Box<io::Error>;
 pub type SharedCause = Arc<io::Error>;
 pub type BorrowedCause = &'static MethodSource;
+pub type OptionalCause = Option<ErBoxError>;
 
 #[derive(Er)]
 pub enum AliasedError {
-    Boxed(#[er(source)] BoxError),
+    Boxed(#[er(source)] ErBoxError),
     File(#[er(source)] Cause),
     Shared(#[er(source)] SharedCause),
     Borrowed(#[er(source)] BorrowedCause),
+    Optional(#[er(source)] OptionalCause),
 }
 
 #[derive(Er)]
@@ -185,8 +187,8 @@ pub fn sources() {
     assert!(CallError::<io::Error>::closed().source().is_none());
 
     let error = CallError::wrapped(Box::new(CallError::failed(io::Error::other("wrapped"))));
-    assert!(error.er_wrap().er_find::<io::Error>().is_some());
-    assert!(CallError::failed(()).to_string().contains("()"));
+    assert!(CallErrorWrap::from(error).er_find::<io::Error>().is_some());
+    assert_eq!(CallError::failed(()).to_string(), "CallError::Failed");
 
     let request = String::from("katten");
     let cause = io::Error::other("borrowed");
@@ -205,9 +207,33 @@ pub fn sources() {
         AliasedError::boxed(io::Error::other("boxed")),
         AliasedError::file(Box::new(io::Error::other("file"))),
         AliasedError::shared(Arc::new(io::Error::other("shared"))),
+        AliasedError::Optional(Some(Box::new(io::Error::other("optional")))),
     ] {
         assert!(error.source().is_some_and(|cause| cause.is::<io::Error>()));
     }
+}
+
+#[test]
+pub fn source_text() {
+    let error = FileError::new("config.toml", io::Error::other("permission denied"));
+
+    assert_eq!(error.to_string(), format!("{error:?}"));
+
+    let report = ErTree::from(error).er_report();
+    assert_eq!(report.matches("permission denied").count(), 1);
+}
+
+#[test]
+pub fn show_in_parent() {
+    #[derive(Er)]
+    enum Shown<E> {
+        Cause(#[er(source, show_in_parent)] E),
+    }
+
+    let error = Shown::Cause(io::Error::other("permission denied"));
+    let report = ErTree::from(error).er_report();
+
+    assert_eq!(report.matches("permission denied").count(), 2);
 }
 
 #[test]
@@ -279,8 +305,12 @@ pub fn generic_aliases() {
 
 #[test]
 pub fn optional() {
-    let error = OptionalError::new(None::<Box<dyn Error + Send + Sync>>);
-    assert!(error.source().is_none());
+    for error in [
+        &OptionalError::new(None::<Box<dyn Error + Send + Sync>>) as &dyn Error,
+        &AliasedError::Optional(None),
+    ] {
+        assert!(error.source().is_none());
+    }
 
     let error =
         OptionalError::new(Box::new(io::Error::other("boxed")) as Box<dyn Error + Send + Sync>);

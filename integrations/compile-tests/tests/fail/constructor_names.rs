@@ -21,12 +21,6 @@ pub enum RawErr {
 }
 
 #[derive(Er)]
-#[er(wrap)]
-pub enum WrapErr {
-    ErWrap,
-}
-
-#[derive(Er)]
 #[er(wrap(name = r#SameErr))]
 pub struct SameErr;
 

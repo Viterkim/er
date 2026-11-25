@@ -83,12 +83,8 @@ pub fn query_does_not_format() {
     assert!(error.er_find::<AbsentErr>().is_none());
     assert!(error.er_contains::<NeverFormat>());
     let _ = error.er_descendants().count();
-    let _ = error.er_report().er_entries().count();
 
-    let _top = error.er_top();
-    let _report = error.er_report();
-
-    let _owned = error.into_er_report();
+    let _owned = error;
 }
 
 #[test]
@@ -118,14 +114,6 @@ pub fn deep_tree_small_stack() {
             write!(sink, "{}", error.er_report()).unwrap();
 
             assert_eq!(sink.lines, 5_000);
-            assert!(sink.bytes >= 5_001 * "counted".len());
-            assert_eq!(probes.load(Ordering::Relaxed), 5_001);
-
-            let mut sink = Sink { bytes: 0, lines: 0 };
-            probes.store(0, Ordering::Relaxed);
-            write!(sink, "{}", error.er_report().single_line()).unwrap();
-
-            assert_eq!(sink.lines, 0);
             assert!(sink.bytes >= 5_001 * "counted".len());
             assert_eq!(probes.load(Ordering::Relaxed), 5_001);
 

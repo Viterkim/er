@@ -27,34 +27,21 @@ pub struct DefaultData<T> {
 }
 
 #[test]
-fn standalone_construction() {
-    let data: DefaultData<()> = (("saved", ()),).into();
-    assert_eq!(data.name, "saved");
-    let () = data.data;
-
+fn construction() {
     struct Payload;
     let data = DefaultData::new("supplied", Payload);
     let Payload = data.data;
 
-    let _: EmptyUnit = ().into();
-    let _: EmptyNamed = ().into();
+    let _ =
+        <EmptyUnit as er::er_internal::ErFromFields<(), er::er_internal::ErFields>>::er_from_fields(
+            (),
+        );
+    let _ =
+        <EmptyNamed as er::er_internal::ErFromFields<(), er::er_internal::ErFields>>::er_from_fields(());
     let _: ManualEmpty = ().into();
-    let file: FileErr = ("config.toml",).into();
+    let file =
+        <FileErr as er::er_internal::ErFromFields<_, er::er_internal::ErFields>>::er_from_fields(
+            "config.toml",
+        );
     assert_eq!(file.0, "config.toml");
-}
-
-#[derive(Er)]
-#[er(format = "saved")]
-pub struct Saved<T = ()> {
-    #[er(into_report_string)]
-    pub diagnostics: String,
-    #[er(default)]
-    pub data: T,
-}
-
-#[test]
-fn standalone_saving() {
-    let saved: Saved = ((String::from("saved diagnostics"),), [(); 4]).into();
-    assert_eq!(saved.diagnostics, "saved diagnostics");
-    let () = saved.data;
 }

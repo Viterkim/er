@@ -6,24 +6,23 @@ pub fn read_port(input: &str) -> ErResult<u16, ReadPortErr> {
     input.parse().er(())
 }
 
-#[derive(Er)]
-pub struct PortError {
-    #[er(into_top)]
-    pub kind: ReadPortErr,
-    #[er(into_report_string)]
-    pub report: String,
-}
-pub fn saved(input: &str) -> Result<(), PortError> {
-    read_port(input).er_into::<PortError, _>(|report| {
-        eprintln!("{report}");
-        report
-    })?;
+// `?` right after `.er_split()` hands the pair on.
+pub fn public(input: &str) -> Result<(), (ReadPortErr, String)> {
+    read_port(input).er_split()?;
     Ok(())
 }
 
-// main accepts the report as its error.
-pub fn main() -> Result<(), ErReport<ReadPortErr>> {
-    read_port("85").er_report()?;
+// main returns ErMain and uses `.er(..)?` like any other function. A failure prints the whole report.
+pub fn main() -> ErMain {
+    read_port("85").er(())?;
+    public("85").er(())?;
+
+    Ok(())
+}
+
+// With your own error, its trees go through plain `?`.
+pub fn app_main() -> ErMain<ReadPortErr> {
+    read_port("85")?;
 
     Ok(())
 }

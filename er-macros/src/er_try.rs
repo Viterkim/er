@@ -1,9 +1,9 @@
 use crate::{
-    er_all::expression_span,
+    er_all,
     names::{binding, identifiers, shield_bindings},
 };
 use proc_macro2::{TokenStream, TokenTree};
-use quote::{quote, quote_spanned};
+use quote::{format_ident, quote, quote_spanned};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use syn::{Path, Token, parse::Parse, parse::ParseStream};
 
@@ -42,56 +42,57 @@ pub fn expand(
 ) -> TokenStream {
     let tokens = quote!(#top #(#results)*);
     let reserved = identifiers(tokens.clone());
-    let values: Vec<_> = (0..results.len())
-        .map(|index| binding(&reserved, &format!("__er_value_{index}")))
-        .collect();
-    let shields = shield_bindings(&values);
-    let item = binding(&reserved, "__ErTryItem");
-    let items = results.iter().map(|result| {
-        let span = expression_span(result);
-        let mut call = item.clone();
-        call.set_span(span);
-        quote_spanned! {span=>
-            ({
-                use #er_path::ErAllItem as #item;
-                #call::er_all_item
-            })(#result)
-        }
-    });
-
-    let types = values
-        .iter()
-        .map(|_| quote!(::core::result::Result<_, #er_path::ErPart>));
-
-    let gathered = quote! {
-        ({
-            #shields
-            #[allow(clippy::result_large_err)]
-            |(#(#values,)*): (#(#types,)*)| match (#(#values,)*) {
-                (#(::core::result::Result::Ok(#values),)*) =>
-                    ::core::result::Result::Ok((#(#values,)*)),
-                (#(#values,)*) =>
-                    ::core::result::Result::Err([#(::core::result::Result::err(#values)),*]),
-            }
-        })((#(#items,)*))
-    };
-
-    // Imports around the match would hide constants inside caller macros.
     let mut hash = DefaultHasher::new();
     tokens.to_string().hash(&mut hash);
     let suffix = hash.finish();
-    let values = binding(&reserved, &format!("__er_try_values_{suffix:x}"));
+    let ok = binding(&reserved, &format!("__er_try_values_{suffix:x}"));
     let errors = binding(&reserved, &format!("__er_try_errors_{suffix:x}"));
 
-    quote! {
+    let items = results.iter().map(|result| {
+        let span = er_all::expression_span(result);
+        quote_spanned!(span=> #er_path::er_internal::ErMacroItem(#result, ::core::marker::PhantomData).item(0))
+    });
+    let gathered = if results.len() <= 12 {
+        let helper = format_ident!("try_all_{}", results.len());
+        quote!(#er_path::er_internal::aggregate::#helper(#(#items),*))
+    } else {
+        let values: Vec<_> = (0..results.len())
+            .map(|index| binding(&reserved, &format!("__er_value_{index}")))
+            .collect();
+        let shields = shield_bindings(&values);
+        let types = values
+            .iter()
+            .map(|_| quote!(::core::result::Result<_, #er_path::ErPart>));
+
+        quote! {
+            ({
+                #shields
+                #[allow(clippy::result_large_err)]
+                |(#(#values,)*): (#(#types,)*)| match (#(#values,)*) {
+                    (#(::core::result::Result::Ok(#values),)*) =>
+                        ::core::result::Result::Ok((#(#values,)*)),
+                    (#(#values,)*) => ::core::result::Result::Err(
+                        #er_path::er_internal::aggregate::gather_parts(
+                            &mut [#(#values.map(::core::mem::drop)),*],
+                        ),
+                    ),
+                }
+            })((#(#items,)*))
+        }
+    };
+
+    quote! {{
+        #[allow(unused_imports)]
+        use #er_path::er_internal::ErWrappedFallback as _;
+
         match #gathered {
-            ::core::result::Result::Ok(#values) => ::core::result::Result::Ok(#values),
+            ::core::result::Result::Ok(#ok) => ::core::result::Result::Ok(#ok),
             ::core::result::Result::Err(#errors) => ::core::result::Result::Err(
-                #er_path::ErTree::new(
-                    #er_path::ErMake::er_make(#top),
-                    ::core::iter::Iterator::flatten(::core::iter::IntoIterator::into_iter(#errors)),
+                #er_path::er_internal::aggregate::CollectedErrors::into_tree(
+                    #errors,
+                    #er_path::er_internal::aggregate::ErBatchTop::into_batch_top(#top),
                 ),
             ),
         }
-    }
+    }}
 }

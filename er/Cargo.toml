@@ -11,25 +11,22 @@ description = "Er, errors with less r"
 keywords = ["error", "error-handling", "context", "report", "no_std"]
 categories = ["rust-patterns", "no-std"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [lib]
 doctest = false
 
 [features]
-default = ["src_locations", "macros", "test"]
+default = ["src_locations", "macros"]
+std = []
 src_locations = []
-stack_traces = []
+stack_traces = ["std"]
 small_path_src = []
 macros = ["dep:er-macros"]
-lazy = []
-test = []
-serde = ["dep:serde"]
 
 [dependencies]
-er-macros = { version = "=0.8.1", path = "../er-macros", optional = true }
-serde = { workspace = true, optional = true }
-
-[dev-dependencies]
-serde_json.workspace = true
+er-macros = { version = "=0.9.0", path = "../er-macros", optional = true }
 
 [lints]
 workspace = true

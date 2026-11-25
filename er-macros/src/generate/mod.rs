@@ -1,67 +1,49 @@
 pub mod construct;
-pub mod into;
 pub mod replace_self;
 pub mod source;
+pub mod warnings;
 pub mod wrap;
 
 use crate::{
     format,
     input::{Input, bounds::format_generics},
-    names::binding,
+    names::{binding, shield_bindings},
 };
-use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{DeriveInput, Path, parse_quote};
+use syn::DeriveInput;
 
 pub fn expand(item: &DeriveInput) -> syn::Result<TokenStream> {
-    expand_for(item, "er")
-}
-
-pub fn expand_for(item: &DeriveInput, package: &str) -> syn::Result<TokenStream> {
     let input = Input::parse(item)?;
+    let er_path = &input.options.er_path;
     let generics = format_generics(&input);
     let formatter = binding(&input.names, "__er_f");
-    let formatting = format::implementations(&input, &generics, &formatter);
-    let constructors = construct::methods(&input)?;
+    let mut bindings = Vec::new();
+    let mut field_names = Vec::new();
+    let formatting = format::implementations(&input, &generics, &formatter, &mut bindings);
+    let (shielded, constructors) = construct::methods_in_scope(&input, &mut field_names)?;
+    let error = source::implementation(&input, &generics, er_path, &mut bindings);
+    let (defaults, fields) = construct::from_fields(&input, er_path, &mut bindings);
+    let shields = shield_bindings(&bindings);
+    let by_field_name = construct::scoped(&input, &field_names, quote!(#shielded #fields));
+    let warnings = warnings::warnings(&input);
 
-    let fields = construct::from_fields(&input);
-    let error = source::implementation(&input, &generics);
-    let into = into::implementation(&input)?;
     let wrap = match &input.options.wrap {
-        Some(options) => {
-            let path = match &input.options.er_path {
-                Some(path) => path.clone(),
-                None => runtime_path(package)?,
-            };
-            wrap::expand(item, &path, options, &input.names, &formatter)
-        }
+        Some(options) => wrap::expand(item, er_path, options, &input.names, &formatter),
         None => TokenStream::new(),
     };
 
     Ok(quote! {
-        #formatting
-        #error
+        const _: () = {
+            #shields
+
+            #formatting
+            #error
+            #defaults
+            #by_field_name
+            #warnings
+        };
         #constructors
-        #fields
-        #into
         #wrap
     })
-}
-
-pub fn runtime_path(package: &str) -> syn::Result<Path> {
-    match crate_name(package) {
-        Ok(FoundCrate::Itself) => Ok(parse_quote!(crate)),
-        Ok(FoundCrate::Name(name)) => crate_path(&name),
-        Err(_) => crate_path(&package.replace('-', "_")),
-    }
-}
-
-pub fn crate_path(name: &str) -> syn::Result<Path> {
-    // syn accepts this as an identifier, but Rust 2024 reserves it.
-    if name == "gen" {
-        return syn::parse_str("::r#gen");
-    }
-
-    syn::parse_str(&format!("::{name}")).or_else(|_| syn::parse_str(&format!("::r#{name}")))
 }

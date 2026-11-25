@@ -5,6 +5,8 @@ use syn::{ExprPath, Path, QSelf, Type};
 impl ReplaceSelf<'_> {
     pub fn associated_path(&mut self, mut path: Path) -> (QSelf, Path) {
         path.segments = path.segments.into_iter().skip(1).collect();
+        // `<Type>::Assoc` needs the `::` that came after `Self`, the qualified self doesn't print one.
+        path.leading_colon = Some(Default::default());
         let path = self.fold_path(path);
         let qualified = qualified_self(self.original);
         (qualified, path)

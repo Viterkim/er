@@ -29,17 +29,14 @@ pub fn lookup() {
 
     let leaf =
         |error: Option<&(dyn Error + 'static)>| error.unwrap().downcast_ref::<Leaf>().unwrap().0;
-    for (index, path, value) in [
-        (0, &[][..], 0),
-        (2, &[0, 0][..], 1),
-        (3, &[0, 1][..], 2),
-        (4, &[1][..], 3),
+    for (path, value) in [
+        (&[][..], 0),
+        (&[0, 0][..], 1),
+        (&[0, 1][..], 2),
+        (&[1][..], 3),
     ] {
-        let by_index = tree.er_top().er_at_index(ErErrorIndex(index));
-        let by_path = tree.er_report().er_at_path(path);
-        assert_eq!((leaf(by_index), leaf(by_path)), (value, value));
+        assert_eq!(leaf(tree.er_at_path(path)), value);
     }
-    assert!(tree.er_at_index(ErErrorIndex(6)).is_none());
     assert!(tree.er_at_path(&[0, 2]).is_none());
 }
 
@@ -52,16 +49,10 @@ pub fn walk() {
             ErTree::from(Leaf(3)).into_er_part(),
         ],
     );
-    let report = tree.into_er_report();
-    let _: ErFindAll<'_, Leaf> = report.as_ref().er_find_all();
+    let report = tree;
+    let _: ErFindAll<'_, Leaf> = report.er_find_all();
 
-    let entries: Vec<_> = report.as_ref().er_entries().collect();
-    let mut visited = Vec::new();
-    report
-        .er_top()
-        .er_for_each_entry(|entry| visited.push(entry.index));
-
-    assert!(visited.iter().eq(entries.iter().map(|entry| &entry.index)));
+    let entries: Vec<_> = report.er_entries().collect();
 
     use ErEntryKind::{Node, Root, Source};
 
@@ -233,13 +224,13 @@ pub fn src_locations() {
     assert_eq!(tree.nodes[0].src_location.line(), line);
 
     let boxed: Box<dyn Error + Send + Sync> = Box::new(Leaf(7));
-    let result: Result<(), BoxError> = Err(boxed);
+    let result: Result<(), ErBoxError> = Err(boxed);
     let line = line!() + 1;
     let tree = result.er::<Leaf>(|_| 8).unwrap_err();
 
     assert_eq!(tree.nodes[0].src_location.line(), line);
 
-    let boxed: BoxError = Box::new(Leaf(9));
+    let boxed: ErBoxError = Box::new(Leaf(9));
     let line = line!() + 1;
     let node = boxed.into_er_part();
 

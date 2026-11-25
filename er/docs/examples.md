@@ -6,37 +6,41 @@ All examples use `use er::*;`
 
 ## TLDR
 
-Structs: Use `.er(())` for empty structs, `.er(|_| path)` for 1 field structs, and `.er(|_| (port, enabled))` for 2 or more fields.
+Structs: Use `.er(())` for empty structs, `.er(path)` for 1 field structs, and `.er((port, enabled))` for 2 or more fields (closures for non Copy values).
 
-Enums: Need a variant specified like `.er(|| ModeErr::variant_name(arg1))`.
+Enums: variant like `.er(|| ModeErr::variant_name(arg1))`.
 
-Give each fallible function its own error type so `?` can't silently pass the same error all the way up without adding context. Keep the cases your caller cares about, the tree keeps the original errors underneath.
+Give each fallible function its own error type so `?` can't silently pass the same error all the way up without adding context. 
+
+Keep the cases your caller cares about! (the tree keeps the original errors underneath).
+
+Don't specify the type everywhere, inference works.
+
+On things like Option<> you don't have to use Some(v)/.into().
 
 ```rust
 // Put your error type directly above your function.
-// You don't have to do '#[er(format)]' and you don't have to 'hide' what's going on. In many cases, errors are for internal use.
+// You shouldn't use '#[er(format)]'
 #[derive(Er)]
 pub struct MyFuncErr;
 
 pub fn my_func() -> ErResult<(), MyFuncErr> {
-    something_else().er(())?;
-    // more real code
+    something_else().er(())
 }
 
-// Context which is relevant in your logs / to your consumer
 #[derive(Er)]
 pub struct MyOtherErr {
-    pub path: PathBuf, // What file didn't exist
-    // Include messages in the type itself, don't use `#[er(format)]` for that
-    pub msg: &'static str, // Bonus: even if it was an Option<>, Some(v)/.into() wouldn't be needed
+    // Keep your data away from your msg (we have types in rust, don't pack stuff into a String)
+    pub path: PathBuf, 
+    pub msg: &'static str,
 }
 
 pub fn other_func(path: &str) -> ErResult<(), MyOtherErr> {
-    // Usually pass values directly, no .as_ref()/.as_str(), and Option<T> takes T without Some().
+    // Values directly, no .as_ref()/.as_str(), and Option<T> without Some().
     if path.is_empty() {
-        er_bail!(|_| (path, "no file given"));
+        er_bail!((path, "no file given"));
     }
-    my_func().er(|_| (path, "some cool msg"))
+    my_func().er((path, "some cool msg"))
 }
 ```
 
@@ -64,7 +68,7 @@ pub struct ReadFileErr { // or `ReadFileErr(pub PathBuf)`
 }
 
 pub fn read_file(path: &Path) -> ErResult<String, ReadFileErr> {
-    fs::read_to_string(path).er(|_| path)
+    fs::read_to_string(path).er(path)
 }
 ```
 
@@ -91,110 +95,32 @@ pub fn read_mode(input: Option<&str>) -> ErResult<&str, ModeErr> {
 }
 ```
 
-## Print report
-
-Your `pub fn main()` can return `Result<(), ErReport<AppErr>>`.
-
-```rust
-if let Err(error) = read_port("fakenumber") {
-    eprintln!("{}", error.er_report());
-}
-
-// You can also unwrap it (have to pick report/top)
-// Or you can use `.unwrap_report()` for short, and `.expect_report("bad port")`
-let port = read_port("85").er_report().unwrap();
-```
-
-If the caller just wants text:
-
-```rust
-let result: Result<u16, String> = read_port("85").er_report_string();
-```
-
-`.er_top_string()` gives just the outer error, Ok passes through in both.
-
-You can log a failure and still return it. The log gets one line, and the caller gets the full report:
-
-```rust
-pub fn read_and_log(input: &str) -> Result<u16, ErReport<ReadPortErr>> {
-    let result = read_port(input);
-
-    if let Err(err) = &result {
-        eprintln!("{}", err.er_report().single_line());
-    }
-
-    result.er_report()
-}
-```
-
-On the tree itself, `.er_report()` borrows it and `.into_er_report()` moves it into the report. The top helpers work the same way. For a logger that wants each line separately, use `report.for_each_line(|line| log_line(line))?`, or `try_for_each_line` when writing a line can fail.
-
-## Print top error
-
-```rust
-if let Err(error) = read_file(Path::new("missing85")) {
-    eprintln!("{}", error.er_top());
-    println!("Missing: {}", error.top.path.display());
-}
-```
-
-```text
-ReadFileErr { path: "missing85" }
-Missing: missing85
-```
-
-`error.top` is still your type, just read its fields. `.er_top()` only chooses what gets printed.
-
-## Helpers / Constructors
-
-The return type already tells us which error we're making. Give `.er()` its fields in order and let it do the conversions when something fails:
-
-```rust
-#[derive(Er)]
-pub struct ReadConfigErr {
-    pub path: PathBuf,
-    pub action: String,
-}
-pub fn read_config(path: &Path) -> ErResult<String, ReadConfigErr> {
-    fs::read_to_string(path).er(|_| (path, "load config"))
-}
-```
-
-No `ReadConfigErr::new(...)`, `path.to_path_buf()` or `String::from(...)` at the call. The same field helpers work with `.er_with()`, `.er_val()` and `.er_into()`, each giving the closure the thing you need to build from. To stop a conversion on a particular field, mark it with `#[er(exact)]` and pass its actual type.
-
-You still get `new(...)` for constructing a value directly, and `.er(|| MyTypeErr { a, b })` works for a finished error.
-
-Pass values directly, there's usually no need for `.as_ref()` or `.as_str()`. `Option<T>` fields take `T` too, no `Some(...)`.
-
-## Use stuff from the previous error
+## Use the previous error
 
 If you need something from the old error, `.er_with()` lets you look at it and still keep it in the tree.
 
 ```rust
-// The old pal
 #[derive(Er)]
 pub struct DeviceErr {
     pub code: u8,
 }
 
-// Our new one
+// Our new one, very realistic example
 #[derive(Er)]
 pub struct AnalyzeErr {
     pub code: u8,
 }
 
 pub fn analyze() -> ErResult<(), AnalyzeErr> {
-    // read_device returns ErResult<_, DeviceErr>
+    // We assume read_device() returns ErResult<_, DeviceErr>
     read_device().er_with(|err| err.code)?;
     Ok(())
 }
 ```
 
-For a finished struct or a foreign error, `.er_with()` needs `er_built(...)`, like `.er_with(|err| er_built(AnalyzeErr { code: err.code }))`.
+If it's non Copy (`String` or `PathBuf` etc) you can ofc always just clone.
 
-Derived enums work directly even with `{ ... }`, though `ModeErr::unknown(...)` saves you doing the field conversions yourself.
-
-The typed top isn't always the error with the data you need. `.er_with_tree()` gives you the whole tree to search, while keeping it below the new context:
+There's also `.er_with_tree()` if you need something from the tree:
 
 ```rust
 #[derive(Er)]
@@ -210,25 +136,132 @@ pub fn analyze_batch(result: ErResult<(), ChecksErr>) -> ErResult<(), AnalyzeBat
 }
 ```
 
-Raw errors take the same helpers:
+The thing that this has over map_err is that it makes you not accidentally nuke the tree. It's the operation that modifies the tree (not for giving it up at the end/consuming), so the compiler can help you.
+
+## Reusing context / closures
+
+You can make little helpers if you just want to have the same dynamic context (that changes at runtime), but you want a different message (or other things that can be different).
 
 ```rust
-er_bail!(device.er_with(|err| err.code));
+#[derive(Er)]
+pub struct SyncErr {
+    pub path: PathBuf,
+    pub host: String,
+    pub port: u16,
+    pub msg: &'static str,
+}
+
+pub fn sync(path: &Path, host: &str, port: u16) -> ErResult<(), SyncErr> {
+    let e = |msg| (path, host, port, msg);
+
+    let data = read_file(path).er(e("read file"))?;
+    if data.is_empty() {
+        er_bail!(e("empty file"));
+    }
+
+    connect(host, port).er(e("connect"))?;
+    upload(&data).er(e("upload"))?;
+
+    Ok(())
+}
 ```
 
-## Don't destroy the tree (lose sub errors)
+When they're all `Copy` (references like `&Path`, `&str`, `&String`, `&PathBuf`, numbers, etc.), its a tuple with zero allocations on the ok path, so you don't need another closure at `.er(e("..."))?` (you can also do it with `er_bail!` and `er_all!`).
 
-The `.er_with()` above adds to the old tree. Both of these copy the code into a fresh one and throw the old tree away. ALWAYS use `.er()` or `.er_with()` for those cases. NEVER EVER do stuff like this:
+If a field needs a lookup like `user.name()` or you're building an enum variant, you should return a closure with `e`.
 
 ```rust
-// ! BAD DO NOT DO THIS !
-read_device().map_err(|t| ErTree::from(AnalyzeErr::new(t.top.code)))
+let e = |msg| move |_| (path, user.name(), msg);
+// or for an enum:
+let e = |msg| move || SyncErr::failed(path, host, msg);
 
-// ! BAD DO NOT DO THIS !
-if let Err(t) = read_device() {
-    // the t tree is gone, (womp womp, sad sounds)
-    er_bail!(AnalyzeErr::new(t.top.code));
+read_file(path).er(e("read file"))?;
+```
+
+## Print report
+
+If you want to keep the tree, you can call `.er_report()` (if you want to pass it on at a public boundary, checkout the `er_split()` part).
+
+```rust
+if let Err(error) = read_port("fakenumber") {
+    eprintln!("{}", error.er_report());
 }
+
+// Yolo unwrap or `.er_expect("bad port")`
+let port = read_port("85").er_unwrap();
+```
+
+If you want to give up the error, this also works.
+
+```rust
+let result: Result<u16, String> = read_port("85").er_report();
+```
+
+For loggers with each line separately you can use `error.for_each_line(|line| log_line(line))?`.
+
+Your `pub fn main()` can return `ErMain`. You use `.er(())?` like other unit Er errors (prints report).
+
+```rust
+pub fn main() -> ErMain {
+    read_port("85").er(())?;
+    Ok(())
+}
+```
+
+## Print top error
+
+```rust
+if let Err(error) = read_file(Path::new("missing85")) {
+    eprintln!("{}", error.top);
+    println!("Missing: {}", error.top.path.display());
+}
+```
+
+```text
+ReadFileErr { path: "missing85" }
+Missing: missing85
+```
+
+## Helpers / Constructors
+
+Use the return type to your advantage aka just pass fields to `.er()` in order and it handles the conversions if something fails:
+
+```rust
+#[derive(Er)]
+pub struct ReadConfigErr {
+    pub path: PathBuf,
+    pub action: String,
+}
+pub fn read_config(path: &Path) -> ErResult<String, ReadConfigErr> {
+    fs::read_to_string(path).er((path, "load config"))
+}
+```
+
+You don't need `ReadConfigErr::new(...)` (which is also generated), `path.to_path_buf()` or `String::from(...)` at the call, and no turbofish either since the return type already names `ReadConfigErr` (you only need `.er::<SubErr>(..)` when nothing names it yet, like inside `er_all!` or mid chain, but you don't need chains). The same field helpers work with `.er_with()` and `.er_val()`.
+
+Copy stuff like `&Path` or `&str` goes straight in and only converts if the call fails. For owned values or lookups like `user.name()`, you can use a closure `.er(|_| (path, user.name()))` so the ok path skips them too.
+
+You still get `new(...)` for constructing a value directly, and `.er(|| MyTypeErr { a, b })` works for a finished error.
+
+You can pass values directly without `.as_ref()` or `.as_str()`, and `Option<T>` fields take `T` without `Some(...)`.
+
+### Default fields
+
+If you put `#[er(default)]` (or `#[er(default = expr)]`) on fields at the end of a struct, you can leave them off in `.er(..)` / `er_bail!(..)` / `.er_with(..)`:
+
+```rust
+#[derive(Er)]
+pub struct ReadErr {
+    pub path: PathBuf,
+    #[er(default)]
+    pub attempts: u8,
+    #[er(default = 85)]
+    pub size: u64,
+}
+
+fs::read(path).er(path)?; // attempts is 0, size is 85
+fs::read(path).er((path, 3))?; // size is 85
+fs::read(path).er((path, 3, len))?;
 ```
 
 ## Shared / References
@@ -258,7 +291,31 @@ pub fn read_config(path: PathBuf, machine: &str) -> ErResult<String, TwoErr> {
 }
 ```
 
-That `.clone()` only copies the shared handle, the path stays in the same allocation. The old error stays in the tree with its handle too.
+It's just Arc/Rc depending on the platform, don't wrap values in `ErShared::new(...)` before the call just do `&path`.
+
+## Sharing / reusing errors
+
+If you need to reuse/share the result/error you can freeze with `.er_share()` (`er_find()` will still work):
+
+```rust
+pub struct Device {
+    pub opened: Result<Speaker, ErSharedTree<OpenErr>>,
+}
+
+impl Device {
+    pub fn open(&mut self) {
+        self.opened = open_speaker().er_share();
+    }
+
+    pub fn capture(&self) -> ErResult<&Speaker, CaptureErr> {
+        self.opened.as_ref().er_with(|err| err.device.clone())
+    }
+}
+```
+
+`ErSharedTree` is `Clone` and read only, and like `ErTree` it doesn't implement `Debug` or `Display` (`failure.top` and `.er_report()` also work). 
+
+If you need `Debug` or you're done building the tree, you can derive `Clone` on your error and use `.er_split()` for `(MyError, String)` instead.
 
 ## Non errors (ErFormat)
 
@@ -277,9 +334,9 @@ pub struct ConnectErr {
 }
 
 let connection = Connection::new("ComputerKatten", 85);
-let error = ErTree::from(ConnectErr::new(connection));
+let error = er_new!(ConnectErr::new(connection));
 
-println!("{}", error.er_top());
+println!("{}", error.top);
 ```
 ```text
 ConnectErr { connection: Connection { host: "ComputerKatten", port: 85 } }
@@ -312,7 +369,7 @@ pub struct ChecksErr {
 
 pub fn check_inputs(port: &str, enabled: &str) -> ErResult<(), ChecksErr> {
     // er_all returns (), so Ok(()) here
-    er_all!(|_| (port, enabled), [port.parse::<u16>(), enabled.parse::<bool>()])
+    er_all!((port, enabled), [port.parse::<u16>(), enabled.parse::<bool>()])
 }
 ```
 
@@ -332,13 +389,13 @@ pub struct ConfigErr {
 }
 
 pub fn check_config(path: &Path, port: &str, enabled: &str) -> ErResult<(), ConfigErr> {
-    let top_err = |_| (path, port, enabled);
-    let host = read_file(path).er(top_err)?;
+    let top_err = (path, port, enabled);
+    let host = read_file(path).er(top_err)?; // first use
 
-    er_all!(top_err, [
-        port.parse::<u16>().er::<SubErr>(|_| port),
-        enabled.parse::<bool>().er::<SubErr>(|_| enabled),
-        host.trim().parse::<IpAddr>().er::<SubErr>(|_| host),
+    er_all!(top_err, [ // second use
+        port.parse::<u16>().er::<SubErr>(port),
+        enabled.parse::<bool>().er::<SubErr>(enabled),
+        host.trim().parse::<IpAddr>().er::<SubErr>(&host),
     ])
 }
 ```
@@ -350,7 +407,7 @@ If you need the values `er_try!` gives them back as a tuple when everything succ
 ```rust
 pub fn read_inputs(port: &str, enabled: &str) -> ErResult<(u16, bool), ChecksErr> {
     let (port, enabled) = er_try!(
-        |_| (port, enabled),
+        (port, enabled),
         [port.parse::<u16>(), enabled.parse::<bool>()],
     )?;
 
@@ -377,22 +434,29 @@ pub fn read_with_fallback(path: &Path, fallback: &Path) -> ErResult<String, Read
 
     match read_file(fallback) {
         Ok(text) => Ok(text),
-        Err(second_error) => Err(first_error.er_add([second_error])),
+        Err(second_error) => Err(first_error.er_add(second_error)),
     }
 }
 ```
 
-When you want to add multiple errors to a previous one, `er_add!` lets them have different types:
+When you want to add multiple errors to a previous one, `er_add!` lets them have different types (it drops the oks from results like `er_all!`):
 
 ```rust
 error = er_add!(error, [first_error, second_error]);
 ```
 
-It drops the oks from results like `er_all!`.
+You generally don't need this but you can start with just the top and then add whatever goes wrong during for example cleanup:
+
+```rust
+let error = er_new!(ImportErr::rejected(path));
+let error = error.er_add(rollback_import());
+
+er_bail!(error);
+```
 
 ## Find original error
 
-`.er_find()` also checks `source()`. `.er_find_all()` gets every match.
+`.er_find()` also checks `source()`, `.er_find_all()` gets every match and `.er_contains()` checks if a type is in there.
 
 ```rust
 if let Err(error) = read_file(Path::new("missing85")) {
@@ -408,69 +472,77 @@ if let Err(error) = read_file(Path::new("missing85")) {
 
 ## Public error
 
-When you (as a library) want to give your consumer an error, don't give them an `ErReport` or an `ErTree`, give them a boring normal error (with `#[derive(Er)]`).
+When you (as a library) want to give your consumer an error, don't give them an `ErTree`, give them a boring normal error (with `#[derive(Er)]`) and hand the report out next to it with `.er_split()`:
 
 ```rust
 #[derive(Er)]
 pub enum PortError {
     Missing,
+    // You can just use the normal formatting, just showing er format here if you prefer that style for public / boundary errors.
     #[er(format = "Not a port: {input}")]
     InvalidPort { input: String },
 }
 
-// Consumer doesn't need to have er, it's just a normal error for them.
-let error = PortError::invalid_port("fakenumber");
-match error {
-    PortError::Missing => println!("Where port?"),
-    PortError::InvalidPort { input } => println!("Try 85, not {input}"),
+pub fn read_port(input: &str) -> Result<u16, (PortError, String)> {
+    input.parse().er(|| PortError::invalid_port(input)).er_split()
+}
+
+// Consumer does not need/depend on er by you exposing your type
+if let Err((PortError::InvalidPort { input }, report)) = read_port("nope") {
+    eprintln!("Fix the port in your config: {input}\n{report}");
 }
 ```
 
-You should still print / show your error in your applications of course, and I'll even argue that as a library, if you at least give a string report to your consumer, you're gonna have great bug reports from users and a much easier time fixing bugs. Printing a report is often times more valuable than a friendly message you made up. Don't destroy your type. Include the message in the type itself next to the other data instead.
-
-Use `.er_into()` to save the report beside the error, you can also use the convenience macros to help out.
+Once a function returns `Result<_, (MyError, String)>`, `?` and `er_bail!` split for you automatically, so you don't need to manually call `.er_split()`:
 
 ```rust
-#[derive(Er)]
-#[er(format = "read port failed", display_alt = "{report}")]
-pub struct ApiError<T = ()> {
-    #[er(into_top)]
-    pub kind: ReadPortErr,
+pub fn read_config(path: &Path) -> Result<Config, (ConfigError, String)> {
+    let text = fs::read_to_string(path).er(|| ConfigError::unreadable(path))?;
+    if text.trim().is_empty() {
+        er_bail!(ConfigError::empty(path));
+    }
 
-    #[er(into_report_string)]
-    pub report: String,
-
-    #[er(default)]
-    pub data: T,
-}
-pub fn public_read_port(input: &str) -> Result<u16, ApiError> {
-    read_port(input).er_into(|report| report)
+    Ok(parse(&text))
 }
 ```
 
-The consumer gets a normal error, with the report available through `{err:#}` or the field itself. Ordinary Display and Debug stay small, so someone using another error library won't get a giant report dumped into the middle of theirs.
-
-`data` defaults to `()` here. You can give them a payload too, without requiring it to implement `Default`:
+For an API or service where you want to log the full report yourself and only hand back the public error you can use `.er_split_with(...)`:
 
 ```rust
-pub fn public_read_port_with_data<T>(input: &str, data: T) -> Result<u16, ApiError<T>> {
-    read_port(input).er_into(|report| (report, data))
+async fn create_user(Json(user): Json<NewUser>) -> Result<Json<User>, UserError> {
+    let user = insert_user(user).await.er_split_with(|(error, report)| {
+        error!("{report}");
+        error
+    })?;
+
+    Ok(Json(user))
 }
 ```
 
-For your own fallback, put a Rust expression on the field, like `#[er(default = make_data())]`. Supplying the payload still uses the value you gave it.
+It's important to note that the er apis like .er() automatically include the (Error, String) and use it as a saved attachment on the tree, which means that if you follow the pattern you don't have to make boilerplate yourself.
 
-You can also choose the fields in the closure yourself, just like `.er_val()`. A diagnostics-only type can take `.er_into(|report| report.er_report_string())`. With the typed top too, you can print the report before moving it out:
+## Reports from somewhere else
+
+Say a library gives you `(StartError, String)`. Add what you were doing and Er saves their report under it.
 
 ```rust
-pub fn public_read_port(input: &str) -> Result<u16, ApiError> {
-    read_port(input).er_into(|report| {
-        let text = report.er_report_string();
-        eprintln!("{text}");
+let started = audio::start(setup).await.er(|| AudioErr::stopped(name))?;
+```
 
-        (report.tree.top, text)
-    })
-}
+```text
+AudioErr::Stopped { name: "speaker" } @ src/audio.rs:88:31
+`- audio startup failed
+
+---- Saved: audio::StartError ----
+audio startup failed for speaker
+OpenErr { path: "app.db" } @ src/device.rs:39:10
+`- disk full
+```
+
+If their report sits in a field (or a server's response body), you can manually save with `.er_save()`:
+
+```rust
+client.send(request).er_save("server", |err| &err.body).er(id)?;
 ```
 
 ## Non errors (values)
@@ -489,7 +561,7 @@ pub fn check_device(result: Result<(), u8>) -> ErResult<(), DeviceErr> {
 }
 ```
 
-Put the value on the error this function returns. Give the field its own data type when you need conversion logic, and let the tuple helpers call `.into()` for you. You don't need to turn the value into another error and add a layer above it.
+You can put the value on the error this function returns. If you need conversion logic, you can give the field its own data type and let the tuple helpers call `.into()` for you, instead of turning the value into another error and adding a layer above it.
 
 Here's `JsValue` as data on our error:
 
@@ -534,14 +606,30 @@ pub fn connect(server: &str, result: Result<(), JsValue>) -> ErResult<(), Connec
 
 The function's return type chooses `ConnectErr`, and the helpers convert `server` into `String` and `v` into `JsData`. If some cases don't have that data, use an enum and put it on the variants that do.
 
-## Bail
+## Bail / return
 
-You can use `er_bail!(err)` if you don't want to type `return Err(ErTree::from(err))` (You can give it an existing tree too).
+For returning you can use `er_bail!(err)` (don't use `return Err(ErTree::from(err))`):
 
 ```rust
 if path.is_empty() {
-    er_bail!(|_| (path, "no file given"));
+    er_bail!((path, "no file given"));
 }
+
+// With an existing error as the cause
+Err(error) => er_bail!(LoadErr::open(&path), error),
+```
+
+However for cases where the return type of the functions can't infer your scope like the inside of an `async` block / closure you can end with `ErResult::Ok(..)` so `er_bail!` can infer it:
+
+```rust
+let body = async {
+    let data = match fetch(url).await {
+        Ok(data) => data,
+        Err(error) => er_bail!(ReadErr::failed(url), error),
+    };
+
+    ErResult::Ok(data.len())
+};
 ```
 
 ## Snapshots
@@ -561,53 +649,34 @@ if let Err(error) = read_port("fakenumber") {
 }
 ```
 
-Can still print `.er_top()` or `.er_report()`. Each entry has its depth and the index of the error above it.
-
-A type you own can save one with an `ErSnapshot` field marked `#[er(into_snapshot)]`, then `.er_into(|report| report)`. The snapshot belongs to your Er version, so use `into_report_string` for public errors that should work across versions. To keep the snapshot's structure without exposing an Er type, serialize it into text instead.
-
-On a Result, `.er_snapshot()` saves Err and leaves Ok alone.
+You can use `.top()` or `.er_report()` and on a Result `.er_snapshot()` saves Err and leaves Ok alone.
 
 ```rust
 let result: Result<u16, ErSnapshot> = read_port("fakenumber").er_snapshot();
 ```
 
-The saved result keeps the printing and unwrap helpers, so `result.unwrap_report()` prints the saved report if it fails. To show it and keep it around, borrow it with `result.as_ref().er_report()` or use `snapshot.er_report().single_line()` for one log line. `snapshot.into_er_report()` gives you an owned report, just like a live tree.
-
-Enable `serde` on Er, then add `serde_json` (or toml, or whatever).
-
-```toml
-[dependencies]
-er = { version = "0.8", features = ["serde"] }
-serde_json = "1"
-```
+You can also attach an older snapshot to a new error with `.er_save()` if an earlier failure helps explain what happened (like a sync that failed earlier and left you offline):
 
 ```rust
-let snapshot = read_port("fakenumber").unwrap_err().er_snapshot();
-let json = serde_json::to_string_pretty(&snapshot).unwrap();
-std::fs::write("/tmp/error.json", &json).unwrap();
+let last_sync = sync(&db).await.er_snapshot().err();
+
+reconnect(&server).er(|_| ReconnectErr.er_save("last sync", &last_sync))?;
+```
+
+```text
+ReconnectErr @ src/net.rs:21:17
+`- connection refused
+
+---- Saved: last sync ----
+SyncErr @ src/sync.rs:10:24
+`- database is locked
 ```
 
 ## Tests
 
-`test` is on by default. If you only use Er in tests, put the dependency here:
-
-```toml
-[dev-dependencies]
-er = "0.8"
-```
-
-Make the test return `ErTest` and use `?`. Ordinary errors and Er trees get `ErTestError` on top with the location of the `?`, and keep the original errors below it. It prints as `TestError`.
+If your test returns `ErTest` you can just use `?`. Ordinary errors and Er trees get `TestError` on top with the location of the `?` and keep the original errors below it:
 
 ```rust,ignore
-use er::*;
-
-#[derive(Er)]
-pub struct ReadPortErr;
-
-pub fn read_port(input: &str) -> ErResult<u16, ReadPortErr> {
-    input.parse().er(())
-}
-
 #[test]
 pub fn the_best_test() -> ErTest {
     read_port("nope")?;
@@ -621,15 +690,23 @@ Error: TestError @ tests/the_best_test.rs:12:5
 test the_best_test ... FAILED
 ```
 
-Make your test helper functions return other types since `?` would fall through without adding context.
+Test helper functions should return normal error types (not `ErTest`), since `?` passes an `ErTest` error through without adding context. For Options, `Result<T, ()>` and `(Error, String)` pairs you can use `.er_test()?`.
 
-For Options and unit errors (`Result<T, ()>`), use `.er_test()?`.
+When a test expects a failure you can use `er_assert_err!`. It fails on Ok or the wrong error and prints the whole report so you see what you got instead:
 
-The macros work too, but you do need to use `er_all!(|| ErTestError, results)?` so Rust knows which error to build.
+```rust
+#[test]
+pub fn rejects_words() -> ErTest {
+    er_assert_err!(read_port("nope"), ReadPortErr);
+    Ok(())
+}
+```
+
+If you want to inspect the error yourself you can do `let error = er_assert_err!(load(path));` since it gets returned.
 
 ## Other traits
 
-If you need to implement another crate's trait on the whole tree, use Wrap.
+If you need to implement another crate's trait (like Axum's `IntoResponse`) on the whole tree, you can use `#[er(wrap)]` so you own the type:
 
 ```rust
 #[derive(Er)]
@@ -642,62 +719,11 @@ pub fn handler(input: &str) -> Result<u16, HandlerError> {
 }
 ```
 
-`?` puts the tree in `HandlerError`. Add context as usual:
-
-```rust
-#[derive(Er)]
-pub struct RequestErr;
-
-pub fn request(input: &str) -> ErResult<u16, RequestErr> {
-    handler(input).er(())
-}
-```
-
-[Wrap options and the trait impl](macros.md#wrap).
-
-If the foreign trait needs the Wrap itself to implement `Error`, use [std_error](macros.md#wrap-with-std_error) and `.er_wrap()` when adding context, so you can still find the errors inside.
-
-## Sharing a result multiple times
-
-If several callers need the same result, give them a type which has what they need: 
-
-```rust
-#[derive(Er)]
-pub enum SessionErrKind {
-    Failed { context: String },
-    CleanupFailed,
-}
-
-#[derive(Er)]
-#[er(format = "session failed", display_alt = "{report}")]
-pub struct SessionError {
-    #[er(into_top)]
-    pub kind: SessionErrKind,
-    #[er(into_report_string)]
-    pub report: String,
-}
-
-let completion: Result<(), Arc<SessionError>> = run_session().er_into(|report| {
-    let text = report.er_report_string();
-    eprintln!("{text}");
-
-    report
-});
-
-let reader = completion.clone();
-
-// Somewhere else
-if let Err(error) = reader {
-    match error.kind {
-        SessionErrKind::Failed { .. } => eprintln!("session said nope: {error:#}"),
-        SessionErrKind::CleanupFailed => eprintln!("cleanup gave up: {error:#}"),
-    }
-}
-```
+If you use `?` the tree will be in `HandlerError` and callers can keep using `.er(())` on it like always. See [macros.md#wrap](https://github.com/Viterkim/er/blob/main/er/docs/macros.md#wrap) for the full Axum example and `std_error` (which you almost never need).
 
 ## Foreign callbacks
 
-SQLite chooses the error type for `FromSql`, so this callback can't return our tree. It gives us a box for an ordinary error. We put the invalid value and its location there:
+For cases like where SQLite chooses the error type for `FromSql` our callback can't return our tree (it gives us a box for an ordinary error) so we put the invalid value and use a manual src_location field:
 
 ```rust
 #[derive(Er)]
@@ -727,36 +753,31 @@ The query's caller gets to choose its error type. This is where we use `.er()` a
 pub struct ReadKindErr(pub i64);
 pub fn read_kind(db: &Connection, id: i64) -> ErResult<ValueKind, ReadKindErr> {
     db.query_row("SELECT kind FROM items WHERE id = ?1", [id], |row| row.get(0))
-        .er(|_| id)
+        .er(id)
 }
 ```
 
-The callback supplies the diagnostic, and this call builds the tree around SQLite's error. The return types tell us which one we're writing.
-
 ## Stack traces
 
-Enable `stack_traces` (needs `std`), then add `.er_trace()` where you want to capture the stack (only runs on errors).
+With the `stack_traces` feature which needs `std`, you can add `.er_save("stack trace", Backtrace::force_capture)` where you want to capture the stack.
 
 ```rust
+use std::backtrace::Backtrace;
+
 pub fn read_port(input: &str) -> ErResult<u16, ReadPortErr> {
-    input.parse().er(()).er_trace()
+    input.parse().er(|_| ReadPortErr.er_save("stack trace", Backtrace::force_capture))
 }
 
 if let Err(error) = read_port("fakenumber") {
     eprintln!("{}", error.er_report());
-    for trace in &error.stack_traces {
-        eprintln!("{trace}");
-    }
 }
 ```
 
-They follow the tree as you add context or aggregate it. You print them separately, you can always call `.er_trace()` again and there's no env variables to turn on.
-
-If you need the error, you can use the index with `error.er_at_index(trace.error_index)`.
+They follow the tree as you add context or aggregate it. They print below the report with everything else you saved, you can always call `.er_save()` again and there's no env variables to turn on.
 
 ## Formatting your types
 
-The default output shows your type and its data. You can give Display a different message while Debug keeps that view:
+The default output shows your type and its fields. You can give Display a different message while Debug keeps the full struct view:
 
 ```rust
 #[derive(Er)]
@@ -776,152 +797,8 @@ Couldn't connect to ComputerKatten on port 85
 ConnectErr { host: "ComputerKatten", port: 85 }
 ```
 
-Use `format` to give both the same text, or `debug` to change only Debug. They work on structs, enums and individual variants. The public error example uses `display_alt` so `{err:#}` can show a saved report while ordinary output stays small.
+See [macros.md](https://github.com/Viterkim/er/blob/main/er/docs/macros.md) for `format`, `debug`, `display_alt`, `skip`, `censor` and custom formatting functions.
 
-Templates use Display for `{field}` and Debug for `{field:?}`, with `{0}` for tuple fields. You can reach into the data with `{details.message}` or `{oldest.0}` too. To leave a field out of the default output, use `#[er(skip)]`, or `#[er(censor)]` to print `*CENSORED*` while keeping its data.
+## Bigger example
 
-For formatting that needs actual logic, give the setting a function instead. It gets your value and the formatter, so conditions stay normal Rust:
-
-```rust
-#[derive(ErFormat)]
-#[er(display = Self::summary)]
-pub struct Window {
-    pub first: u64,
-    pub latest: u64,
-}
-impl Window {
-    pub fn summary(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.first == self.latest {
-            write!(f, "revision {}", self.first)
-        } else {
-            write!(f, "revisions {} to {}", self.first, self.latest)
-        }
-    }
-}
-```
-
-The same function form works with `format`, `debug` and `display_alt`.
-
-[The generated code and macro options](macros.md).
-
-## Tricky example (combination)
-
-Foreign errors, own errors, the original error, string context, typed context, using / consuming, public boundary
-
-```rust
-#[derive(Er)]
-pub enum ListenErr {
-    InvalidInput { input: String },
-    SacredPort,
-    BindFailed { address: SocketAddrV4, kind: io::ErrorKind, available_ports: Vec<u16> },
-}
-
-pub fn listen(input: &str) -> ErResult<TcpListener, ListenErr> {
-    let (ip, port) = input.split_once(':').unwrap_or((input, ""));
-
-    // First 2 errors, to us they're both just bad input
-    let ip = ip.parse::<Ipv4Addr>().er(|| ListenErr::invalid_input(input))?;
-    let port = port.parse::<u16>().er(|| ListenErr::invalid_input(input))?;
-
-    // Third error, our own rule that port 85 is sacred
-    if port == 85 {
-        er_bail!(ListenErr::sacred_port());
-    }
-
-    // Fourth error, we might want to match on what happened
-    let address = SocketAddrV4::new(ip, port);
-    TcpListener::bind(address).er_with(|err| {
-        let available_ports = find_available_ports(address);
-        ListenErr::bind_failed(address, err.kind(), available_ports)
-    })
-}
-
-// Someone using our public API doesn't need Er.
-// I use 'Err' for internal errors, and 'Error' for public facing ones.
-#[derive(Er)]
-#[er(format = "listen failed", display_alt = "{report}")]
-pub struct ListenError {
-    pub kind: ListenErr,
-    pub report: String,
-}
-pub fn public_error_example(input: &str) -> Result<TcpListener, ListenError> {
-    listen(input).er_into(|report| {
-        let text = report.er_report_string();
-        eprintln!("{text}");
-
-        (report.tree.top, text)
-    })
-}
-
-// Using it ourselves (still with Er)
-fn main() {
-    match listen("127.0.0.1:8080") {
-        Ok(listener) => start_server(listener),
-        Err(error) => {
-            match &error.top {
-                ListenErr::InvalidInput { input } => eprintln!("bad input: {input}"),
-                ListenErr::SacredPort => eprintln!("port 85 is sacred"),
-                ListenErr::BindFailed { address, kind: io::ErrorKind::AddrInUse, available_ports } => {
-                    eprintln!("{address} is already in use");
-                    show_available_ports(available_ports);
-                },
-                ListenErr::BindFailed { address, .. } => eprintln!("couldn't bind {address}"),
-            }
-
-            // Below .top we have to search for the original error.
-            if let Some(source) = error.er_find::<io::Error>() {
-                eprintln!("raw error code: {:?}", source.raw_os_error());
-            }
-        }
-    }
-}
-```
-
-[The full tricky comparison](tricky-error-comparison.md) does this with the other libraries as a comparison.
-
-## Saved diagnostics from a library
-
-When several public errors carry saved reports you can give them a shared diagnostic source. Your application can then find one type after adding its own context.
-
-```rust
-#[derive(Er)]
-#[er(format = "{message}", display_alt = "{report}")]
-pub struct DbDiagnostic {
-    pub message: String,
-    #[er(into_report_string)]
-    pub report: String,
-}
-
-#[derive(Er)]
-#[er(format = "couldn't open {path:?}")]
-pub struct OpenError {
-    pub path: PathBuf,
-    #[er(source, skip)]
-    pub diagnostics: DbDiagnostic,
-}
-```
-
-At the library boundary, save the internal failure and return the ordinary public error:
-
-```rust
-let diagnostics = failure.er_into(|report| (report, "database initialization failed"));
-
-return Err(OpenError { path: path.into(), diagnostics });
-```
-
-Then you can possibly nest them, to easily find it later without having it be on each type.
-
-```rust
-let database = open_database(path).er::<OpenErr>(|_| path).er::<StartupErr>(());
-let cache = open_cache().er::<CacheErr>(()).er::<StartupErr>(());
-
-er_all!(|| StartupErr, [database, cache])?;
-```
-
-```rust
-eprintln!("{}", error.er_report());
-
-for diagnostic in error.er_find_all::<DbDiagnostic>() {
-    eprintln!("\n{}", diagnostic.report);
-}
-```
+For a full example combining foreign errors, custom rules, `.er_with()`, matching on `.top` and a public boundary (compared against other error crates), see [the tricky comparison](https://github.com/Viterkim/er/blob/main/er/docs/tricky-error-comparison.md#er-090-1).

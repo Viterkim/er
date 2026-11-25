@@ -13,7 +13,7 @@ pub fn read(input: &str) -> renamed::ErResult<(u16, bool), ConfigErr> {
 pub fn main() {
     use renamed::ErPresentationExt;
 
-    assert_eq!(read("85").unwrap_report(), (85, true));
+    assert_eq!(read("85").er_unwrap(), (85, true));
 
     let __er_value_0 = "bad";
     let __er_errors = "also bad";

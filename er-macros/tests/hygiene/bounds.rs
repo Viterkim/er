@@ -6,52 +6,50 @@ use std::marker::PhantomData;
 #[expect(clippy::use_self, reason = "the recursion is spelled out on purpose")]
 pub struct GenericTreeErr<T> {
     pub value: T,
-    pub children: Vec<GenericTreeErr<T>>,
+    pub below: Vec<GenericTreeErr<T>>,
 }
 #[test]
 pub fn recursive() {
     let leaf = GenericTreeErr {
         value: 2u8,
-        children: Vec::new(),
+        below: Vec::new(),
     };
     let error = GenericTreeErr {
         value: 1u8,
-        children: vec![leaf],
+        below: vec![leaf],
     };
 
     assert_eq!(
         error.to_string(),
-        "GenericTreeErr { value: 1, children: [GenericTreeErr { value: 2, children: [] }] }"
+        "GenericTreeErr { value: 1, below: [GenericTreeErr { value: 2, below: [] }] }"
     );
 
     #[derive(Er)]
-    #[er(display = "{children:?}")]
+    #[er(display = "{below:?}")]
     struct Nested<T> {
         value: T,
-        children: Vec<Self>,
+        below: Vec<Self>,
     }
 
     let error = Nested::new(1_u8, vec![Nested::new(2, vec![])]);
-    assert_eq!(error.to_string(), "[Nested { value: 2, children: [] }]");
+    assert_eq!(error.to_string(), "[Nested { value: 2, below: [] }]");
 }
 
 #[derive(Er)]
 #[expect(clippy::use_self, reason = "the recursion is spelled out on purpose")]
 pub struct MixedTreeErr<T> {
-    pub children: Vec<(T, MixedTreeErr<T>)>,
+    pub below: Vec<(T, MixedTreeErr<T>)>,
 }
 #[test]
 pub fn recursive_payload() {
-    let leaf = MixedTreeErr {
-        children: Vec::new(),
-    };
+    let leaf = MixedTreeErr { below: Vec::new() };
     let error = MixedTreeErr::<u8> {
-        children: vec![(7, leaf)],
+        below: vec![(7, leaf)],
     };
 
     assert_eq!(
         error.to_string(),
-        "MixedTreeErr { children: [(7, MixedTreeErr { children: [] })] }"
+        "MixedTreeErr { below: [(7, MixedTreeErr { below: [] })] }"
     );
 }
 
@@ -87,14 +85,14 @@ pub struct GenericErr<T> {
 pub struct Tagged<T> {
     #[er(skip)]
     pub marker: PhantomData<T>,
-    pub children: Vec<Tagged<T>>,
+    pub below: Vec<Tagged<T>>,
 }
 
 #[derive(Er)]
 pub struct SelfTagged<T> {
     #[er(censor)]
     pub marker: PhantomData<T>,
-    pub children: Vec<Self>,
+    pub below: Vec<Self>,
 }
 
 pub trait HasItem {
@@ -106,12 +104,12 @@ impl HasItem for NotPrintable {
 
 #[derive(Er)]
 pub struct Associated<T: HasItem> {
-    pub children: Vec<(T::Item, Associated<T>)>,
+    pub below: Vec<(T::Item, Associated<T>)>,
 }
 
 #[derive(Er)]
 pub struct Qualified<T: HasItem> {
-    pub children: Vec<(<T as HasItem>::Item, Self)>,
+    pub below: Vec<(<T as HasItem>::Item, Self)>,
 }
 #[test]
 pub fn projections() {

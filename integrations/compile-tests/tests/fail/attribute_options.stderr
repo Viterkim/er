@@ -1,22 +1,22 @@
-error: expected `output = top` or `output = report`
+error: `output` has to be `top` or `report`, like `wrap(output = report)`
  --> tests/fail/attribute_options.rs:4:20
   |
 4 | #[er(wrap(output = sideways))]
   |                    ^^^^^^^^
 
-error: choose only one of `skip` or `censor`
+error: pick `skip` or `censor`, not both
  --> tests/fail/attribute_options.rs:9:16
   |
 9 |     #[er(skip, censor)]
   |                ^^^^^^
 
-error: `wrap` is set more than once
+error: you already set `wrap`, drop the duplicate
   --> tests/fail/attribute_options.rs:14:12
    |
 14 | #[er(wrap, wrap)]
    |            ^^^^
 
-error: empty `#[er(...)]`; expected `#[er(format = "...")]`, `#[er(display = "...")]`, `#[er(display_alt = "...")]`, `#[er(debug = "...")]`, `#[er(crate = ...)]`, `#[er(wrap)]`, or `#[er(no_constructors)]`
+error: `#[er()]` is empty, the type takes `format`, `display`, `display_alt`, `debug`, `crate = ...`, `wrap` or `no_constructors`
   --> tests/fail/attribute_options.rs:18:1
    |
 18 | #[er()]
@@ -28,26 +28,33 @@ error: `wrap` and `crate` are type options; put them on the struct or enum, not 
 23 |     #[er(wrap)]
    |          ^^^^
 
-error: put `skip`, `censor`, `exact`, or `source` on a field
+error: `skip`, `censor`, `exact` and `source` go on a field, not on the type
   --> tests/fail/attribute_options.rs:28:6
    |
 28 | #[er(skip)]
    |      ^^^^
 
-error: expected `#[er(format = "...")]`, `#[er(display = "...")]`, `#[er(display_alt = "...")]`, `#[er(debug = "...")]`, `#[er(crate = ...)]`, `#[er(wrap)]`, or `#[er(no_constructors)]`
+error: the type takes `format`, `display`, `display_alt`, `debug`, `crate = ...`, `wrap` or `no_constructors`
   --> tests/fail/attribute_options.rs:34:6
    |
 34 | #[er(wrapp)]
    |      ^^^^^
 
-error: expected `format = "..."`, `display = "..."`, `display_alt = "..."`, or `debug = "..."`; put `skip`, `censor`, `exact`, or `source` on a field, or `wrap`/`crate` on the enum
+error: a variant takes `format`, `display`, `display_alt` or `debug`, field options go on a field and `wrap` or `crate` on the enum
   --> tests/fail/attribute_options.rs:40:10
    |
 40 |     #[er(censor)]
    |          ^^^^^^
 
-error: expected `format = "..."`, `display = "..."`, `display_alt = "..."`, or `debug = "..."`; put `skip`, `censor`, `exact`, or `source` on a field, or `wrap`/`crate` on the enum
+error: a variant takes `format`, `display`, `display_alt` or `debug`, field options go on a field and `wrap` or `crate` on the enum
   --> tests/fail/attribute_options.rs:47:10
    |
 47 |     #[er(bogus)]
    |          ^^^^^
+
+error: pick `source` or `censor`, a source gets printed by every reporter so it can't stay hidden
+  --> tests/fail/attribute_options.rs:53:5
+   |
+53 | /     #[er(censor, source)]
+54 | |     cause: std::io::Error,
+   | |_________________________^

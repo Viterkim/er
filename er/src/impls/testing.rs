@@ -1,32 +1,132 @@
-#[cfg(all(feature = "macros", er_unsync))]
+#[cfg(feature = "macros")]
 use crate::ErBoxedInput;
+#[cfg(all(feature = "macros", any(er_unsync, target_has_atomic = "ptr")))]
+use crate::impls::shared_tree::ErSharedNode;
 use crate::lines;
 #[cfg(feature = "macros")]
-use crate::{ErBail, ErFields};
 use crate::{
-    ErInput, ErLineError, ErMake, ErPart, ErTest, ErTestError, ErTestExt, ErTestFailure,
-    ErTestInput, ErTestOptionNone, ErTestUnit, ErTree, ErTreeContextExt, IntoErPart, IntoErTree,
+    ErBail, ErBailFields, ErBailNodes, ErBailRoot, ErBailTestTop, ErBailTree, ErNode, ErReady,
+    ErWithReport,
 };
+use crate::{
+    ErErrorContextExt, ErFields, ErFromFields, ErInput, ErLineError, ErPart, ErTest, ErTestError,
+    ErTestExt, ErTestFailure, ErTestInput, ErTestOptionNone, ErTestUnexpectedOk, ErTestUnit,
+    ErTestWrongErr, ErTree, IntoErPart, IntoErTree,
+};
+#[cfg(feature = "macros")]
+use core::marker::PhantomData;
+#[cfg(feature = "src_locations")]
+use core::panic::Location;
 use core::{error::Error, fmt, mem, ops::Deref};
+
+#[cfg(feature = "macros")]
+impl<P: ErInput<Mode>, Mode> ErBailTestTop<(ErReady, Mode)> for P {
+    #[track_caller]
+    fn into_test_part(self, _: u8) -> ErPart {
+        self.into_er_input()
+    }
+}
+#[cfg(feature = "macros")]
+impl ErBailTestTop<ErTestUnit> for () {
+    #[track_caller]
+    fn into_test_part(self, _: u8) -> ErPart {
+        ErTestError.into_er_part()
+    }
+}
+#[cfg(feature = "macros")]
+impl<F: FnOnce(()) -> P, P: ErBailTestTop<Mode, Tag>, Mode, Tag>
+    ErBailTestTop<(ErFields, Mode), Tag> for F
+{
+    #[track_caller]
+    fn into_test_part(self, tag: Tag) -> ErPart {
+        self(()).into_test_part(tag)
+    }
+}
+#[cfg(feature = "macros")]
+impl<P: ErBailTestTop<Mode, Tag>, Kind, Mode, Tag: Default>
+    ErBailNodes<ErBailRoot<P, Kind>, ErTestFailure, (Mode, Tag)> for i32
+{
+    type Top = ErNode;
+
+    #[track_caller]
+    fn prepare(self, root: ErBailRoot<P, Kind>) -> (PhantomData<ErTestFailure>, ErTree<ErNode>) {
+        let part = root.0.into_test_part(Tag::default());
+        #[cfg(any(er_unsync, target_has_atomic = "ptr"))]
+        let part = if part.node.error.is::<ErSharedNode>() {
+            // A shared branch is frozen. Put the other failures beside it under ErTestError.
+            ErTree::new(ErTestError, [part]).into_er_part()
+        } else {
+            part
+        };
+
+        let ErPart { mut node, saved } = part;
+        let tree = ErTree {
+            nodes: mem::take(&mut node.nodes),
+            saved,
+            #[cfg(feature = "src_locations")]
+            src_location: node.src_location,
+            top: node,
+        };
+        (PhantomData, tree)
+    }
+}
+#[cfg(feature = "macros")]
+impl ErBailTree<ErTestFailure> for ErTree<ErNode> {
+    #[track_caller]
+    fn finish(self, _: PhantomData<ErTestFailure>) -> ErTestFailure {
+        let mut node = self.top;
+        node.nodes = self.nodes;
+        ErTestFailure::from_part(ErPart {
+            node,
+            saved: self.saved,
+        })
+    }
+}
+
+#[cfg(feature = "macros")]
+#[track_caller]
+pub fn expect_error<T, E>(result: Result<T, E>) -> ErTest<E> {
+    match result {
+        Err(error) => Ok(error),
+        Ok(_) => Err(ErTestFailure::from(ErTestUnexpectedOk)),
+    }
+}
 
 impl ErTestFailure {
     #[cfg_attr(feature = "src_locations", track_caller)]
     pub fn new<Input>(error: impl ErInput<Input>) -> Self {
-        let mut part = error.into_er_input();
+        Self::from_part(error.into_er_input())
+    }
+
+    #[inline(never)]
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn from_part(part: ErPart) -> Self {
         let tree = if part.node.error.is::<ErTestError>() {
+            let ErPart { mut node, saved } = part;
             ErTree {
                 top: ErTestError,
-                nodes: mem::take(&mut part.node.nodes),
+                nodes: mem::take(&mut node.nodes),
                 #[cfg(feature = "src_locations")]
-                src_location: part.node.src_location,
-                #[cfg(feature = "stack_traces")]
-                stack_traces: part.stack_traces,
+                src_location: node.src_location,
+                saved,
             }
         } else {
-            ErTree::new(ErTestError, [part])
+            ErTree {
+                top: ErTestError,
+                nodes: alloc::vec![part.node],
+                saved: part.saved,
+                #[cfg(feature = "src_locations")]
+                src_location: Location::caller(),
+            }
         };
 
         Self { tree }
+    }
+
+    #[doc(hidden)]
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    pub fn __er_expected<Input>(error: impl ErInput<Input>, expected: &'static str) -> Self {
+        Self::new(ErTree::new(ErTestWrongErr { expected }, [error]))
     }
 
     /// Only formats once, no line endings.
@@ -50,7 +150,7 @@ impl<E: IntoErPart> From<E> for ErTestFailure {
 }
 impl fmt::Display for ErTestFailure {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.tree.er_report(), formatter)
+        fmt::Display::fmt(&self.tree.internal_report(), formatter)
     }
 }
 impl fmt::Debug for ErTestFailure {
@@ -73,11 +173,6 @@ impl IntoErTree for ErTestFailure {
         self.tree
     }
 }
-impl AsMut<ErTree<ErTestError>> for ErTestFailure {
-    fn as_mut(&mut self) -> &mut ErTree<ErTestError> {
-        &mut self.tree
-    }
-}
 impl ErInput for ErTestFailure {
     type Error = ErTestError;
 
@@ -89,15 +184,7 @@ impl ErInput for ErTestFailure {
         self.tree.into_er_part()
     }
 }
-impl<Mode> ErTreeContextExt<Mode> for ErTestFailure {
-    #[cfg_attr(feature = "src_locations", track_caller)]
-    fn er<A>(self, error: impl ErMake<A, Mode>) -> ErTree<A>
-    where
-        A: Error + 'static,
-    {
-        self.tree.er(error)
-    }
-}
+impl<Mode> ErErrorContextExt<Mode> for ErTestFailure {}
 
 impl fmt::Display for ErTestError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -110,13 +197,8 @@ impl fmt::Debug for ErTestError {
     }
 }
 impl Error for ErTestError {}
-impl From<()> for ErTestError {
-    fn from(_: ()) -> Self {
-        Self
-    }
-}
-impl From<((),)> for ErTestError {
-    fn from(_: ((),)) -> Self {
+impl ErFromFields<(), ErFields> for ErTestError {
+    fn er_from_fields((): ()) -> Self {
         Self
     }
 }
@@ -132,6 +214,34 @@ impl fmt::Debug for ErTestOptionNone {
     }
 }
 impl Error for ErTestOptionNone {}
+
+impl fmt::Display for ErTestUnexpectedOk {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("Expected an error, but it was Ok")
+    }
+}
+impl fmt::Debug for ErTestUnexpectedOk {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, formatter)
+    }
+}
+impl Error for ErTestUnexpectedOk {}
+
+impl fmt::Display for ErTestWrongErr {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "Expected {}, but got the error below",
+            self.expected
+        )
+    }
+}
+impl fmt::Debug for ErTestWrongErr {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, formatter)
+    }
+}
+impl Error for ErTestWrongErr {}
 
 impl<T> ErTestExt for Option<T> {
     type Ok = T;
@@ -176,15 +286,39 @@ impl<F: FnOnce(()) -> E, E: ErInput<Input>, Input> ErBail<ErTestFailure, (ErFiel
         ErTestFailure::new(self(()))
     }
 }
+#[cfg(feature = "macros")]
+impl<E: ErInput<Input>, Input> ErBailFields<ErTestFailure, (ErFields, Input)> for E {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_bail_fields(self) -> ErTestFailure {
+        ErTestFailure::new(self)
+    }
+}
 
-#[cfg(all(feature = "macros", er_unsync))]
+#[cfg(feature = "macros")]
+impl<E: ErInput<ErWithReport<Input>>, Input> ErBail<ErTestFailure, ErWithReport<Input>> for E {
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_bail(self) -> ErTestFailure {
+        ErTestFailure::new(self)
+    }
+}
+#[cfg(feature = "macros")]
+impl<F: FnOnce() -> E, E: ErInput<ErWithReport<Input>>, Input>
+    ErBail<ErTestFailure, (ErWithReport<Input>,)> for F
+{
+    #[cfg_attr(feature = "src_locations", track_caller)]
+    fn er_bail(self) -> ErTestFailure {
+        ErTestFailure::new(self())
+    }
+}
+
+#[cfg(feature = "macros")]
 impl<E: ErInput<ErBoxedInput>> ErBail<ErTestFailure, ErBoxedInput> for E {
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er_bail(self) -> ErTestFailure {
         ErTestFailure::new(self)
     }
 }
-#[cfg(all(feature = "macros", er_unsync))]
+#[cfg(feature = "macros")]
 impl<F: FnOnce() -> E, E: ErInput<ErBoxedInput>> ErBail<ErTestFailure, (ErBoxedInput,)> for F {
     #[cfg_attr(feature = "src_locations", track_caller)]
     fn er_bail(self) -> ErTestFailure {

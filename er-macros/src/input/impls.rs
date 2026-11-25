@@ -1,5 +1,5 @@
 use super::{
-    Case, Field, IdentifierNames, Input, attrs,
+    Case, Field, IdentifierNames, Input, ValueNames, attrs,
     attrs::FieldMode,
     format::{FormatBody, FormatTrait, Formats, Output},
 };
@@ -8,17 +8,45 @@ use proc_macro2::TokenStream;
 use std::collections::HashSet;
 use syn::{Data, DeriveInput, Ident, Type, visit::Visit as _};
 
+impl Field<'_> {
+    pub fn printed_by_default(&self) -> bool {
+        match self.options.mode {
+            FieldMode::Skip => false,
+            FieldMode::Normal | FieldMode::Censor => self
+                .options
+                .source
+                .is_none_or(|source| source.show_in_parent),
+        }
+    }
+}
+
 impl<'a> Case<'a> {
     pub fn parse(
         variant: Option<&'a Ident>,
+        attrs: &'a [syn::Attribute],
         shape: &'a syn::Fields,
         format: &attrs::FormatOptions,
         type_names: &HashSet<String>,
+        no_constructors: bool,
     ) -> syn::Result<Self> {
         let mut fields = Vec::with_capacity(shape.len());
         for item in shape {
             let mut options = attrs::field(&item.attrs)?;
+            // Both get filled in by the constructors. Without them the field just never gets that value, and
+            // nothing would say so. A leftover `exact` changes nothing either way.
+            if no_constructors && (options.default.is_some() || options.src_location) {
+                return Err(syn::Error::new_spanned(
+                    item,
+                    "`default` and `src_location` need the constructors that `no_constructors` turned off, drop one or the other",
+                ));
+            }
             options.exact |= exact_type(&item.ty, type_names);
+            if options.source.is_some() && options.mode == FieldMode::Censor {
+                return Err(syn::Error::new_spanned(
+                    item,
+                    "pick `source` or `censor`, a source gets printed by every reporter so it can't stay hidden",
+                ));
+            }
             if options.source.is_some()
                 && fields
                     .iter()
@@ -26,7 +54,7 @@ impl<'a> Case<'a> {
             {
                 return Err(syn::Error::new_spanned(
                     item,
-                    "choose one source field per struct or enum variant",
+                    "only one field can be `source`, pick a favorite and take `source` off the rest",
                 ));
             }
             fields.push(Field {
@@ -37,13 +65,25 @@ impl<'a> Case<'a> {
             });
         }
 
+        // The shorthand leaves defaults out from the end. A required field after one would shift into its
+        // place the day that default goes away, and with the same type nothing would say so.
+        let mut arguments = fields.iter().filter(|field| !field.options.src_location);
+        if variant.is_none()
+            && arguments.any(|field| field.options.default.is_some())
+            && let Some(field) = arguments.find(|field| field.options.default.is_none())
+        {
+            return Err(syn::Error::new_spanned(
+                field.item,
+                "the `#[er(default)]` fields go last, move this one above them",
+            ));
+        }
+
         if variant.is_some()
-            && !fields.iter().any(|field| field.options.into.is_some())
             && let Some(field) = fields.iter().find(|field| field.options.default.is_some())
         {
             return Err(syn::Error::new_spanned(
                 field.item,
-                "default fields on enum variants need an `into_*` conversion; variant constructors take every field",
+                "`default` only works on struct fields, an enum variant always takes every field",
             ));
         }
 
@@ -52,26 +92,28 @@ impl<'a> Case<'a> {
             if matches!(output, Output::DisplayAlt) && formats.display_alt.is_none() {
                 continue;
             }
-            match formats.get(output) {
-                Some(FormatBody::Template(format)) => {
-                    for (argument, requirement) in &format.requirements {
-                        let index = argument.field;
-                        if !fields[index].formats.contains(requirement) {
-                            fields[index].formats.push(*requirement);
-                        }
-                    }
-                    for argument in &format.arguments {
-                        fields[argument.field].used_in_format = true;
+            let tried = formats.tried(output);
+
+            for body in &tried.formats {
+                let FormatBody::Template(format) = body else {
+                    continue;
+                };
+
+                for (argument, requirement) in &format.requirements {
+                    let index = argument.field;
+                    if !fields[index].formats.contains(requirement) {
+                        fields[index].formats.push(*requirement);
                     }
                 }
-                Some(FormatBody::Function(_)) => (),
-                None => {
-                    for field in &mut fields {
-                        if field.options.mode != FieldMode::Skip
-                            && !field.formats.contains(&FormatTrait::Debug)
-                        {
-                            field.formats.push(FormatTrait::Debug);
-                        }
+                for argument in &format.arguments {
+                    fields[argument.field].used_in_format = true;
+                }
+            }
+
+            if tried.default {
+                for field in &mut fields {
+                    if field.printed_by_default() && !field.formats.contains(&FormatTrait::Debug) {
+                        field.formats.push(FormatTrait::Debug);
                     }
                 }
             }
@@ -79,6 +121,7 @@ impl<'a> Case<'a> {
 
         Ok(Self {
             variant,
+            attrs,
             shape,
             fields,
             formats,
@@ -95,7 +138,7 @@ impl<'a> Input<'a> {
         {
             return Err(syn::Error::new_spanned(
                 name,
-                "the wrapper needs a different name from the error type",
+                "the Wrap can't share a name with your error, pick another `name` or leave it out to get `MyErrWrap`",
             ));
         }
 
@@ -108,15 +151,17 @@ impl<'a> Input<'a> {
         let cases = match &item.data {
             Data::Struct(data) => vec![Case::parse(
                 None,
+                &[],
                 &data.fields,
                 &options.format,
                 &type_names,
+                options.no_constructors,
             )?],
             Data::Enum(data) => {
                 if let Some(attrs::FormatValue::Literal(literal)) = &options.format.shared {
                     return Err(syn::Error::new_spanned(
                         literal,
-                        "put `format = \"...\"` on each enum variant that needs it",
+                        "`format` doesn't go on the enum itself, put it on each variant that needs one",
                     ));
                 }
 
@@ -131,8 +176,14 @@ impl<'a> Input<'a> {
                     format.display_alt = format
                         .display_alt
                         .or_else(|| options.format.display_alt.clone());
-                    let case =
-                        Case::parse(Some(&variant.ident), &variant.fields, &format, &type_names)?;
+                    let case = Case::parse(
+                        Some(&variant.ident),
+                        &variant.attrs,
+                        &variant.fields,
+                        &format,
+                        &type_names,
+                        options.no_constructors,
+                    )?;
                     cases.push(case);
                 }
 
@@ -141,7 +192,7 @@ impl<'a> Input<'a> {
             Data::Union(data) => {
                 return Err(syn::Error::new_spanned(
                     data.union_token,
-                    "Er supports structs and enums only",
+                    "`#[derive(Er)]` works on structs and enums, unions are on their own",
                 ));
             }
         };
@@ -159,19 +210,25 @@ impl<'a> Input<'a> {
 
             let parameter = item
                 .generics
-                .type_params()
-                .find(|parameter| plain(&parameter.ident) == name);
-            if let Some(parameter) = parameter {
+                .params
+                .iter()
+                .filter_map(|parameter| match parameter {
+                    syn::GenericParam::Type(parameter) => Some(("type", &parameter.ident)),
+                    syn::GenericParam::Const(parameter) => Some(("const", &parameter.ident)),
+                    syn::GenericParam::Lifetime(_) => None,
+                })
+                .find(|(_, parameter)| plain(parameter) == name);
+            if let Some((kind, parameter)) = parameter {
                 let ident = match &wrap.name {
                     Some(ident) => ident,
-                    None => &parameter.ident,
+                    None => parameter,
                 };
 
                 return Err(syn::Error::new_spanned(
                     ident,
                     format!(
-                        "wrapper name `{name}` clashes with a type parameter; \
-                         use `wrap(name = ...)` to choose another name"
+                        "the Wrap would be called `{name}`, which is already a {kind} parameter here, \
+                         pick another with `wrap(name = ...)`"
                     ),
                 ));
             }
@@ -180,6 +237,14 @@ impl<'a> Input<'a> {
         let mut names = IdentifierNames::default();
         names.visit_derive_input(item);
 
+        // Default expressions and format functions don't run inside the constructors, only the field types share
+        // a scope with the arguments.
+        let mut scope_names = ValueNames::default();
+        scope_names.visit_generics(&item.generics);
+        for field in cases.iter().flat_map(|case| &case.fields) {
+            scope_names.visit_type(&field.item.ty);
+        }
+
         Ok(Self {
             item,
             options,
@@ -187,6 +252,7 @@ impl<'a> Input<'a> {
             const_names,
             type_names,
             names: names.names,
+            scope_names: scope_names.names,
         })
     }
 }
@@ -196,6 +262,37 @@ impl<'a> syn::visit::Visit<'a> for IdentifierNames {
         self.names.insert(plain(ident));
     }
 
+    fn visit_token_stream(&mut self, tokens: &'a TokenStream) {
+        self.names.extend(identifiers(tokens.clone()));
+    }
+}
+
+impl<'a> syn::visit::Visit<'a> for ValueNames {
+    fn visit_expr_path(&mut self, path: &'a syn::ExprPath) {
+        if let Some(ident) = path.path.get_ident() {
+            self.names.insert(plain(ident));
+        }
+
+        syn::visit::visit_expr_path(self, path);
+    }
+
+    fn visit_const_param(&mut self, param: &'a syn::ConstParam) {
+        self.names.insert(plain(&param.ident));
+        syn::visit::visit_const_param(self, param);
+    }
+
+    // A path in a generic argument parses as a type, `Buf<SIZE>` could be a const all the same.
+    fn visit_type_path(&mut self, path: &'a syn::TypePath) {
+        if path.qself.is_none()
+            && let Some(ident) = path.path.get_ident()
+        {
+            self.names.insert(plain(ident));
+        }
+
+        syn::visit::visit_type_path(self, path);
+    }
+
+    // We can't see what a macro expands to, so every name in it counts.
     fn visit_token_stream(&mut self, tokens: &'a TokenStream) {
         self.names.extend(identifiers(tokens.clone()));
     }

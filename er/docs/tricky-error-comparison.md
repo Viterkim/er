@@ -16,7 +16,7 @@ This is a made up `listen()` case to hit the pain points of different error libr
 
 [error-stack](#error-stack-080--thiserror-1)
 
-[Er](#er-081-1)
+[Er](#er-090-1)
 
 [thiserror, lazy style](#thiserror-lazy-style-2020-1)
 
@@ -52,7 +52,7 @@ Now we make the cases around what our caller cares about and keep the original e
 
 We get a typed current error with the old errors in a report. The lazy context callback can't see the failed error, so bind needs `map_err`. Lookup finds the error we gave it but not its real nested io source in that copied text frame.
 
-### Er (0.8.1)
+### Er (0.9.0)
 
 We get a typed top error with the stuff our caller cares about. `.er_with()` can read the failed error and keep it underneath. Everything below `.top` needs a search. And the old error can't also sit in a typed source field on the top variant, because the tree owns it.
 
@@ -89,7 +89,7 @@ Tags say what happened and attachments hold the data. The caller has to look up 
 First let's look at what actually comes out. Someone entered `127.0.0.1:nope`, and the port parser only says `invalid digit found in string`. What do we get?
 
 ```rust
-let error = listen("127.0.0.1:nope").unwrap_err();
+let Err(error) = listen("127.0.0.1:nope") else { return; };
 ```
 
 ## thiserror, lazy style
@@ -396,7 +396,7 @@ fn main() {
 
 Error-stack needs Send + Sync so no Rc/RefCell errors (`er-unsync` can).
 
-## Er (0.8.1)
+## Er (0.9.0)
 
 ```rust
 use er::*;
@@ -417,7 +417,7 @@ pub fn listen(input: &str) -> ErResult<TcpListener, ListenErr> {
     let ip = ip.parse::<Ipv4Addr>().er(|| ListenErr::invalid_input(input))?;
     let port = port.parse::<u16>().er(|| ListenErr::invalid_input(input))?;
     // If it was a struct error, it would be even shorter with like:
-    // `let ip = ip.parse::<Ipv4Addr>().er(|_| input)?;`
+    // `let ip = ip.parse::<Ipv4Addr>().er(input)?;`
 
     // Third error, our own rule that port 85 is sacred
     if port == 85 {
@@ -504,7 +504,7 @@ fn main() {
 }
 ```
 
-All the original errors are there and most of `listen` is just `?`. But we didn't make one `InvalidInput`, or keep the address and ports for the caller. The function is short; the caller has less to work with.
+All the original errors are there and most of `listen` is just `?`. But we didn't make one `InvalidInput`, or keep the address and ports for the caller. The function is short, the caller has less to work with.
 
 ## Anyhow (1.0.104)
 
@@ -651,7 +651,7 @@ fn listen(input: &str) -> Result<TcpListener, Report<ListenErr>> {
     TcpListener::bind(address).map_err(|source| {
         let kind = source.kind();
         let available_ports = find_available_ports(address);
-        Report::new(source).context(ListenErr::BindFailed {
+        Report::new_sendsync(source).context(ListenErr::BindFailed {
             address,
             kind,
             available_ports,
@@ -958,7 +958,8 @@ use er::*;
 pub struct DeviceErr;
 
 fn inspect_device() {
-    let Err(error) = read_device().er(DeviceErr::new) else { return; };
+    let result: ErResult<(), DeviceErr> = read_device().er(());
+    let Err(error) = result else { return; };
 
     let original = error.er_find::<DriverErr>(); // Found in the tree
     let nested = error.er_find::<io::Error>(); // Found inside DriverErr too
@@ -1016,7 +1017,7 @@ pub struct DeviceErr {
 }
 
 fn inspect_device() {
-    let Err(error) = read_device().context(DeviceSnafu) else { return; };
+    let Err(error) = read_device().context(DeviceErrSnafu) else { return; };
 
     let original = &error.source; // Direct field
     let nested = snafu::ChainCompat::new(&error)
@@ -1127,20 +1128,20 @@ I chose to give the public caller the address and ports, but not the io kind. `O
 We already made `ListenErr` with the cases and fields we want to give them, so we keep that and save the report next to it:
 
 ```rust
-#[derive(Er)]
-#[er(format = "listen failed", display_alt = "{report}")]
-pub struct ListenError {
-    pub kind: ListenErr,
-    pub report: String,
+pub fn public_error_example(input: &str) -> Result<TcpListener, (ListenErr, String)> {
+    listen(input).er_split()
 }
+```
 
-pub fn public_error_example(input: &str) -> Result<TcpListener, ListenError> {
-    listen(input).er_into(|report| {
-        let text = report.er_report_string();
-        eprintln!("{text}");
+Here's the app using the same ports to offer another try. It can log the whole report even without Er.
 
-        (report.tree.top, text)
-    })
+```rust
+if let Err((error, report)) = public_error_example(input) {
+    eprintln!("{report}");
+
+    if let ListenErr::BindFailed { kind: io::ErrorKind::AddrInUse, available_ports, .. } = error {
+        show_available_ports(&available_ports);
+    }
 }
 ```
 

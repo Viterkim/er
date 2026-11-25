@@ -1,3 +1,35 @@
+# 0.9.0
+
+Public boundaries now use `.er_split()` for `(MyErr, String)` (or `.er_split_with(...)`), replacing `.er_into()` and the `into_*` attributes. The good old `.er()` on `(MyErr, String)` keeps both.
+
+`.er_report()` is `.er_report_string()`.
+
+Removed `ErReport`, `ErTop` + their views, `.er_top()` and `.er_top_string()` (you can/could always `.top` on a tree and `.top()` on a snapshot).
+
+Replaced `.er_for_each_entry(..)` with `.er_entries()`. Removed `.er_at_index()` and `ErErrorIndex`.
+
+`.er(path)` and `.er((path, port))` take `Copy` fields directly without a closure.
+
+`.er_with()` and `.er_val()` accept finished errors straight from the closure (solve an edge case which had `er_built` as cope).
+
+Added `er_new!()`, `.er_share()` for `ErSharedTree`, and `.er_save()` for attaching reports, snapshots and backtraces (and removed `.er_trace()`).
+
+Added `er_assert_err!()`. `ErTest` not behind a `test` feature(its gone). Renamed `.unwrap_report()` / `.expect_report()` to `.er_unwrap()` / `.er_expect()` (when on earth would you unwrap and just see the top err, gg).
+
+Now you should use `ErMain` (or `ErMain<AppErr>`) instead of `Result<(), ErReport<AppErr>>`.
+
+`#[er(default)]` is for the fields towards the end and `.er(..)` can leave off any number of them as args.
+
+`ErShared<String>` fields now can take `&str` and `ErShared<PathBuf>` now can take `&Path` (if you use the new `std` feature).
+
+Wraps can use `.into()` or `?` (and `std_error` wraps which you shouldn't use have `.er_wrap(..)` / `.er_with_wrap(..)`).
+
+`#[er(source)]` leaves the cause out of top default output (use `#[er(source, show_in_parent)]` to make official rust people angry https://blog.rust-lang.org/inside-rust/2021/07/01/What-the-error-handling-project-group-is-working-towards/ but Error in rust is such a shit trait/standard so who cares).
+
+Removed `lazy`, `serde`, `Layout` and `.single_line()`. Name `er-unsync` as `er` in Cargo.toml so the derives can find it.
+
+Faster ok path on `.er()`, `.er_with()`, `.er_save()` and `er_all!` (gotta go fast).
+
 # 0.8.1
 
 Performance fix in iterator next. 
@@ -17,7 +49,7 @@ Added `#[er(display = "...")]` and `#[er(debug = "...")]` which override each ou
 `.er_val()` now takes the same field and tuple helpers as `.er()`, like `.er_val(|v| (path, v))` (for old finished struct there's `er_built(...)`, same as `.er_with()`, but just use the new pattern like on `.er()`).
 Replace `.er_val(DeviceErr::new)` with `.er_val(|v| v)` for a single field.
 
-`.er_into()` now gets the owned report and uses those helpers too, like `.er_into(|report| report.er_report_string())`. You can build another library's error without caring about 'er' or the version.
+`.er_into()` now gets the owned report and uses those helpers too, like `.er_into(|report| report.er_report_string())`.
 
 Automatic report saving now uses ordinary field conversions. `ErFromTree` is gone, use `.er_into()` to finish the conversion.
 
