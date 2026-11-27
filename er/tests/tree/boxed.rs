@@ -68,6 +68,19 @@ pub fn saved_plain_error() {
 }
 
 #[test]
+pub fn blank_report() {
+    let cause = DriverErr(io::Error::other("device busy"));
+    let expected = cause.er_report();
+    let result = Err::<(), _>((cause, String::from(" \t\n")));
+
+    assert_eq!(result.as_ref().er_report().unwrap_err(), expected);
+    assert_eq!(result.er_report().unwrap_err(), expected);
+
+    let result = Err::<(), _>((StageErr, Some(String::new())));
+    assert!(result.er(OuterErr::new).unwrap_err().saved.is_empty());
+}
+
+#[test]
 pub fn pair_presentation() {
     fn failure() -> Result<(), (ErBoxError, String)> {
         Err((
@@ -76,7 +89,11 @@ pub fn pair_presentation() {
         ))
     }
 
-    assert_eq!(failure().er_report().unwrap_err(), "driver report");
+    let (error, _) = failure().unwrap_err();
+    let raw = "driver report\r\n`- request [saved]\r\n\r\n";
+    let pair = Err::<(), _>((error, raw.to_owned()));
+    assert_eq!(pair.as_ref().er_report().unwrap_err(), raw);
+    assert_eq!(pair.er_report().unwrap_err(), raw);
 
     let saved = failure()
         .er_save("request", |_| "opening preferences")
@@ -118,10 +135,10 @@ pub fn pair_presentation() {
 
 #[test]
 pub fn erased_nodes() {
-    let node = ErTree::from(StageErr).into_er_part();
+    let node = ErTree::from(StageErr).into_er_node();
     let cause = io::Error::new(io::ErrorKind::PermissionDenied, "no access");
     let boxed: ErBoxError = Box::new(DriverErr(cause));
-    let tree = ErTree::new(OuterErr, [node, boxed.into_er_part()]);
+    let tree = ErTree::new(OuterErr, [node, boxed.into_er_node()]);
 
     assert!(tree.er_contains::<StageErr>());
     assert!(tree.er_contains::<DriverErr>());
@@ -148,7 +165,6 @@ pub fn presentations() {
             top,
             nodes,
             saved,
-            #[cfg(feature = "src_locations")]
             src_location,
         } = tree;
 
@@ -156,7 +172,6 @@ pub fn presentations() {
             top: Box::new(top) as ErBoxError,
             nodes,
             saved,
-            #[cfg(feature = "src_locations")]
             src_location,
         }
     });

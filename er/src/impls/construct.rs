@@ -1,12 +1,16 @@
 #[cfg(feature = "macros")]
+use crate::impls::saved::ErSavedError;
+#[cfg(feature = "macros")]
 use crate::{
-    ErBailNodes, ErBailRoot, ErBailTree, ErNew, ErNewFields, ErNewPass, ErReadyTree, ErTree,
-    IntoErTree,
+    ErAddReady, ErBailNodes, ErBailRoot, ErBailTree, ErBranch, ErNew, ErNewFields, ErNewPass,
+    ErPrepared, ErReadyTree, ErReportError, ErTree, IntoErTree,
 };
 use crate::{
     ErBuildFrom, ErDefaults, ErErrorWithSaved, ErFieldInput, ErFields, ErFieldsFor, ErForm,
-    ErFromFields, ErMake, ErReady, ErValFields, ErValueForm, ErWhole, ErWithFields, ErWithSaves,
+    ErFromFields, ErMake, ErNode, ErReady, ErValFields, ErValueForm, ErWhole, ErWithFields,
+    ErWithSaves,
 };
+use alloc::vec::Vec;
 use core::error::Error;
 use core::fmt;
 #[cfg(feature = "macros")]
@@ -51,11 +55,58 @@ where
 }
 #[cfg(feature = "macros")]
 impl<P> ErNewPass<P> for ErNew<P> {
+    fn __er_bail_value(self) -> P {
+        self.0
+    }
+
     fn __er_bail_root(self) -> ErBailRoot<P, ErFields> {
         ErBailRoot(self.0, PhantomData)
     }
 }
 
+#[cfg(feature = "macros")]
+impl<E> ErNew<ErBranch<E>> {
+    pub fn __er_add_pending(self) -> ErPrepared<ErBranch<E>> {
+        ErPrepared(self.0)
+    }
+
+    pub fn __er_bail_value(self) -> ErPrepared<ErBranch<E>> {
+        ErPrepared(self.0)
+    }
+}
+#[cfg(feature = "macros")]
+impl<E> ErNew<ErErrorWithSaved<E>> {
+    pub fn __er_add_pending<Input>(self) -> ErPrepared<E::Root>
+    where
+        E: ErSavedError<Input>,
+    {
+        ErPrepared(self.0.value.with_saved(self.0.saved))
+    }
+}
+#[cfg(feature = "macros")]
+impl<T> ErPrepared<T> {
+    pub fn __er_tree(self) -> Self {
+        self
+    }
+
+    pub fn __er_add_ready(self) -> T {
+        self.0
+    }
+}
+#[cfg(feature = "macros")]
+impl<E> ErNew<ErTree<E>> {
+    pub fn __er_add_ready(self) -> ErTree<E> {
+        self.0
+    }
+}
+#[cfg(feature = "macros")]
+impl<E: ErReportError<Input>, Input> ErAddReady<Input> for ErNew<E> {
+    type Error = E;
+
+    fn __er_add_ready(self) -> ErBranch<E> {
+        ErBranch::from_error(self.0)
+    }
+}
 #[cfg(feature = "macros")]
 impl<T: IntoErTree> ErNew<T> {
     #[track_caller]
@@ -91,7 +142,7 @@ impl<E: Error + 'static> ErReadyTree for E {
     }
 }
 #[cfg(feature = "macros")]
-impl<E: Error + 'static> ErReadyTree for ErErrorWithSaved<E> {
+impl<E: Error + 'static, Nodes: Into<Vec<ErNode>>> ErReadyTree for ErErrorWithSaved<E, Nodes> {
     type Top = E;
 
     #[track_caller]
@@ -129,8 +180,10 @@ where
     }
 }
 #[cfg(feature = "macros")]
-impl<E, P, Form: ErValueForm> ErNewFields<E, (ErWithSaves, Form)> for ErNew<ErErrorWithSaved<P>>
+impl<E, P, Nodes, Form: ErValueForm> ErNewFields<E, (ErWithSaves, Form)>
+    for ErNew<ErErrorWithSaved<P, Nodes>>
 where
+    Nodes: Into<Vec<ErNode>>,
     E: Error + ErFromFields<P, Form> + 'static,
 {
     #[track_caller]
@@ -161,15 +214,22 @@ impl<A> ErBuildFrom<A, ErWhole> for A {
 }
 
 impl<A: Error, F: FnOnce() -> A> ErMake<A, ErReady> for F {
+    type Nodes = [ErNode; 0];
+
     const COLD: bool = core::mem::needs_drop::<A>();
     #[track_caller]
-    fn er_make(self) -> ErErrorWithSaved<A> {
+    fn er_make(self) -> ErErrorWithSaved<A, Self::Nodes> {
         ErErrorWithSaved::new(self())
     }
 }
-impl<A, F: FnOnce() -> ErErrorWithSaved<A>> ErMake<A, (ErReady, ErWithSaves)> for F {
+impl<A, Nodes, F: FnOnce() -> ErErrorWithSaved<A, Nodes>> ErMake<A, (ErReady, ErWithSaves)> for F
+where
+    Nodes: Into<Vec<ErNode>>,
+{
+    type Nodes = Nodes;
+
     #[track_caller]
-    fn er_make(self) -> ErErrorWithSaved<A> {
+    fn er_make(self) -> ErErrorWithSaved<A, Self::Nodes> {
         self()
     }
 }
@@ -180,21 +240,26 @@ where
     ErFieldInput<P>: ErFieldsFor<A, Form>,
     A: ErBuildFrom<P, Form>,
 {
+    type Nodes = [ErNode; 0];
+
     const COLD: bool = core::mem::needs_drop::<A>();
 
     #[track_caller]
-    fn er_make(self) -> ErErrorWithSaved<A> {
+    fn er_make(self) -> ErErrorWithSaved<A, Self::Nodes> {
         ErErrorWithSaved::new(A::er_build_from(self(())))
     }
 }
-impl<A, P, F, Form: ErForm> ErMake<A, (ErWithSaves, Form)> for F
+impl<A, P, Nodes, F, Form: ErForm> ErMake<A, (ErWithSaves, Form)> for F
 where
-    F: FnOnce(()) -> ErErrorWithSaved<P>,
+    F: FnOnce(()) -> ErErrorWithSaved<P, Nodes>,
+    Nodes: Into<Vec<ErNode>>,
     ErFieldInput<P>: ErFieldsFor<A, Form>,
     A: ErBuildFrom<P, Form>,
 {
+    type Nodes = Nodes;
+
     #[track_caller]
-    fn er_make(self) -> ErErrorWithSaved<A> {
+    fn er_make(self) -> ErErrorWithSaved<A, Self::Nodes> {
         self(()).build()
     }
 }
@@ -206,11 +271,13 @@ impl<A, P: Copy + fmt::Debug, Form: ErValueForm> ErMake<A, (Form,)> for P
 where
     A: ErFromFields<P, Form>,
 {
+    type Nodes = [ErNode; 0];
+
     // Plain data is cheap to build in place. A String or PathBuf conversion isn't.
     const COLD: bool = core::mem::needs_drop::<A>();
 
     #[track_caller]
-    fn er_make(self) -> ErErrorWithSaved<A> {
+    fn er_make(self) -> ErErrorWithSaved<A, Self::Nodes> {
         ErErrorWithSaved::new(A::er_from_fields(self))
     }
 }
@@ -221,23 +288,26 @@ where
     ErFieldInput<Input>: ErFieldsFor<A, Form>,
     A: ErBuildFrom<Input, Form>,
 {
+    type Nodes = [ErNode; 0];
     type Input = Input;
 
     #[track_caller]
-    fn er_with_fields(self, error: &E) -> ErErrorWithSaved<A> {
+    fn er_with_fields(self, error: &E) -> ErErrorWithSaved<A, Self::Nodes> {
         ErErrorWithSaved::new(A::er_build_from(self(error)))
     }
 }
-impl<E: ?Sized, A, P, F, Form: ErForm> ErWithFields<E, A, (ErWithSaves, Form)> for F
+impl<E: ?Sized, A, P, Nodes, F, Form: ErForm> ErWithFields<E, A, (ErWithSaves, Form)> for F
 where
-    F: FnOnce(&E) -> ErErrorWithSaved<P>,
+    F: FnOnce(&E) -> ErErrorWithSaved<P, Nodes>,
+    Nodes: Into<Vec<ErNode>>,
     ErFieldInput<P>: ErFieldsFor<A, Form>,
     A: ErBuildFrom<P, Form>,
 {
-    type Input = ErErrorWithSaved<P>;
+    type Nodes = Nodes;
+    type Input = ErErrorWithSaved<P, Nodes>;
 
     #[track_caller]
-    fn er_with_fields(self, error: &E) -> ErErrorWithSaved<A> {
+    fn er_with_fields(self, error: &E) -> ErErrorWithSaved<A, Self::Nodes> {
         self(error).build()
     }
 }
@@ -247,23 +317,26 @@ where
     ErFieldInput<Input>: ErFieldsFor<A, Form>,
     A: ErBuildFrom<Input, Form>,
 {
+    type Nodes = [ErNode; 0];
     type Input = Input;
 
     #[track_caller]
-    fn er_val_fields(self, value: E) -> ErErrorWithSaved<A> {
+    fn er_val_fields(self, value: E) -> ErErrorWithSaved<A, Self::Nodes> {
         ErErrorWithSaved::new(A::er_build_from(self(value)))
     }
 }
-impl<E, A, P, F, Form: ErForm> ErValFields<E, A, (ErWithSaves, Form)> for F
+impl<E, A, P, Nodes, F, Form: ErForm> ErValFields<E, A, (ErWithSaves, Form)> for F
 where
-    F: FnOnce(E) -> ErErrorWithSaved<P>,
+    F: FnOnce(E) -> ErErrorWithSaved<P, Nodes>,
+    Nodes: Into<Vec<ErNode>>,
     ErFieldInput<P>: ErFieldsFor<A, Form>,
     A: ErBuildFrom<P, Form>,
 {
-    type Input = ErErrorWithSaved<P>;
+    type Nodes = Nodes;
+    type Input = ErErrorWithSaved<P, Nodes>;
 
     #[track_caller]
-    fn er_val_fields(self, value: E) -> ErErrorWithSaved<A> {
+    fn er_val_fields(self, value: E) -> ErErrorWithSaved<A, Self::Nodes> {
         self(value).build()
     }
 }

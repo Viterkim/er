@@ -13,6 +13,11 @@ pub fn plain(ident: &Ident) -> String {
 
 pub fn identifiers(tokens: TokenStream) -> HashSet<String> {
     let mut names = HashSet::new();
+    collect_identifiers(tokens, &mut names);
+    names
+}
+
+pub fn collect_identifiers(tokens: TokenStream, names: &mut HashSet<String>) {
     let mut pending: Vec<_> = tokens.into_iter().collect();
 
     while let Some(token) = pending.pop() {
@@ -24,8 +29,6 @@ pub fn identifiers(tokens: TokenStream) -> HashSet<String> {
             _ => {}
         }
     }
-
-    names
 }
 
 pub fn binding(reserved: &HashSet<String>, name: &str) -> Ident {
@@ -41,18 +44,22 @@ pub fn binding(reserved: &HashSet<String>, name: &str) -> Ident {
 }
 
 pub fn shield_bindings<'a>(bindings: impl IntoIterator<Item = &'a Ident>) -> TokenStream {
-    let mut seen = HashSet::new();
-    let bindings: Vec<_> = bindings
-        .into_iter()
-        .filter(|binding| seen.insert(plain(binding)))
-        .collect();
-    if bindings.is_empty() {
+    let mut bindings = bindings.into_iter();
+    let Some(first) = bindings.next() else {
         return TokenStream::new();
-    }
+    };
+    let Some(second) = bindings.next() else {
+        return quote!(use ::core::mem::drop as #first;);
+    };
+
+    let mut seen = HashSet::new();
+    let bindings = [first, second]
+        .into_iter()
+        .chain(bindings)
+        .filter(|binding| seen.insert(plain(binding)));
 
     // Mixed-site hygiene still resolves constants in patterns. Functions can be shadowed.
     quote! {
-        #[allow(unused_imports)]
         use ::core::mem::{#(drop as #bindings),*};
     }
 }

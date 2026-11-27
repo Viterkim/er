@@ -38,7 +38,7 @@ pub fn main() {
         top: BorrowedResponse { text: &text },
         nodes: Vec::new(),
         saved: ErSavedList::default(),
-        src_location: core::panic::Location::caller(),
+        src_location: None,
     };
     let wrapped = BorrowedResponseWrap::from(tree);
 

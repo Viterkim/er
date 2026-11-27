@@ -20,11 +20,11 @@ Convenience macros like `#[derive(Er)]`, `#[derive(ErFormat)]`, `er_new!`, `er_a
 
 ## src_locations
 
-Enables capturing the file path, line number and column number at compile time.
+Captures the file, line and column when you make a tree. You can read or set `src_location` with the feature off too. Reports and snapshots keep the locations you give them.
 
 ## small_path_src, off by default
 
-Usually you'll just get `src/lib.rs` or `engine/src/lib.rs` in a workspace(so you WONT need this), but on some setups if you use paths for dependencies, like a local crate on your pc, then you'll get the full path `/the/magic/src/folder/that/was/supposed/to/be/secret/src/a.rs`.
+Cargo dependency paths (crates.io registry and git checkouts) are already shortened by default (like `aktor-0.1.0/src/lib.rs`), and workspace paths usually print as `src/lib.rs` or `engine/src/lib.rs` (so you WON'T need this). On some setups if you use local path dependencies on your pc, then you'll get the full path `/the/magic/src/folder/that/was/supposed/to/be/secret/src/a.rs`.
 
 So this turns it into `secret/src/a.rs`. It just looks for the last `src` and gives you the path one step back from that.
 
@@ -38,12 +38,12 @@ Turns on `std`. [Capturing and printing traces](examples.md#stack-traces).
 
 ```toml
 [dependencies]
-er = { version = "0.9", features = ["small_path_src"] }
+er = { version = "0.10", features = ["small_path_src"] }
 ```
 
 ```toml
 [dependencies]
-er = { version = "0.9", default-features = false, features = ["src_locations"] }
+er = { version = "0.10", default-features = false, features = ["src_locations"] }
 ```
 
 ## Unsync / Single threaded platform
@@ -51,5 +51,5 @@ er = { version = "0.9", default-features = false, features = ["src_locations"] }
 If you've got a platform that uses Rc/RefCell you can use the `er-unsync` version of the crate. Keep the name `er` so the derives can find it.
 
 ```toml
-er = { package = "er-unsync", version = "0.9" }
+er = { package = "er-unsync", version = "0.10" }
 ```

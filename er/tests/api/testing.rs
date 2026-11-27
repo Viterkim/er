@@ -30,7 +30,7 @@ pub fn nested_helpers() {
     let error = Err::<(), _>(io::Error::other("port").er_save("kept", "report"))
         .er_test()
         .unwrap_err();
-    assert_eq!(error.tree.saved[0].title, "kept");
+    assert_eq!(error.tree.nodes[0].saved[0].title, "kept");
 }
 
 #[test]

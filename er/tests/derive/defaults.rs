@@ -131,6 +131,12 @@ fn fields() {
 }
 
 #[test]
+fn supplied_default() {
+    let result: ErResult<(), Context<Payload>> = Err("settings").er_val(|path| (path, Payload));
+    assert_eq!(result.unwrap_err().top.label, "fallback");
+}
+
+#[test]
 fn unit_field() {
     #[derive(Er)]
     struct Optional {

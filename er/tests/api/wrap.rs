@@ -52,6 +52,13 @@ pub fn fresh_conversions() {
     }
 
     assert!(from_result().unwrap_err().tree.nodes.is_empty());
+
+    fn from_branch() -> Result<(), HandlerErrWrap> {
+        Err::<(), _>(HandlerErr.er_add(InnerErr))?;
+        Ok(())
+    }
+
+    assert!(from_branch().unwrap_err().er_contains::<InnerErr>());
 }
 
 #[derive(Er)]
@@ -120,12 +127,19 @@ pub fn std_error() {
     assert!(tree.er_contains::<InnerErr>());
 
     let wrapped = || StandardErrWrap::from(ErTree::new(StandardErr::new(85u8), [InnerErr]));
+    let branch = ErBranch::from(RequestErr::new("send")).er_add_wrap(wrapped());
+    assert!(branch.nodes[0].er_contains::<InnerErr>());
+
     let failed = (|| -> ErTest { er_bail!(wrapped()) })().unwrap_err();
     assert!(failed.er_contains::<InnerErr>());
 
     let saved = Err::<(), _>(wrapped()).er_save("request", |_| "sent");
     let combined: ErResult<(), HandlerErr> = er_all!((), [saved]);
     assert!(combined.unwrap_err().er_contains::<InnerErr>());
+
+    let branch = ErBranch::from(wrapped()).er_add(RequestErr::new("send"));
+    let combined: ErResult<(), HandlerErr> = er_all!((), [Err::<(), _>(branch)]);
+    assert!(combined.unwrap_err().er_contains::<RequestErr>());
 
     let shared: ErSharedTree<StandardErr<u8>> = wrapped().er_share();
     assert!(shared.er_contains::<InnerErr>());
@@ -180,8 +194,7 @@ pub fn borrowed_top() {
         top: BorrowedErr::new(&text),
         nodes: Vec::new(),
         saved: ErSavedList::default(),
-        #[cfg(feature = "src_locations")]
-        src_location: std::panic::Location::caller(),
+        src_location: None,
     };
     let wrapped = BorrowedErrWrap::from(tree);
 

@@ -94,7 +94,7 @@ pub mod tests {
         let tree: ErTree<AppErr> = tree
             .er_with_tree::<AppErr, _>(|tree| tree.er_find::<DeviceErr>().unwrap().device.clone());
         let tree: ErTree<AppErr> = tree.er_with(|err| err.device.clone());
-        let node = tree.into_er_part();
+        let node = tree.into_er_node();
         assert!(node.er_error().is::<AppErr>());
 
         let mut tree = ErTree::new(AppErr::new(&device), [node]);
@@ -135,7 +135,7 @@ pub mod tests {
 
         fn check<Input, E>(make: impl Fn() -> E, device: &Rc<RefCell<Device>>)
         where
-            E: IntoErPart<Input, Error = E>
+            E: IntoErNode<Input, Error = E>
                 + ErErrorContextExt<er::er_internal::ErFields, Input>
                 + ErErrorExt<Input>
                 + fmt::Display,
@@ -145,7 +145,7 @@ pub mod tests {
 
             let _: ErTree<AppErr> = make().er(|_| device);
             let _: ErTree<AppErr> = make().er_with(|_| device);
-            let _ = make().into_er_part();
+            let _ = make().into_er_node();
             let _: ErResult<(), AppErr> = er_all!(|_| device, [make(), Err::<(), _>(make())]);
             let _: ErResult<Vec<_>, AppErr> =
                 [Ok(7), Err(make())].into_iter().er_collect_all(|_| device);

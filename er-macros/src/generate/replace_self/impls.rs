@@ -1,46 +1,43 @@
 use super::ReplaceSelf;
-use syn::fold::{Fold, fold_expr_path, fold_type};
+use syn::visit_mut::{VisitMut, visit_expr_path_mut, visit_path_mut, visit_type_mut};
 use syn::{ExprPath, Path, QSelf, Type};
 
 impl ReplaceSelf<'_> {
-    pub fn associated_path(&mut self, mut path: Path) -> (QSelf, Path) {
-        path.segments = path.segments.into_iter().skip(1).collect();
-        // `<Type>::Assoc` needs the `::` that came after `Self`, the qualified self doesn't print one.
+    fn associated_path(&mut self, path: &mut Path) -> QSelf {
+        path.segments = core::mem::take(&mut path.segments)
+            .into_iter()
+            .skip(1)
+            .collect();
+        // Keep the :: after Self when the path becomes <Type>::Assoc.
         path.leading_colon = Some(Default::default());
-        let path = self.fold_path(path);
-        let qualified = qualified_self(self.original);
-        (qualified, path)
+        visit_path_mut(self, path);
+
+        qualified_self(self.original)
     }
 }
-impl Fold for ReplaceSelf<'_> {
-    fn fold_type(&mut self, ty: Type) -> Type {
-        let Type::Path(mut path) = ty else {
-            return fold_type(self, ty);
-        };
-
-        if path.qself.is_none() && starts_with_self(&path.path) {
+impl VisitMut for ReplaceSelf<'_> {
+    fn visit_type_mut(&mut self, ty: &mut Type) {
+        if let Type::Path(path) = ty
+            && path.qself.is_none()
+            && starts_with_self(&path.path)
+        {
             if path.path.segments.len() == 1 {
-                return self.original.clone();
+                *ty = self.original.clone();
+            } else {
+                path.qself = Some(self.associated_path(&mut path.path));
             }
-
-            let (qualified, tail) = self.associated_path(path.path);
-            path.qself = Some(qualified);
-            path.path = tail;
-            return Type::Path(path);
+            return;
         }
 
-        fold_type(self, Type::Path(path))
+        visit_type_mut(self, ty);
     }
 
-    fn fold_expr_path(&mut self, mut path: ExprPath) -> ExprPath {
+    fn visit_expr_path_mut(&mut self, path: &mut ExprPath) {
         if path.qself.is_none() && starts_with_self(&path.path) && path.path.segments.len() > 1 {
-            let (qualified, tail) = self.associated_path(path.path);
-            path.qself = Some(qualified);
-            path.path = tail;
-            return path;
+            path.qself = Some(self.associated_path(&mut path.path));
+        } else {
+            visit_expr_path_mut(self, path);
         }
-
-        fold_expr_path(self, path)
     }
 }
 

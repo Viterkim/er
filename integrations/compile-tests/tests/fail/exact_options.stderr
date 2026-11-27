@@ -16,7 +16,7 @@ error: `skip`, `censor`, `exact` and `source` go on a field, not on the type
 16 | #[er(exact)]
    |      ^^^^^
 
-error: a variant takes `format`, `display`, `display_alt` or `debug`, field options go on a field and `wrap` or `crate` on the enum
+error: a variant takes `format`, `display`, `display_alt`, `debug` or `no_constructors`, field options go on a field and `wrap` or `crate` on the enum
   --> tests/fail/exact_options.rs:23:10
    |
 23 |     #[er(exact)]

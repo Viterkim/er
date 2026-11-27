@@ -544,8 +544,7 @@ pub fn projected_and_borrowed_fields() {
         top: BorrowedErr::new(&text),
         nodes: Vec::new(),
         saved: ErSavedList::default(),
-        #[cfg(feature = "src_locations")]
-        src_location: std::panic::Location::caller(),
+        src_location: None,
     };
     let wrapped: BorrowedErrWrap<'_> = tree.into();
 

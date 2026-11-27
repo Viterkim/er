@@ -19,7 +19,7 @@ impl Error for NotSyncErr {}
 pub fn main() {
     let error = ErTree::from(NotSyncErr(Cell::new(0)));
     require_sync(&error);
-    let _ = error.into_er_part();
+    let _ = error.into_er_node();
 }
 
 pub fn require_sync<T: Sync>(_: &T) {}

@@ -36,7 +36,7 @@ pub fn success_drop() {
 #[derive(Er)]
 pub struct Collision;
 impl Collision {
-    pub fn into_er_part(self) {
+    pub fn into_er_node(self) {
         panic!("caller method selected")
     }
 }

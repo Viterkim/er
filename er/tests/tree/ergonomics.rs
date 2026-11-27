@@ -49,6 +49,57 @@ pub fn bail_with_sub_errors() {
 }
 
 #[test]
+pub fn promote_branch() {
+    let origin = std::panic::Location::caller();
+    let branch = || {
+        let branch: ErBranch<AppErr> = AppErr.into();
+        let mut child = ErTree::from(SubErr(7));
+        child.src_location = Some(origin);
+
+        branch.er_add(child)
+    };
+    let check = |tree: ErTree<AppErr>, line| {
+        assert_eq!(
+            tree.src_location.map(|src| src.line()),
+            cfg!(feature = "src_locations").then_some(line)
+        );
+        assert_eq!(tree.nodes[0].src_location, Some(origin));
+    };
+
+    let line = line!() + 1;
+    let tree = er_new!(branch());
+    check(tree, line);
+
+    let line = line!() + 1;
+    let result = || -> ErResult<(), AppErr> { er_bail!(branch()) };
+    check(result().unwrap_err(), line);
+
+    let line = line!() + 1;
+    let tree: ErTree<AppErr> = branch().into();
+    check(tree, line);
+
+    let line = line!() + 1;
+    let result = || -> ErResult<(), AppErr> { Err(branch())? };
+    check(result().unwrap_err(), line);
+
+    let tree = branch().er(BoundaryErr::new);
+    assert_eq!(tree.nodes[0].src_location, None);
+    assert_eq!(tree.nodes[0].nodes[0].src_location, Some(origin));
+}
+
+#[test]
+pub fn extend_branch_at_root() {
+    let branch = AppErr.er_add(SubErr(7));
+    let tree = er_new!(branch, [SubErr(8)]);
+    let children: Vec<_> = tree.er_find_all::<SubErr>().map(|err| err.0).collect();
+    assert_eq!(children, [7, 8]);
+
+    let tree = SubErr(7).er(|| AppErr.er_add(SubErr(8)));
+    let children: Vec<_> = tree.er_find_all::<SubErr>().map(|err| err.0).collect();
+    assert_eq!(children, [7, 8]);
+}
+
+#[test]
 pub fn borrowed_factory_fields() {
     #[derive(Er)]
     struct NameErr(String);
@@ -84,10 +135,10 @@ pub fn borrowed_factory_fields() {
 #[test]
 pub fn bail_with_shared_top() {
     let shared = ErTree::new(AppErr, [SubErr(7)]).er_share();
-    let part = (&shared).into_er_part();
-    assert!(part.er_error().is::<AppErr>());
+    let node = (&shared).into_er_node();
+    assert!(node.er_error().is::<AppErr>());
 
-    let failure = (|| -> ErTest { er_bail!(part, [std::fmt::Error]) })().unwrap_err();
+    let failure = (|| -> ErTest { er_bail!(node, [std::fmt::Error]) })().unwrap_err();
     assert!(failure.er_at_path(&[0, 0]).unwrap().is::<SubErr>());
     assert!(failure.er_at_path(&[1]).unwrap().is::<std::fmt::Error>());
 }
@@ -154,7 +205,7 @@ pub struct BoundaryErr;
 
 fn boundary<T, E>(result: Result<T, E>) -> ErResult<T, BoundaryErr>
 where
-    E: IntoErPart,
+    E: IntoErNode,
 {
     result.er(())
 }
@@ -315,4 +366,40 @@ pub fn er_main() {
     })()
     .unwrap_err();
     assert!(custom_tree.tree.er_contains::<SubErr>());
+}
+
+#[cfg(feature = "macros")]
+#[test]
+pub fn bail_pair_with_custom_from() {
+    #[derive(Er)]
+    struct CustomPairErr;
+
+    impl From<CustomPairErr> for (CustomPairErr, String) {
+        fn from(error: CustomPairErr) -> Self {
+            (error, String::from("custom report"))
+        }
+    }
+
+    fn bail_value() -> Result<(), (CustomPairErr, String)> {
+        er_bail!(CustomPairErr);
+    }
+    fn bail_closure() -> Result<(), (CustomPairErr, String)> {
+        er_bail!(|| CustomPairErr);
+    }
+    fn bail_fn() -> Result<(), (CustomPairErr, String)> {
+        er_bail!(CustomPairErr::new);
+    }
+    fn use_from() -> Result<(), (CustomPairErr, String)> {
+        Err(CustomPairErr.into())
+    }
+
+    for report in [
+        bail_value().unwrap_err().1,
+        bail_closure().unwrap_err().1,
+        bail_fn().unwrap_err().1,
+    ] {
+        assert!(report.starts_with("CustomPairErr"));
+        assert_ne!(report, "custom report");
+    }
+    assert_eq!(use_from().unwrap_err().1, "custom report");
 }

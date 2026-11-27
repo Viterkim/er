@@ -110,6 +110,31 @@ pub fn append_mixed() {
 }
 
 #[test]
+pub fn append_pending() {
+    let pending = er_add!(Batch, []);
+    let pending = er_add!(pending, [Item(1), Err::<(), _>(Item(2))]);
+    let pending: ErBranch<Batch> = er_add!(pending, Some(Item(3)));
+
+    assert_eq!(items(&pending.into()), [1, 2, 3]);
+}
+
+#[test]
+pub fn append_after_save() {
+    let boxed: ErBoxError = Box::new(std::fmt::Error);
+    let saved = Err::<(), _>(boxed)
+        .er_save("request", |_| "input")
+        .unwrap_err();
+    let branch: ErBranch<ErBoxError> = saved.er_add(Item(1));
+
+    let saved = Err::<(), _>(branch)
+        .er_save("response", |_| "output")
+        .unwrap_err();
+    let branch: ErBranch<ErBoxError> = er_add!(saved, [Item(2)]);
+    assert_eq!(branch.saved.len(), 2);
+    assert_eq!(branch.nodes.len(), 2);
+}
+
+#[test]
 pub fn every_result() {
     let mut visited = 0;
     let results = [Ok(7), Err(Item(1)), Ok(8), Err(Item(2))]
@@ -141,7 +166,6 @@ pub fn no_failures() -> ErTest {
     let successes: Vec<Result<u8, Item>> = vec![Ok(7), Ok(8)];
     er_all!(parent, successes)?;
     er_all!(parent, [])?;
-    er_internal::aggregate::collect::<Batch, _, _, _, _, _>((), [Ok::<_, Item>(7)])?;
 
     let value = RefCell::new(0);
     er_all!(
@@ -219,10 +243,6 @@ pub fn collect() {
 
     assert_eq!(decode(&["7", "8"]).er_report().unwrap(), [7, 8]);
     assert!(decode(&[]).er_report().unwrap().is_empty());
-
-    let grouped: ErResult<(), Item> =
-        er_internal::aggregate::collect(|_| 9, [Err::<(), _>(Item(1))]);
-    assert_eq!(items(&grouped.unwrap_err()), [9, 1]);
 
     let parents = Cell::new(0);
     let context = |_| {

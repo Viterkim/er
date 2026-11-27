@@ -78,8 +78,7 @@ pub fn lifetime_projection() {
         top: error,
         nodes: Vec::new(),
         saved: ErSavedList::default(),
-        #[cfg(feature = "src_locations")]
-        src_location: std::panic::Location::caller(),
+        src_location: None,
     };
     let wrapped = BorrowedProjectionWrap::from(tree);
 

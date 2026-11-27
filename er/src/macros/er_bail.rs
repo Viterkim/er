@@ -15,8 +15,11 @@ macro_rules! er_bail {
         $crate::er_bail!($crate::er_internal::factory(|()| $error)(()))
     };
     ($error:expr $(,)?) => {{
+        use $crate::er_internal::ErNewPass as _;
+
         return ::core::result::Result::Err($crate::er_internal::ErBailValue::bail(
-            (0, $crate::er_internal::ErReady), $error,
+            (0, $crate::er_internal::ErReady),
+            $crate::er_internal::ErNew($error).__er_bail_value(),
         ));
     }};
     (|_| $fields:expr, $($nodes:tt)+) => {

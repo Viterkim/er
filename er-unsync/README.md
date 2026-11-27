@@ -3,7 +3,7 @@
 Single threaded / unsync version of `er` for platforms that don't use Arc, and want to use Rc/RefCell etc.
 
 ```toml
-er = { package = "er-unsync", version = "0.9" }
+er = { package = "er-unsync", version = "0.10" }
 ```
 
 You need the name `er` on the left so the derives can find it. If you call it `er_unsync` instead, each derive needs `#[er(crate = er_unsync)]`.
@@ -16,7 +16,7 @@ You need the name `er` on the left so the derives can find it. If you call it `e
 
 [GitHub Repo](https://github.com/Viterkim/er)
 
-[Er usage and examples](https://docs.rs/er/0.9.0/er/)
+[Er usage and examples](https://docs.rs/er/0.10.0/er/)
 
 [er-unsync on crates.io](https://crates.io/crates/er-unsync)
 

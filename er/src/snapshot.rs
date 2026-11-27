@@ -1,27 +1,28 @@
-use crate::{ErSaved, walk::ErEntryKind};
+use crate::{ErSavedList, walk::ErEntryKind};
 use alloc::{borrow::Cow, string::String, vec::Vec};
 
 /// A copy of the tree's messages and locations that outlives the original errors.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[must_use]
 pub struct ErSnapshot {
     /// Tree order, with parent indices linking each error to the one above it.
     pub entries: Vec<ErSnapshotEntry>,
-    /// The tree's saved reports/traces
-    pub saved: Vec<ErSaved>,
+    /// Reports with no owning row, such as a save on an empty snapshot.
+    pub unattached: ErSavedList,
 }
 
 /// One saved error, not one printed line.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ErSnapshotEntry {
     pub message: String,
+    /// The attachments shown on this row, in report order.
+    pub saved: ErSavedList,
     pub kind: ErEntryKind,
     pub index: usize,
     pub parent: Option<usize>,
     pub depth: usize,
     pub is_last: bool,
     pub source_truncated: bool,
-    #[cfg(feature = "src_locations")]
     pub src_location: Option<ErSnapshotLocation>,
 }
 

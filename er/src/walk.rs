@@ -1,6 +1,4 @@
-use crate::types::ErNode;
-#[cfg(feature = "src_locations")]
-use crate::types::ErSrcLocation;
+use crate::types::{ErNode, ErSavedList, ErSrcLocation};
 use alloc::{collections::BTreeSet, vec::Vec};
 use core::error::Error;
 use core::{marker::PhantomData, slice};
@@ -28,7 +26,10 @@ pub struct ErEntry<'a> {
     pub is_last: bool,
     /// Another native source exists, but the walk stopped at its limit.
     pub source_truncated: bool,
-    #[cfg(feature = "src_locations")]
+    /// Saves on this occurrence of the error.
+    pub(crate) saved: Option<&'a ErSavedList>,
+    /// Saves on the top of the shared tree this occurrence shows.
+    pub(crate) shared_saved: Option<&'a ErSavedList>,
     pub src_location: Option<ErSrcLocation>,
 }
 
@@ -38,7 +39,7 @@ pub struct PendingError<'a> {
     pub depth: usize,
     pub sources_left: usize,
     pub is_last: bool,
-    #[cfg(feature = "src_locations")]
+    pub saved: Option<&'a ErSavedList>,
     pub src_location: Option<ErSrcLocation>,
 }
 

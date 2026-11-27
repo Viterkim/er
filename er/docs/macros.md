@@ -1,84 +1,47 @@
 # Macros
 
-Checkout the main examples.md doc for patterns to use, this is mostly just for the macros specifically. 
+Check out the main examples.md doc for patterns to use, this is mostly just for the macros specifically.
 
 ## Constructors
 
-Both `Er` and `ErFormat` generate `new` for structs and snake_case methods for enum variants. The arguments follow field order, with conversions such as `&str` into `String` done for you. Primitive numbers take their exact type so integer literals pick up the field's type, and you can put `#[er(exact)]` on any field if you want it to take its exact type without `Into`.
+Both `Er` and `ErFormat` give structs a `new` and enum variants a method named after the variant.
 
 ```rust,ignore
-// You write this
-#[derive(Er)]
-pub struct StartErr;
-// You get this
-impl StartErr {
-    #[must_use]
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-// You write this
-#[derive(Er)]
-pub struct PortErr(pub String);
-// You get this
-impl PortErr {
-    #[must_use]
-    pub fn new(value: impl Into<String>) -> Self {
-        let value = value.into();
-        Self(value)
-    }
-}
-
-// You write this
 #[derive(Er)]
 pub struct FindErr {
     pub query: String,
     pub account: u64,
 }
-// You get this
-impl FindErr {
-    #[must_use]
-    pub fn new(query: impl Into<String>, account: u64) -> Self {
-        let query = query.into();
-        Self { query, account }
-    }
-}
 
-// You write this
+FindErr::new("settings", 85);
+
 #[derive(Er)]
 pub enum ModeErr {
     Missing,
     Unknown { input: String },
 }
-// You get this
-impl ModeErr {
-    #[must_use]
-    pub fn missing() -> Self {
-        Self::Missing
-    }
 
-    #[must_use]
-    pub fn unknown(input: impl Into<String>) -> Self {
-        let input = input.into();
-        Self::Unknown { input }
-    }
-}
+ModeErr::missing();
+ModeErr::unknown("turbo");
 ```
 
-`#[er(src_location)]` fills a standard `Location` reference at construction, leaving that field out of the arguments (works without the `src_locations` feature too). You'll want to pass it in a closure like `.er(|| LocErr::new())` so the location points to your call site.
+The arguments follow field order. Here `"settings"` becomes a `String`, and `85` gets its type from `account`. Put `#[er(exact)]` on a field to take its type directly.
 
-The tuple helpers use those same field conversions when an error happens. On struct fields, `#[er(default)]` lets the tuple stop early, the marked fields go last and the ones you leave out get `Default::default()`, or your expression with `#[er(default = make_data())]`. `new(...)` still takes every field.
+With `Er`, you can use those same fields in `.er(("settings", 85))` and let the return type pick `FindErr`. Put `#[er(default)]` on trailing fields you want to leave out. Er fills each missing field with `Default::default()`, or your expression if you wrote `#[er(default = make_data())]`. `new` still takes those fields.
 
-`#[er(no_constructors)]` turns off the named constructors and the struct's field helpers, including `.er(())`.
+`#[er(src_location)]` fills a `Location` for you, even with the `src_locations` feature off. Use `.er(|| LocErr::new())` to capture the line where you made the call.
+
+The constructors have the same visibility as the type. On a `pub struct`, a `pub(crate)` field keeps `new` inside the crate, and a private field keeps it inside the module. Use `.er(|| MyErr::new(...))` there. Mixing absolute and relative field scopes can keep `new` inside the module too. The tuple form would let anyone construct the error because Rust trait impls are public.
+
+Er skips constructors on a `#[non_exhaustive]` struct or variant. On a `#[non_exhaustive]` enum, its existing variants still get their constructors unless you mark the variants too. Use `#[er(no_constructors)]` when you want to write your own `new` or turn off field construction altogether, including `.er(())`. You can also put it on a single variant like `Failed(Infallible)` to skip just that constructor.
 
 The derives call er's own items through `::er`, so a renamed er needs `#[er(crate = other_name)]`.
 
 ## Wrap
 
-If you need to implement another crate's trait on the whole error tree, Rust says no: you don't own `ErTree` or that trait. [Orphan rule](https://doc.rust-lang.org/reference/items/implementations.html#trait-implementation-coherence)
+Use Wrap to implement another crate's trait on your error tree. You can already print the tree with `.er_report()` and share it between owners with `.er_share()`.
 
-Wrap gives you a type you *do* own, around the tree:
+Rust needs you to own the type or the trait. Wrap gives you a type you *do* own around `ErTree`. [Orphan rule](https://doc.rust-lang.org/reference/items/implementations.html#trait-implementation-coherence)
 
 ```rust
 // You write this
@@ -122,7 +85,7 @@ impl IntoResponse for BaseErrWrap {
 
 Wrap and its Results still work with `.er()` and `.er_report()`. `.into()` works too, from a plain error or a tree.
 
-If you need Display/Debug on the Wrap itself you can add `output = report` or `output = top` (Axum doesn't care).
+If the foreign API needs Display/Debug on the Wrap itself, add `output = report` or `output = top` (Axum doesn't care).
 
 If the `er` crate has another name, give Wrap its path with `#[er(crate = other_name, wrap)]`.
 
@@ -235,6 +198,6 @@ pub fn request(input: &str) -> ErResult<u16, RequestErr> {
 }
 ```
 
-If you need the old top, you can use `.er_with_wrap(|err| fields)`.
+If you need the old top, you can use `.er_with_wrap(|err| fields)`. To add the Wrap as a child, use `report.er_add_wrap(wrapped)` on a tree or branch. In a mixed list, `er_add!(report, [wrapped, other])` keeps the wrapped tree for you.
 
 This needs your actual Wrap back. If another lib boxed it, downcast it first.

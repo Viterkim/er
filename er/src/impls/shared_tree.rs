@@ -4,8 +4,8 @@ use crate::impls::{
 };
 use crate::{
     ErBoxedInput, ErBoxedTreeExt, ErErrorContextExt, ErErrorExt, ErFindAll, ErInput, ErNode,
-    ErNodes, ErPart, ErReportError, ErSharedTree, ErSharedTreeRefExt, ErSnapshot, ErTree,
-    ErWithFields, IntoErPart, IntoErSnapshot,
+    ErNodes, ErReportError, ErSavedList, ErSharedTree, ErSharedTreeRefExt, ErSnapshot, ErTree,
+    ErWithFields, IntoErNode, IntoErSnapshot,
 };
 #[cfg(er_unsync)]
 use alloc::rc::Rc as Shared;
@@ -29,7 +29,7 @@ pub trait ErShareable: Error + 'static {}
 impl<E: Error + 'static> ErShareable for E {}
 
 trait ErSharedRoot {
-    fn view(&self) -> (&StoredError, &[ErNode]);
+    fn view(&self) -> (&StoredError, &[ErNode], &ErSavedList);
 
     fn into_nodes(self: Shared<Self>) -> Vec<ErNode>;
 
@@ -38,8 +38,8 @@ trait ErSharedRoot {
     }
 }
 impl<E: ErShareable> ErSharedRoot for ErTree<E> {
-    fn view(&self) -> (&StoredError, &[ErNode]) {
-        (&self.top, &self.nodes)
+    fn view(&self) -> (&StoredError, &[ErNode], &ErSavedList) {
+        (&self.top, &self.nodes, &self.saved)
     }
 
     fn into_nodes(self: Shared<Self>) -> Vec<ErNode> {
@@ -88,8 +88,8 @@ impl<E: ErReportError<ErBoxedInput>> BoxedShareable for E {}
 // Keep the original shared tree while borrowing the error inside its box.
 struct BoxedRoot<E>(Shared<ErTree<E>>);
 impl<E: BoxedShareable> ErSharedRoot for BoxedRoot<E> {
-    fn view(&self) -> (&StoredError, &[ErNode]) {
-        (self.0.top.stored_error(), &self.0.nodes)
+    fn view(&self) -> (&StoredError, &[ErNode], &ErSavedList) {
+        (self.0.top.stored_error(), &self.0.nodes, &self.0.saved)
     }
 
     fn into_nodes(self: Shared<Self>) -> Vec<ErNode> {
@@ -107,7 +107,7 @@ pub(crate) struct ErSharedNode {
     root: Option<Shared<Root>>,
 }
 impl ErSharedNode {
-    pub(crate) fn view(&self) -> Option<(&StoredError, &[ErNode])> {
+    pub(crate) fn view(&self) -> Option<(&StoredError, &[ErNode], &ErSavedList)> {
         Some(self.root.as_ref()?.view())
     }
 
@@ -273,84 +273,71 @@ impl<E> From<ErTree<E>> for ErSharedTree<E> {
         tree.er_share()
     }
 }
-impl<E: ErShareable> IntoErPart for ErSharedTree<E> {
+impl<E: ErShareable> IntoErNode for ErSharedTree<E> {
     type Error = E;
 
     fn er_error(&self) -> &E {
         &self.tree.top
     }
 
-    fn into_er_part(self) -> ErPart {
-        shared_part(self.tree, |tree| tree)
+    fn into_er_node(self) -> ErNode {
+        shared_node(self.tree, |tree| tree)
     }
 }
-impl<E: BoxedShareable> IntoErPart<ErBoxedInput> for ErSharedTree<E> {
+impl<E: BoxedShareable> IntoErNode<ErBoxedInput> for ErSharedTree<E> {
     type Error = E;
 
     fn er_error(&self) -> &E {
         &self.tree.top
     }
 
-    fn into_er_part(self) -> ErPart {
-        shared_part(self.tree, |tree| Shared::new(BoxedRoot(tree)))
+    fn into_er_node(self) -> ErNode {
+        shared_node(self.tree, |tree| Shared::new(BoxedRoot(tree)))
     }
 }
 
-fn shared_part<E>(
-    mut tree: Shared<ErTree<E>>,
+fn shared_node<E>(
+    tree: Shared<ErTree<E>>,
     erase: impl FnOnce(Shared<ErTree<E>>) -> Shared<Root>,
-) -> ErPart {
-    #[cfg(feature = "src_locations")]
-    let src_location = tree.src_location;
-    let saved = if tree.saved.is_empty() {
-        Default::default()
-    } else if let Some(tree) = Shared::get_mut(&mut tree) {
-        core::mem::take(&mut tree.saved)
-    } else {
-        tree.saved.clone()
-    };
-
-    ErPart {
-        node: ErNode {
-            error: Box::new(ErSharedNode {
-                root: Some(erase(tree)),
-            }),
-            nodes: Vec::new(),
-            #[cfg(feature = "src_locations")]
-            src_location,
-        },
-        saved,
+) -> ErNode {
+    ErNode {
+        src_location: tree.src_location,
+        error: Box::new(ErSharedNode {
+            root: Some(erase(tree)),
+        }),
+        nodes: Vec::new(),
+        saved: ErSavedList::default(),
     }
 }
 
 impl<E: ErShareable, Mode> ErErrorContextExt<Mode> for ErSharedTree<E> {}
-impl<E: ErShareable> IntoErPart for &ErSharedTree<E> {
+impl<E: ErShareable> IntoErNode for &ErSharedTree<E> {
     type Error = E;
 
     fn er_error(&self) -> &E {
         &self.tree.top
     }
 
-    fn into_er_part(self) -> ErPart {
-        self.clone().into_er_part()
+    fn into_er_node(self) -> ErNode {
+        self.clone().into_er_node()
     }
 }
 impl<E: ErShareable, Mode> ErErrorContextExt<Mode> for &ErSharedTree<E> {}
 impl<E: ErShareable> ErErrorExt for &ErSharedTree<E> {}
-impl<E: BoxedShareable> IntoErPart<ErBoxedInput> for &ErSharedTree<E> {
+impl<E: BoxedShareable> IntoErNode<ErBoxedInput> for &ErSharedTree<E> {
     type Error = E;
 
     fn er_error(&self) -> &E {
         &self.tree.top
     }
 
-    fn into_er_part(self) -> ErPart {
-        self.clone().into_er_part()
+    fn into_er_node(self) -> ErNode {
+        self.clone().into_er_node()
     }
 }
-impl<'a, E, Input> IntoErPart<Input> for &'a mut ErSharedTree<E>
+impl<'a, E, Input> IntoErNode<Input> for &'a mut ErSharedTree<E>
 where
-    &'a ErSharedTree<E>: IntoErPart<Input, Error = E>,
+    &'a ErSharedTree<E>: IntoErNode<Input, Error = E>,
 {
     type Error = E;
 
@@ -358,8 +345,8 @@ where
         &self.tree.top
     }
 
-    fn into_er_part(self) -> ErPart {
-        (&*self).into_er_part()
+    fn into_er_node(self) -> ErNode {
+        (&*self).into_er_node()
     }
 }
 impl<E: BoxedShareable, Mode> ErErrorContextExt<Mode, ErBoxedInput> for ErSharedTree<E> {}

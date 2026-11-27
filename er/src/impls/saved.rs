@@ -1,11 +1,13 @@
+use crate::aggregate::{self, ErAddRoot, ErAggregateItems};
 use crate::impls::error::report_string;
 use crate::render::LineWriter;
 use crate::types::Shared;
 use crate::{
-    ErBoxError, ErBuildFrom, ErEntries, ErErrorContextExt, ErErrorExt, ErErrorWithSaved, ErPart,
-    ErPresentationExt, ErReady, ErReportText, ErResult, ErResultSaveExt, ErSaveExt, ErSaveInput,
-    ErSaveRef, ErSaved, ErSavedKind, ErSavedList, ErSavedSnapshot, ErSavedTree, ErSnapshot, ErTree,
-    ErWithReport, ErWithSaves, IntoErPart, IntoErSnapshot, IntoErTree,
+    ErAllItem, ErBoxError, ErBranch, ErBuildFrom, ErEntries, ErErrorContextExt, ErErrorExt,
+    ErErrorWithSaved, ErNode, ErPresentationExt, ErReady, ErReportText, ErResult, ErResultSaveExt,
+    ErSaveExt, ErSaveInput, ErSaveRef, ErSaved, ErSavedKind, ErSavedList, ErSavedSnapshot,
+    ErSavedTree, ErSnapshot, ErTree, ErWithReport, ErWithSaves, InternalReport, IntoErNode,
+    IntoErSnapshot, IntoErTree,
 };
 use crate::{ErBoxedInput, ErReportError, ErWithFields};
 #[cfg(any(er_unsync, target_has_atomic = "ptr"))]
@@ -55,7 +57,6 @@ impl ErSavedList {
             return;
         };
 
-        // The same list again is one shared failure sitting under two parents, its reports are already here.
         #[cfg(any(er_unsync, target_has_atomic = "ptr"))]
         if Shared::ptr_eq(entries, &incoming) {
             return;
@@ -65,7 +66,7 @@ impl ErSavedList {
         #[cfg(any(er_unsync, target_has_atomic = "ptr"))]
         match Shared::try_unwrap(incoming) {
             Ok(mut owned) => entries.append(&mut owned),
-            Err(shared) => extend_missing(entries, &shared),
+            Err(shared) => entries.extend_from_slice(&shared),
         }
         #[cfg(not(any(er_unsync, target_has_atomic = "ptr")))]
         {
@@ -75,48 +76,8 @@ impl ErSavedList {
     }
 }
 
-/// Copy over the reports this list doesn't have yet. The same shared failure reaching one parent through several
-/// paths, `[&shared, &shared]`, would copy every report again per path, and double the list for every layer
-/// that does it. The report prints a duplicate once anyway.
-///
-/// A repeat lands right after the copy before it, give or take a note, so only the end of the list gets checked.
-/// Checking all of it made an aggregate of 16,000 different shared trees take 33 seconds.
-#[cfg(any(er_unsync, target_has_atomic = "ptr"))]
-fn extend_missing(entries: &mut Vec<ErSaved>, incoming: &[ErSaved]) {
-    let start = entries.len().saturating_sub(incoming.len() + 4);
-    let end = entries.len();
-
-    if incoming.len().saturating_mul(end - start) <= 4096 {
-        for entry in incoming {
-            if !entries[start..end].contains(entry) {
-                entries.push(entry.clone());
-            }
-        }
-
-        return;
-    }
-
-    let mut index: Vec<(u64, usize)> = (start..end)
-        .map(|position| (saved_hash(&entries[position]), position))
-        .collect();
-    index.sort_unstable();
-
-    for entry in incoming {
-        let hash = saved_hash(entry);
-        let first = index.partition_point(|&(other, _)| other < hash);
-        let present = index[first..]
-            .iter()
-            .take_while(|&&(other, _)| other == hash)
-            .any(|&(_, position)| entries[position] == *entry);
-
-        if !present {
-            entries.push(entry.clone());
-        }
-    }
-}
-
 fn saved_hash(entry: &ErSaved) -> u64 {
-    let mut hasher = Fnv(0xcbf2_9ce4_8422_2325);
+    let mut hasher = SavedHasher(0xcbf2_9ce4_8422_2325);
     entry.hash(&mut hasher);
 
     hasher.0
@@ -141,7 +102,7 @@ impl Deref for ErSavedList {
 }
 impl PartialEq for ErSavedList {
     fn eq(&self, other: &Self) -> bool {
-        self[..] == other[..]
+        core::ptr::eq(&self[..], &other[..]) || self[..] == other[..]
     }
 }
 impl Eq for ErSavedList {}
@@ -200,7 +161,6 @@ impl Hash for ErSavedKind {
                 state.write_u8(1);
                 snapshot.hash(state);
             }
-            // Two traces are the same when they're the same capture, like `eq` above.
             #[cfg(feature = "stack_traces")]
             Self::StackTrace(trace) => {
                 state.write_u8(2);
@@ -238,12 +198,14 @@ impl From<&Cow<'_, str>> for ErSavedKind {
 }
 impl From<ErSnapshot> for ErSavedKind {
     fn from(snapshot: ErSnapshot) -> Self {
-        Self::Snapshot(snapshot)
+        Self::Snapshot(limit_snapshot(&snapshot, SNAPSHOT_LEVELS - 1).unwrap_or(snapshot))
     }
 }
 impl From<&ErSnapshot> for ErSavedKind {
     fn from(snapshot: &ErSnapshot) -> Self {
-        Self::Snapshot(snapshot.clone())
+        Self::Snapshot(
+            limit_snapshot(snapshot, SNAPSHOT_LEVELS - 1).unwrap_or_else(|| snapshot.clone()),
+        )
     }
 }
 #[cfg(feature = "stack_traces")]
@@ -356,6 +318,33 @@ impl<T> ErErrorWithSaved<T> {
         Self {
             value,
             saved: ErSavedList(None),
+            nodes: [],
+        }
+    }
+
+    /// Add children to the error you saved a report on.
+    #[track_caller]
+    pub fn er_add<Mode, Kind, Input>(
+        self,
+        items: impl ErAggregateItems<Kind, Item: ErAllItem<Mode>>,
+    ) -> T::Root
+    where
+        T: ErSavedError<Input>,
+    {
+        let mut root = self.value.with_saved(self.saved);
+        aggregate::append(root.child_nodes(), items);
+        root
+    }
+}
+impl<T, Nodes> ErErrorWithSaved<T, Nodes> {
+    pub(crate) fn into_branch(self) -> ErBranch<T>
+    where
+        Nodes: Into<Vec<ErNode>>,
+    {
+        ErBranch {
+            value: self.value,
+            saved: self.saved,
+            nodes: self.nodes.into(),
         }
     }
 
@@ -366,10 +355,11 @@ impl<T> ErErrorWithSaved<T> {
 
     #[doc(hidden)]
     #[track_caller]
-    pub fn build<A: ErBuildFrom<T, Form>, Form>(self) -> ErErrorWithSaved<A> {
+    pub fn build<A: ErBuildFrom<T, Form>, Form>(self) -> ErErrorWithSaved<A, Nodes> {
         ErErrorWithSaved {
             value: A::er_build_from(self.value),
             saved: self.saved,
+            nodes: self.nodes,
         }
     }
 }
@@ -404,7 +394,7 @@ fn save_on<E, S: ErSaveRef + ?Sized>(
     result
 }
 
-impl<E> ErErrorWithSaved<E> {
+impl<E, Nodes: Into<Vec<ErNode>>> ErErrorWithSaved<E, Nodes> {
     /// Share this error with its saved reports.
     #[cfg(any(er_unsync, target_has_atomic = "ptr"))]
     #[track_caller]
@@ -421,27 +411,37 @@ impl<E> ErErrorWithSaved<E> {
     where
         E: ErSavedError<Input>,
     {
-        self.value.into_saved_tree(self.saved)
+        let mut tree = self.value.into_saved_tree(self.saved);
+        crate::impls::node::append_nodes(&mut tree.nodes, &mut self.nodes.into());
+        tree
     }
 }
 
 #[doc(hidden)]
 pub trait ErSavedError<Input>: Sized {
     type Error;
+    type Root: ErAddRoot<Error = Self::Error>;
+
+    fn with_saved(self, saved: ErSavedList) -> Self::Root;
 
     #[track_caller]
-    fn into_saved_tree(self, saved: ErSavedList) -> ErTree<Self::Error>;
+    fn into_saved_tree(self, saved: ErSavedList) -> ErTree<Self::Error> {
+        self.with_saved(saved).into_er_tree()
+    }
 }
-macro_rules! save_plain_error {
-    ($kind:ty, $presentation:ty) => {
-        impl<E: ErReportError<$kind>> ErSavedError<$kind> for E {
-            type Error = E;
 
-            #[track_caller]
-            fn into_saved_tree(self, saved: ErSavedList) -> ErTree<E> {
-                let mut tree = ErTree::from_top(self);
-                tree.saved = saved;
-                tree
+macro_rules! save_plain_error {
+    ($kind:ty, $presentation:ty, $bound:path) => {
+        impl<E: $bound> ErSavedError<$kind> for E {
+            type Error = E;
+            type Root = ErBranch<E>;
+
+            fn with_saved(self, saved: ErSavedList) -> Self::Root {
+                ErBranch {
+                    value: self,
+                    saved,
+                    nodes: Vec::new(),
+                }
             }
         }
 
@@ -455,42 +455,58 @@ macro_rules! save_plain_error {
             fn er_tree(self) -> ErResult<T, E::Error> {
                 match self {
                     Ok(value) => Ok(value),
-                    Err(ErErrorWithSaved { value, saved }) => Err(value.into_saved_tree(saved)),
+                    Err(ErErrorWithSaved { value, saved, .. }) => Err(value.into_saved_tree(saved)),
                 }
             }
         }
     };
 }
-save_plain_error!((), ErWithSaves);
-save_plain_error!(ErBoxedInput, (ErWithSaves, ErBoxedInput));
+save_plain_error!((), ErWithSaves, Error);
+save_plain_error!(
+    ErBoxedInput,
+    (ErWithSaves, ErBoxedInput),
+    ErReportError<ErBoxedInput>
+);
 impl<E: ErReportError<Input>, R: ErReportText, Input> ErSavedError<ErWithReport<Input>> for (E, R) {
     type Error = E;
+    type Root = ErBranch<E>;
 
-    #[track_caller]
-    fn into_saved_tree(self, saved: ErSavedList) -> ErTree<E> {
-        report_pair_tree((self.0, self.1.into_er_report_string()), saved)
+    fn with_saved(self, saved: ErSavedList) -> Self::Root {
+        report_pair_branch((self.0, self.1.into_er_report_string()), saved)
+    }
+}
+impl<E> ErSavedError<ErSavedTree> for ErBranch<E> {
+    type Error = E;
+    type Root = Self;
+
+    fn with_saved(mut self, mut saved: ErSavedList) -> Self {
+        self.saved.append(&mut saved);
+        self
     }
 }
 impl<E> ErSavedError<ErSavedTree> for ErTree<E> {
     type Error = E;
+    type Root = Self;
 
-    fn into_saved_tree(mut self, mut saved: ErSavedList) -> Self {
+    fn with_saved(mut self, mut saved: ErSavedList) -> Self {
         self.saved.append(&mut saved);
         self
     }
 }
 impl ErSavedError<ErSavedTree> for crate::ErTestFailure {
     type Error = crate::ErTestError;
+    type Root = ErTree<Self::Error>;
 
-    fn into_saved_tree(self, saved: ErSavedList) -> ErTree<Self::Error> {
-        self.into_er_tree().into_saved_tree(saved)
+    fn with_saved(self, saved: ErSavedList) -> Self::Root {
+        self.into_er_tree().with_saved(saved)
     }
 }
 impl<E: ErSavedError<ErSavedTree>> ErSavedError<ErSavedTree> for Box<E> {
     type Error = E::Error;
+    type Root = E::Root;
 
-    fn into_saved_tree(self, saved: ErSavedList) -> ErTree<Self::Error> {
-        (*self).into_saved_tree(saved)
+    fn with_saved(self, saved: ErSavedList) -> Self::Root {
+        (*self).with_saved(saved)
     }
 }
 impl<E: ErSavedError<ErSavedTree>> IntoErTree for ErErrorWithSaved<E> {
@@ -502,38 +518,41 @@ impl<E: ErSavedError<ErSavedTree>> IntoErTree for ErErrorWithSaved<E> {
 }
 impl<E: ErSavedError<Kind>, Kind> ErSavedError<Kind> for ErErrorWithSaved<E> {
     type Error = E::Error;
+    type Root = E::Root;
 
-    fn into_saved_tree(self, mut saved: ErSavedList) -> ErTree<Self::Error> {
+    fn with_saved(self, mut saved: ErSavedList) -> Self::Root {
         let Self {
             value,
             saved: mut previous,
+            ..
         } = self;
         previous.append(&mut saved);
-        value.into_saved_tree(previous)
+        value.with_saved(previous)
     }
 }
 impl<W: IntoErTree> From<ErErrorWithSaved<W>> for ErTree<W::Error> {
+    #[track_caller]
     fn from(error: ErErrorWithSaved<W>) -> Self {
-        let ErErrorWithSaved { value, saved } = error;
+        let ErErrorWithSaved { value, saved, .. } = error;
         value.into_er_tree().into_saved_tree(saved)
     }
 }
 impl ErReportText for String {
     fn er_report_str(&self) -> Option<&str> {
-        Some(self)
+        (!self.trim_start().is_empty()).then_some(self)
     }
 
     fn into_er_report_string(self) -> Option<String> {
-        Some(self)
+        self.er_report_str().is_some().then_some(self)
     }
 }
 impl ErReportText for Option<String> {
     fn er_report_str(&self) -> Option<&str> {
-        self.as_deref()
+        self.as_ref()?.er_report_str()
     }
 
     fn into_er_report_string(self) -> Option<String> {
-        self
+        self?.into_er_report_string()
     }
 }
 
@@ -548,7 +567,7 @@ impl fmt::Debug for ReportText {
 /// A library's error with its report next to it, like `Result<T, (StartError, String)>`.
 /// `.er()` puts the error in the tree and saves the report under the error's type, like `audio::StartError`.
 /// An `Option<String>` report that's `None` just saves nothing.
-impl<E: Error + Into<ErBoxError> + 'static, R: ErReportText> IntoErPart<ErWithReport> for (E, R) {
+impl<E: Error + Into<ErBoxError> + 'static, R: ErReportText> IntoErNode<ErWithReport> for (E, R) {
     type Error = E;
 
     fn er_error(&self) -> &E {
@@ -556,8 +575,8 @@ impl<E: Error + Into<ErBoxError> + 'static, R: ErReportText> IntoErPart<ErWithRe
     }
 
     #[track_caller]
-    fn into_er_part(self) -> ErPart {
-        part_with_report(
+    fn into_er_node(self) -> ErNode {
+        node_with_report(
             self.0.into(),
             type_name::<E>(),
             self.1.into_er_report_string(),
@@ -567,7 +586,7 @@ impl<E: Error + Into<ErBoxError> + 'static, R: ErReportText> IntoErPart<ErWithRe
 // A Box<dyn Error> can go in the tree even though the box itself doesn't implement Error.
 macro_rules! boxed_report {
     ($error:ty) => {
-        impl<R: ErReportText> IntoErPart<ErWithReport<$error>> for ($error, R) {
+        impl<R: ErReportText> IntoErNode<ErWithReport<$error>> for ($error, R) {
             type Error = $error;
 
             fn er_error(&self) -> &Self::Error {
@@ -575,8 +594,8 @@ macro_rules! boxed_report {
             }
 
             #[track_caller]
-            fn into_er_part(self) -> ErPart {
-                part_with_report(
+            fn into_er_node(self) -> ErNode {
+                node_with_report(
                     self.0,
                     type_name::<$error>(),
                     self.1.into_er_report_string(),
@@ -594,22 +613,27 @@ boxed_report!(Box<dyn Error + Send>);
 boxed_report!(Box<dyn Error + Sync>);
 
 #[track_caller]
-fn part_with_report(error: ErBoxError, title: &'static str, report: Option<String>) -> ErPart {
-    ErPart {
-        saved: saved_report_list(title, report),
-        ..error.into_er_part()
-    }
+fn node_with_report(error: ErBoxError, title: &'static str, report: Option<String>) -> ErNode {
+    let mut node = error.into_er_node();
+    node.saved = saved_report_list(title, report);
+    node
 }
-impl<E: IntoErPart<Input>, Input, Mode> ErErrorContextExt<Mode, Input> for ErErrorWithSaved<E> {}
-impl<E: IntoErPart<Input>, Input> ErErrorExt<Input> for ErErrorWithSaved<E> {}
-impl<E> ErErrorWithSaved<E> {
+impl<E: IntoErNode<Input>, Nodes: Into<Vec<ErNode>>, Input, Mode> ErErrorContextExt<Mode, Input>
+    for ErErrorWithSaved<E, Nodes>
+{
+}
+impl<E: IntoErNode<Input>, Nodes: Into<Vec<ErNode>>, Input> ErErrorExt<Input>
+    for ErErrorWithSaved<E, Nodes>
+{
+}
+impl<E, Nodes> ErErrorWithSaved<E, Nodes> {
     /// Build the new top from fields taken from the saved error, or from the top of a saved tree.
     ///
     /// `ErErrorExt` and `IntoErTree` both offer this for a saved tree, this one picks for you.
     #[track_caller]
     pub fn er_with<A, Input, Mode>(
         self,
-        fields: impl ErWithFields<<Self as IntoErPart<Input>>::Error, A, Mode>,
+        fields: impl ErWithFields<<Self as IntoErNode<Input>>::Error, A, Mode>,
     ) -> ErTree<A>
     where
         Self: ErErrorExt<Input>,
@@ -633,6 +657,11 @@ impl<E: ErReportError<Input>, R: ErReportText, Input> IntoErSnapshot<Input> for 
         let (error, report) = self;
         pair_report(&error, report.into_er_report_string())
     }
+
+    fn into_er_report_with_saved(self, saved: ErSavedList) -> String {
+        let (error, report) = self;
+        pair_report_with_saved(error.as_error(), report.into_er_report_string(), saved)
+    }
 }
 
 /// The same for a pair you keep around, `result.as_ref().er_report()`.
@@ -650,6 +679,14 @@ impl<E: ErReportError<Input>, R: ErReportText, Input> IntoErSnapshot<Input> for 
             Some(report) => report.to_owned(),
             None => report_string(self.0.as_error()),
         }
+    }
+
+    fn into_er_report_with_saved(self, saved: ErSavedList) -> String {
+        pair_report_with_saved(
+            self.0.as_error(),
+            self.1.er_report_str().map(str::to_owned),
+            saved,
+        )
     }
 }
 
@@ -695,7 +732,7 @@ where
             Ok(value) => Ok(value),
             Err(error) => {
                 let (pair, saved) = error.into_saved_payload();
-                Err(report_pair_tree(pair, saved))
+                Err(report_pair_branch(pair, saved).into())
             }
         }
     }
@@ -725,8 +762,8 @@ where
     {
         self.map_err(|error| {
             let ((error, report), saved) = error.into_saved_payload();
-            let report = pair_report(&error, report);
-            into((error, append_saved_report(report, &saved)))
+            let report = pair_report_with_saved(error.as_error(), report, saved);
+            into((error, report))
         })
     }
 }
@@ -889,13 +926,39 @@ fn report_with_saved<E: ErReportError<Input>, Input>(
     report.render_string()
 }
 
-fn snapshot_with_saved(mut snapshot: ErSnapshot, saved: &[ErSaved]) -> ErSnapshot {
-    snapshot.saved.extend(snapshot_saved(saved));
+fn snapshot_with_saved(mut snapshot: ErSnapshot, saved: &ErSavedList) -> ErSnapshot {
+    if !saved.is_empty() {
+        let owner = snapshot
+            .entries
+            .first_mut()
+            .map_or(&mut snapshot.unattached, |entry| &mut entry.saved);
+        *owner = SnapshotSaves::default().row(Some(owner), Some(saved));
+    }
+
     snapshot
 }
 
 fn pair_report<E: ErReportError<Input>, Input>(error: &E, report: Option<String>) -> String {
     report.unwrap_or_else(|| report_string(error.as_error()))
+}
+
+fn pair_report_with_saved(
+    error: &(dyn Error + 'static),
+    report: Option<String>,
+    saved: ErSavedList,
+) -> String {
+    if let Some(report) = report {
+        return append_saved_report(report, &saved);
+    }
+
+    InternalReport {
+        top: error,
+        nodes: &[],
+        saved: &saved,
+        extra: &[],
+        src_location: None,
+    }
+    .render_string()
 }
 
 pub fn append_saved_report(mut report: String, saved: &[ErSaved]) -> String {
@@ -925,8 +988,12 @@ fn saved_report(title: &'static str, report: String) -> ErSaved {
 }
 
 fn saved_report_list(title: &'static str, report: Option<String>) -> ErSavedList {
-    let entries = report.map(|report| Shared::new(alloc::vec![saved_report(title, report)]));
-    ErSavedList(entries)
+    let mut saved = ErSavedList::default();
+    if let Some(report) = report {
+        saved.push(saved_report(title, report));
+    }
+
+    saved
 }
 
 fn pair_snapshot(
@@ -936,23 +1003,30 @@ fn pair_snapshot(
 ) -> ErSnapshot {
     let mut snapshot = ErSnapshot::from(ErEntries::new(error, &[], None));
 
-    if let Some(report) = report {
-        snapshot.saved = alloc::vec![saved_report(title, report)];
+    if let Some(report) = report
+        && let Some(root) = snapshot.entries.first_mut()
+    {
+        root.saved.push(saved_report(title, report));
     }
 
     snapshot
 }
 
-#[track_caller]
-fn report_pair_tree<E>((top, report): (E, Option<String>), mut saved: ErSavedList) -> ErTree<E> {
-    let mut tree = ErTree::from_top(top);
-    tree.saved = saved_report_list(type_name::<E>(), report);
-    tree.saved.append(&mut saved);
-    tree
+fn report_pair_branch<E>(
+    (value, report): (E, Option<String>),
+    mut extra: ErSavedList,
+) -> ErBranch<E> {
+    let mut saved = saved_report_list(type_name::<E>(), report);
+    saved.append(&mut extra);
+    ErBranch {
+        value,
+        saved,
+        nodes: Vec::new(),
+    }
 }
 
 impl<E, R, Input> ErErrorExt<ErWithReport<Input>> for (E, R) where
-    Self: IntoErPart<ErWithReport<Input>>
+    Self: IntoErNode<ErWithReport<Input>>
 {
 }
 #[cfg(any(er_unsync, target_has_atomic = "ptr"))]
@@ -980,10 +1054,12 @@ where
     }
 }
 impl<E, R, Input, Mode> ErErrorContextExt<Mode, ErWithReport<Input>> for (E, R) where
-    Self: IntoErPart<ErWithReport<Input>>
+    Self: IntoErNode<ErWithReport<Input>>
 {
 }
-impl<E: IntoErPart<Input>, Input> IntoErPart<Input> for ErErrorWithSaved<E> {
+impl<E: IntoErNode<Input>, Nodes: Into<Vec<ErNode>>, Input> IntoErNode<Input>
+    for ErErrorWithSaved<E, Nodes>
+{
     type Error = E::Error;
 
     fn er_error(&self) -> &E::Error {
@@ -991,30 +1067,38 @@ impl<E: IntoErPart<Input>, Input> IntoErPart<Input> for ErErrorWithSaved<E> {
     }
 
     #[track_caller]
-    fn into_er_part(self) -> ErPart {
-        let ErErrorWithSaved { value, mut saved } = self;
-        let mut part = value.into_er_part();
-        part.saved.append(&mut saved);
-        part
+    fn into_er_node(self) -> ErNode {
+        let ErErrorWithSaved {
+            value,
+            mut saved,
+            nodes,
+        } = self;
+        let mut node = value.into_er_node();
+        node.saved.append(&mut saved);
+        crate::impls::node::append_nodes(&mut node.nodes, &mut nodes.into());
+        node
     }
 }
 
 impl<E: Error> ErSaveExt<ErReady> for E {
     type Value = E;
+    type Nodes = Vec<ErNode>;
 
-    fn er_save(self, title: impl Into<String>, saved: impl ErSaveInput) -> ErErrorWithSaved<E> {
-        ErErrorWithSaved::new(self).saving(title, saved)
+    fn er_save(self, title: impl Into<String>, saved: impl ErSaveInput) -> ErBranch<E> {
+        ErBranch::from(self).saving(title, saved)
     }
 }
 impl<E: ErReportError<ErBoxedInput>> ErSaveExt<ErBoxedInput> for E {
     type Value = E;
+    type Nodes = Vec<ErNode>;
 
-    fn er_save(self, title: impl Into<String>, saved: impl ErSaveInput) -> ErErrorWithSaved<E> {
-        ErErrorWithSaved::new(self).saving(title, saved)
+    fn er_save(self, title: impl Into<String>, saved: impl ErSaveInput) -> ErBranch<E> {
+        ErBranch::from_error(self).saving(title, saved)
     }
 }
-impl<E> ErSaveExt for ErErrorWithSaved<E> {
+impl<E, Nodes> ErSaveExt for ErErrorWithSaved<E, Nodes> {
     type Value = E;
+    type Nodes = Nodes;
 
     fn er_save(self, title: impl Into<String>, saved: impl ErSaveInput) -> Self {
         self.saving(title, saved)
@@ -1022,6 +1106,7 @@ impl<E> ErSaveExt for ErErrorWithSaved<E> {
 }
 impl ErSaveExt for () {
     type Value = ();
+    type Nodes = [ErNode; 0];
 
     fn er_save(self, title: impl Into<String>, saved: impl ErSaveInput) -> ErErrorWithSaved<()> {
         ErErrorWithSaved::new(self).saving(title, saved)
@@ -1029,6 +1114,7 @@ impl ErSaveExt for () {
 }
 impl<A> ErSaveExt for (A,) {
     type Value = A;
+    type Nodes = [ErNode; 0];
 
     fn er_save(self, title: impl Into<String>, saved: impl ErSaveInput) -> ErErrorWithSaved<A> {
         ErErrorWithSaved::new(self.0).saving(title, saved)
@@ -1038,6 +1124,7 @@ macro_rules! save_fields {
     ($($name:ident),+) => {
         impl<$($name),+> ErSaveExt for ($($name),+) {
             type Value = Self;
+    type Nodes = [ErNode; 0];
 
             fn er_save(self, title: impl Into<String>, saved: impl ErSaveInput) -> ErErrorWithSaved<Self> {
                 ErErrorWithSaved::new(self).saving(title, saved)
@@ -1057,67 +1144,83 @@ save_fields!(A, B, C, D, F, G, H, I, J, K);
 save_fields!(A, B, C, D, F, G, H, I, J, K, L);
 save_fields!(A, B, C, D, F, G, H, I, J, K, L, M);
 
-/// Each saved report below the tree under its title, skipping ones already printed.
-/// `extra` continues the same list, so a tree's reports and the ones saved on its Result print together
-/// without copying either.
+/// Put attachments after an opaque report or snapshot that has no owning entries.
 pub fn write_saved_parts<W: fmt::Write + ?Sized>(
-    writer: &mut W,
+    mut writer: &mut W,
     saved: &[ErSaved],
     extra: &[ErSaved],
 ) -> fmt::Result {
-    if extra.is_empty() {
-        return write_saved(writer, saved);
-    }
-    if saved.is_empty() {
-        return write_saved(writer, extra);
-    }
-
-    let all: Vec<&ErSaved> = saved.iter().chain(extra).collect();
-    write_saved(writer, &all)
-}
-
-fn write_saved<W: fmt::Write + ?Sized, T: Borrow<ErSaved>>(
-    writer: &mut W,
-    saved: &[T],
-) -> fmt::Result {
-    #[cfg(feature = "stack_traces")]
-    if let Some(rendered) = trace_text(saved) {
-        return write_distinct_saved(writer, &rendered);
-    }
-
-    write_distinct_saved(writer, saved)
-}
-
-// Below this a plain scan beats building an index, and almost every report is below it.
-const SCAN_LIMIT: usize = 16;
-
-fn write_distinct_saved<W: fmt::Write + ?Sized, T: Borrow<ErSaved>>(
-    writer: &mut W,
-    saved: &[T],
-) -> fmt::Result {
-    if saved.len() <= SCAN_LIMIT {
-        for (index, entry) in saved.iter().enumerate() {
-            let entry = entry.borrow();
-            if saved[..index]
-                .iter()
-                .any(|earlier| earlier.borrow() == entry)
-            {
-                continue;
-            }
-
-            write!(writer, "\n\n{entry}")?;
-        }
-
+    if saved.is_empty() && extra.is_empty() {
         return Ok(());
     }
 
-    for (entry, repeated) in saved.iter().zip(repeated(saved)) {
-        if !repeated {
-            write!(writer, "\n\n{}", entry.borrow())?;
+    let writer: &mut dyn fmt::Write = &mut writer;
+    for_distinct_parts(saved, extra, |saved, _| write!(writer, "\n\n{saved}"))
+}
+
+pub(crate) fn for_distinct_parts(
+    first: &[ErSaved],
+    second: &[ErSaved],
+    mut emit: impl FnMut(&ErSaved, bool) -> fmt::Result,
+) -> fmt::Result {
+    let saved = match (first, second) {
+        ([], saved) | (saved, []) => saved,
+        ([first], [second]) => return for_distinct_saved(&[first, second], emit),
+        _ => {
+            let both: Vec<_> = first.iter().chain(second).collect();
+            return for_distinct_saved(&both, emit);
         }
+    };
+
+    match saved {
+        [] => Ok(()),
+        [only] => emit(only, true),
+        _ => for_distinct_saved(saved, emit),
+    }
+}
+
+fn for_distinct_saved<T: Borrow<ErSaved>>(
+    saved: &[T],
+    emit: impl FnMut(&ErSaved, bool) -> fmt::Result,
+) -> fmt::Result {
+    #[cfg(feature = "stack_traces")]
+    if let Some(rendered) = trace_text(saved) {
+        return emit_distinct_saved(&rendered, emit);
+    }
+
+    emit_distinct_saved(saved, emit)
+}
+
+// Below this a plain scan beats building an index, and almost every owner is below it.
+const SCAN_LIMIT: usize = 16;
+
+fn emit_distinct_saved<T: Borrow<ErSaved>>(
+    saved: &[T],
+    mut emit: impl FnMut(&ErSaved, bool) -> fmt::Result,
+) -> fmt::Result {
+    let mut distinct = saved
+        .iter()
+        .zip(duplicate_flags(saved))
+        .filter_map(|(entry, repeated)| (!repeated).then_some(entry.borrow()))
+        .peekable();
+    while let Some(entry) = distinct.next() {
+        emit(entry, distinct.peek().is_none())?;
     }
 
     Ok(())
+}
+
+fn duplicate_flags<T: Borrow<ErSaved>>(saved: &[T]) -> impl Iterator<Item = bool> {
+    let duplicates = (saved.len() > SCAN_LIMIT).then(|| repeated(saved));
+    saved
+        .iter()
+        .enumerate()
+        .map(move |(index, entry)| match &duplicates {
+            Some(duplicates) => duplicates[index],
+            None => saved[..index]
+                .iter()
+                .any(|earlier| earlier.borrow() == entry.borrow()),
+        })
 }
 
 /// Which entries equal one before them. A batch of thousands of reports would spend seconds comparing each one
@@ -1131,35 +1234,32 @@ fn repeated<T: Borrow<ErSaved>>(saved: &[T]) -> Vec<bool> {
     order.sort_unstable();
 
     let mut repeated = alloc::vec![false; saved.len()];
-    let mut start = 0;
-    while start < order.len() {
-        let hash = order[start].0;
-        let group = order[start..]
-            .iter()
-            .take_while(|(other, _)| *other == hash)
-            .count();
-        let group = &order[start..start + group];
-
+    for group in order.chunk_by(|a, b| a.0 == b.0) {
         for (position, &(_, index)) in group.iter().enumerate().skip(1) {
             repeated[index] = group[..position].iter().any(|&(_, earlier)| {
                 !repeated[earlier] && saved[earlier].borrow() == saved[index].borrow()
             });
         }
-
-        start += group.len();
     }
 
     repeated
 }
 
-struct Fnv(u64);
-impl Hasher for Fnv {
+struct SavedHasher(u64);
+impl Hasher for SavedHasher {
     fn finish(&self) -> u64 {
         self.0
     }
 
+    #[inline(never)]
     fn write(&mut self, bytes: &[u8]) {
-        for byte in bytes {
+        let (words, tail) = bytes.as_chunks::<8>();
+        for word in words {
+            self.0 =
+                (self.0.rotate_left(11) ^ u64::from_ne_bytes(*word)).wrapping_mul(0x0100_0000_01b3);
+        }
+
+        for byte in tail {
             self.0 = (self.0 ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3);
         }
     }
@@ -1238,94 +1338,104 @@ fn trace_text<T: Borrow<ErSaved>>(saved: &[T]) -> Option<Vec<Cow<'_, ErSaved>>> 
     Some(rendered)
 }
 
-/// The saved reports a snapshot keeps, with stack traces as text.
-pub fn snapshot_saved(saved: &[ErSaved]) -> Vec<ErSaved> {
+#[derive(Default)]
+pub(crate) struct SnapshotSaves {
     #[cfg(feature = "stack_traces")]
-    {
-        // Keep the first shared trace inline so its copies need no cache allocation.
-        let mut first_trace = None;
-        let mut other_traces = None;
-        let mut snapshot = Vec::with_capacity(saved.len());
+    traces: Option<HashMap<*const Backtrace, String>>,
+}
+impl SnapshotSaves {
+    pub fn row(&mut self, shared: Option<&ErSavedList>, own: Option<&ErSavedList>) -> ErSavedList {
+        let saved = match (shared, own) {
+            (Some(shared), Some(own)) if !own.is_empty() && !shared.is_empty() => {
+                let mut both = shared.clone();
+                both.append(&mut own.clone());
+                both
+            }
+            (Some(shared), _) if !shared.is_empty() => shared.clone(),
+            (_, Some(own)) => own.clone(),
+            _ => return ErSavedList::default(),
+        };
 
-        for (index, entry) in saved.iter().enumerate() {
-            let ErSavedKind::StackTrace(trace) = &entry.kind else {
-                snapshot.push(snapshot_entry(entry));
-                continue;
-            };
-
-            let previous = if is_shared_capture(trace) {
-                let identity = Arc::as_ptr(trace);
-                match first_trace {
-                    Some((first, previous)) if first == identity => Some(previous),
-                    Some(_) => other_traces
-                        .get_or_insert_with(HashMap::new)
-                        .insert(identity, index),
-                    None => {
-                        first_trace = Some((identity, index));
-                        None
-                    }
+        #[cfg(feature = "stack_traces")]
+        let mut saved = saved;
+        #[cfg(feature = "stack_traces")]
+        if saved
+            .iter()
+            .any(|entry| matches!(entry.kind, ErSavedKind::StackTrace(_)))
+            && let Some(entries) = &mut saved.0
+        {
+            for entry in saved_entries_mut(entries) {
+                if let ErSavedKind::StackTrace(trace) = &entry.kind {
+                    let text = if is_shared_capture(trace) {
+                        self.traces
+                            .get_or_insert_with(HashMap::new)
+                            .entry(Arc::as_ptr(trace))
+                            .or_insert_with(|| trace.to_string())
+                            .clone()
+                    } else {
+                        trace.to_string()
+                    };
+                    entry.kind = ErSavedKind::Text(text);
                 }
-            } else {
-                None
-            };
-            let kind = match previous {
-                Some(previous) => snapshot[previous].kind.clone(),
-                None => ErSavedKind::Text(trace.to_string()),
-            };
-
-            snapshot.push(ErSaved {
-                title: entry.title.clone(),
-                kind,
-            });
+            }
         }
 
-        snapshot
-    }
+        if saved.len() > 1 {
+            let mut flags = duplicate_flags(&saved);
+            if let Some(first) = flags.position(|repeated| repeated) {
+                let mut unique = saved[..first].to_vec();
+                unique.extend(
+                    saved[first + 1..]
+                        .iter()
+                        .zip(flags)
+                        .filter_map(|(entry, repeated)| (!repeated).then_some(entry))
+                        .cloned(),
+                );
+                return ErSavedList(Some(Shared::new(unique)));
+            }
+        }
 
-    #[cfg(not(feature = "stack_traces"))]
-    {
-        saved.iter().map(snapshot_entry).collect()
+        saved
     }
 }
 
-/// A snapshot saved inside a saved snapshot gets kept as its text. Code that saves the previous failure on every
-/// new one would otherwise nest a level deeper each round, and printing, cloning or dropping that goes down
-/// one stack frame per level until it runs out.
-fn snapshot_entry(entry: &ErSaved) -> ErSaved {
-    let ErSavedKind::Snapshot(snapshot) = &entry.kind else {
-        return entry.clone();
-    };
-    let nested = |saved: &ErSaved| match saved.kind {
-        ErSavedKind::Snapshot(_) => true,
-        ErSavedKind::Text(_) => false,
-        #[cfg(feature = "stack_traces")]
-        ErSavedKind::StackTrace(_) => false,
-    };
-    if !snapshot.saved.iter().any(nested) {
-        return entry.clone();
+// Saving the last retry on the next one can go on forever. Keep the older report as text
+// before printing or dropping the history needs one stack frame per retry.
+const SNAPSHOT_LEVELS: usize = 8;
+
+fn limit_nested_saves(saved: &ErSavedList, levels: usize) -> Option<ErSavedList> {
+    let mut changed = None;
+    for (index, entry) in saved.iter().enumerate() {
+        let ErSavedKind::Snapshot(inner) = &entry.kind else {
+            continue;
+        };
+        let kind = if levels == 0 {
+            ErSavedKind::Text(inner.er_report())
+        } else if let Some(inner) = limit_snapshot(inner, levels - 1) {
+            ErSavedKind::Snapshot(inner)
+        } else {
+            continue;
+        };
+
+        let entries = changed.get_or_insert_with(|| saved.to_vec());
+        entries[index].kind = kind;
     }
 
-    let saved = snapshot
-        .saved
-        .iter()
-        .map(|saved| match &saved.kind {
-            ErSavedKind::Snapshot(inner) => ErSaved {
-                title: saved.title.clone(),
-                kind: ErSavedKind::Text(inner.er_report()),
-            },
-            ErSavedKind::Text(_) => saved.clone(),
-            #[cfg(feature = "stack_traces")]
-            ErSavedKind::StackTrace(_) => saved.clone(),
-        })
-        .collect();
+    changed.map(|entries| ErSavedList(Some(Shared::new(entries))))
+}
 
-    ErSaved {
-        title: entry.title.clone(),
-        kind: ErSavedKind::Snapshot(ErSnapshot {
-            entries: snapshot.entries.clone(),
-            saved,
-        }),
+fn limit_snapshot(snapshot: &ErSnapshot, levels: usize) -> Option<ErSnapshot> {
+    let mut changed = None;
+    for (index, entry) in snapshot.entries.iter().enumerate() {
+        if let Some(saved) = limit_nested_saves(&entry.saved, levels) {
+            changed.get_or_insert_with(|| snapshot.clone()).entries[index].saved = saved;
+        }
     }
+    if let Some(saved) = limit_nested_saves(&snapshot.unattached, levels) {
+        changed.get_or_insert_with(|| snapshot.clone()).unattached = saved;
+    }
+
+    changed
 }
 
 #[cfg(feature = "stack_traces")]

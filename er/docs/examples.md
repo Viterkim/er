@@ -6,7 +6,7 @@ All examples use `use er::*;`
 
 ## TLDR
 
-Structs: Use `.er(())` for empty structs, `.er(path)` for 1 field structs, and `.er((port, enabled))` for 2 or more fields (closures for non Copy values).
+Structs: Use `.er(())` for empty structs, `.er(path)` for 1 field structs, and `.er((port, enabled))` for 2 or more fields (closures for non `Copy + Debug` values).
 
 Enums: variant like `.er(|| ModeErr::variant_name(arg1))`.
 
@@ -166,7 +166,7 @@ pub fn sync(path: &Path, host: &str, port: u16) -> ErResult<(), SyncErr> {
 }
 ```
 
-When they're all `Copy` (references like `&Path`, `&str`, `&String`, `&PathBuf`, numbers, etc.), its a tuple with zero allocations on the ok path, so you don't need another closure at `.er(e("..."))?` (you can also do it with `er_bail!` and `er_all!`).
+When they're all `Copy` (references like `&Path`, `&str`, `&String`, `&PathBuf`, numbers, etc.), it's a tuple with zero allocations on the ok path, so you don't need another closure at `.er(e("..."))?` (you can also do it with `er_bail!` and `er_all!`).
 
 If a field needs a lookup like `user.name()` or you're building an enum variant, you should return a closure with `e`.
 
@@ -180,7 +180,7 @@ read_file(path).er(e("read file"))?;
 
 ## Print report
 
-If you want to keep the tree, you can call `.er_report()` (if you want to pass it on at a public boundary, checkout the `er_split()` part).
+If you want to keep the tree, you can call `.er_report()` (if you want to pass it on at a public boundary, check out the `er_split()` part).
 
 ```rust
 if let Err(error) = read_port("fakenumber") {
@@ -207,6 +207,8 @@ pub fn main() -> ErMain {
     Ok(())
 }
 ```
+
+If your program picks its own exit status, return `ErMain<AppErr, ExitCode>` and finish with `Ok(code)`.
 
 ## Print top error
 
@@ -243,7 +245,7 @@ Copy stuff like `&Path` or `&str` goes straight in and only converts if the call
 
 You still get `new(...)` for constructing a value directly, and `.er(|| MyTypeErr { a, b })` works for a finished error.
 
-You can pass values directly without `.as_ref()` or `.as_str()`, and `Option<T>` fields take `T` without `Some(...)`.
+You can pass values directly without `.as_ref()` or `.as_str()`, and `Option<T>` fields take `T` without `Some(...)` (for `Option<String>` that means a `String`, so from a `&str` use `.er(|_| msg.to_owned())`).
 
 ### Default fields
 
@@ -291,7 +293,7 @@ pub fn read_config(path: PathBuf, machine: &str) -> ErResult<String, TwoErr> {
 }
 ```
 
-It's just Arc/Rc depending on the platform, don't wrap values in `ErShared::new(...)` before the call just do `&path`.
+It's just Arc/Rc depending on the platform, don't wrap values in `ErShared::new(...)` before the call, just pass `path` (or `&path` if you only have a reference).
 
 ## Sharing / reusing errors
 
@@ -315,7 +317,7 @@ impl Device {
 
 `ErSharedTree` is `Clone` and read only, and like `ErTree` it doesn't implement `Debug` or `Display` (`failure.top` and `.er_report()` also work). 
 
-If you need `Debug` or you're done building the tree, you can derive `Clone` on your error and use `.er_split()` for `(MyError, String)` instead.
+If you need `Debug` or you're done building the tree, use `.er_split()` for `(MyError, String)` instead (and derive `Clone` on your error if you also need to clone it).
 
 ## Non errors (ErFormat)
 
@@ -445,11 +447,16 @@ When you want to add multiple errors to a previous one, `er_add!` lets them have
 error = er_add!(error, [first_error, second_error]);
 ```
 
-You generally don't need this but you can start with just the top and then add whatever goes wrong during for example cleanup:
+When you're building a summary, add each detail directly. Plain errors have no location of their own, including when they come from a failed `Result`. A tree from `.er()` or `er_new!()` keeps the location where you made it.
 
 ```rust
-let error = er_new!(ImportErr::rejected(path));
-let error = error.er_add(rollback_import());
+report = report.er_add(failed.er_save("report", worker_report));
+```
+
+Starting from a plain error gives you an `ErBranch`. You can keep adding children and saved reports, and `er_bail!` turns it into a tree with the bail location on top:
+
+```rust
+let error = ImportErr::rejected(path).er_add(rollback_import());
 
 er_bail!(error);
 ```
@@ -523,7 +530,7 @@ It's important to note that the er apis like .er() automatically include the (Er
 
 ## Reports from somewhere else
 
-Say a library gives you `(StartError, String)`. Add what you were doing and Er saves their report under it.
+Say a library gives you `(StartError, String)` (or `(StartError, Option<String>)`). Add what you were doing and Er saves their report under it (if it's `None` or blank, you still get `StartError` and its causes).
 
 ```rust
 let started = audio::start(setup).await.er(|| AudioErr::stopped(name))?;
@@ -532,11 +539,10 @@ let started = audio::start(setup).await.er(|| AudioErr::stopped(name))?;
 ```text
 AudioErr::Stopped { name: "speaker" } @ src/audio.rs:88:31
 `- audio startup failed
-
----- Saved: audio::StartError ----
-audio startup failed for speaker
-OpenErr { path: "app.db" } @ src/device.rs:39:10
-`- disk full
+   `- audio::StartError [saved]
+        audio startup failed for speaker
+        OpenErr { path: "app.db" } @ src/device.rs:39:10
+        `- disk full
 ```
 
 If their report sits in a field (or a server's response body), you can manually save with `.er_save()`:
@@ -619,7 +625,7 @@ if path.is_empty() {
 Err(error) => er_bail!(LoadErr::open(&path), error),
 ```
 
-However for cases where the return type of the functions can't infer your scope like the inside of an `async` block / closure you can end with `ErResult::Ok(..)` so `er_bail!` can infer it:
+Inside a closure or an `async` block, Rust can know which error you have and still need you to say the block returns an `ErResult`. End it with `ErOk(value)`.
 
 ```rust
 let body = async {
@@ -628,8 +634,16 @@ let body = async {
         Err(error) => er_bail!(ReadErr::failed(url), error),
     };
 
-    ErResult::Ok(data.len())
+    ErOk(data.len())
 };
+```
+
+If the error type also needs a name, write `ErOk::<ReadErr, _>(value)`. When a block only ever fails and the caller takes a future, you can name the return type on an `async fn` and pass `offline()` to the caller.
+
+```rust
+async fn offline() -> ErResult<(), ReadErr> {
+    er_bail!(ReadErr::offline());
+}
 ```
 
 ## Snapshots
@@ -643,11 +657,16 @@ if let Err(error) = read_port("fakenumber") {
 
     println!("{}", snapshot.er_report());
 
-    for entry in snapshot.er_entries() {
+    for entry in &snapshot.entries {
         println!("{}", entry.message);
+        for saved in &entry.saved {
+            println!("  {}", saved.title);
+        }
     }
 }
 ```
+
+A report you got as an `(E, String)` pair is one text attachment. A GUI can put that whole string under its title. If you saved an `ErSnapshot`, its entries are still there to draw. When you keep saving the previous snapshot on every retry, the newest eight saved snapshots keep their rows and the older history stays as text.
 
 You can use `.top()` or `.er_report()` and on a Result `.er_snapshot()` saves Err and leaves Ok alone.
 
@@ -665,11 +684,10 @@ reconnect(&server).er(|_| ReconnectErr.er_save("last sync", &last_sync))?;
 
 ```text
 ReconnectErr @ src/net.rs:21:17
-`- connection refused
-
----- Saved: last sync ----
-SyncErr @ src/sync.rs:10:24
-`- database is locked
+|- connection refused
+`- last sync [saved]
+     SyncErr @ src/sync.rs:10:24
+     `- database is locked
 ```
 
 ## Tests
@@ -723,7 +741,7 @@ If you use `?` the tree will be in `HandlerError` and callers can keep using `.e
 
 ## Foreign callbacks
 
-For cases like where SQLite chooses the error type for `FromSql` our callback can't return our tree (it gives us a box for an ordinary error) so we put the invalid value and use a manual src_location field:
+For cases like where SQLite chooses the error type for `FromSql` our callback can't return our tree (it gives us a box for an ordinary error) so we put the invalid value on the error and use a manual src_location field:
 
 ```rust
 #[derive(Er)]
@@ -773,7 +791,7 @@ if let Err(error) = read_port("fakenumber") {
 }
 ```
 
-They follow the tree as you add context or aggregate it. They print below the report with everything else you saved, you can always call `.er_save()` again and there's no env variables to turn on.
+They follow the tree as you add context or aggregate it. They print under the error you saved them on. You can always call `.er_save()` again and there's no env variables to turn on.
 
 ## Formatting your types
 
@@ -801,4 +819,4 @@ See [macros.md](https://github.com/Viterkim/er/blob/main/er/docs/macros.md) for 
 
 ## Bigger example
 
-For a full example combining foreign errors, custom rules, `.er_with()`, matching on `.top` and a public boundary (compared against other error crates), see [the tricky comparison](https://github.com/Viterkim/er/blob/main/er/docs/tricky-error-comparison.md#er-090-1).
+For a full example combining foreign errors, custom rules, `.er_with()`, matching on `.top` and a public boundary (compared against other error crates), see [the tricky comparison](https://github.com/Viterkim/er/blob/main/er/docs/tricky-error-comparison.md#er-0100-1).

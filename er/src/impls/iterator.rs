@@ -39,37 +39,37 @@ where
     }
 
     #[track_caller]
+    #[inline]
     fn er_collect_all<C, A>(self, error: impl ErMake<A, Mode>) -> ErResult<C, A>
     where
         C: FromIterator<T>,
         A: Error + 'static,
     {
-        // Growing from empty took twice as long for 64 successes. The room gets reserved at the first success, so a
-        // first item that fails reserves nothing, and capped, so a million items don't reserve a million up front.
+        // A large iterator may fail on its first item. Reserve on the first success.
         let room = self.size_hint().0.min(1024);
-        let mut values = Some(Vec::new());
-        let failures = aggregate::gather(self.map(|result| match result {
-            Ok(value) => {
-                if let Some(values) = &mut values {
+        let mut remaining = self;
+        let mut values = Vec::new();
+
+        while let Some(result) = remaining.next() {
+            match result {
+                Ok(value) => {
                     if values.is_empty() {
                         values.reserve_exact(room);
                     }
                     values.push(value);
                 }
-                Ok(())
-            }
-            Err(error) => {
-                values = None;
-                Err(error)
-            }
-        }));
+                Err(source) => {
+                    drop(values);
+                    let mut nodes = alloc::vec![source.into_er_input()];
+                    aggregate::append(&mut nodes, remaining);
 
-        match values {
-            Some(values) => {
-                drop(error);
-                Ok(values.into_iter().collect())
+                    return Err(aggregate::tree_from_nodes(nodes, error.er_make()));
+                }
             }
-            None => Err(failures.into_tree(error.er_make())),
         }
+
+        drop(remaining);
+        drop(error);
+        Ok(values.into_iter().collect())
     }
 }

@@ -40,7 +40,6 @@ pub fn option_inner(mut ty: &Type) -> Option<&Type> {
     }
 }
 
-// Works for both construction and matching.
 pub fn with_fields(case: &Case<'_>, target: TokenStream, values: &[TokenStream]) -> TokenStream {
     match case.shape {
         Fields::Unit => target,
@@ -55,7 +54,7 @@ pub fn with_fields(case: &Case<'_>, target: TokenStream, values: &[TokenStream])
                     && tokens.next().is_none()
                     && name.as_ref() == Some(&value_name)
                 {
-                    quote!(#name)
+                    quote!(#value_name)
                 } else {
                     quote!(#name: #value)
                 }

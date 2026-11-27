@@ -4,19 +4,17 @@ use quote::{quote, quote_spanned};
 use syn::{Path, Token, parse::Parse, parse::ParseStream};
 
 pub enum Input {
-    Array(TokenStream),
+    Add(TokenStream),
     Batch {
         er_path: Path,
-        collected: Collected,
+        collected: BatchItems,
         top: TokenTree,
     },
 }
 
-pub enum Collected {
-    /// `[a(), b()]`, each item already turned into `Result<(), ErPart>`.
-    Items(Vec<TokenStream>),
-    /// Anything iterable, gathered as it goes.
-    Gather(TokenStream),
+pub enum BatchItems {
+    List(Vec<TokenStream>),
+    Gathered(TokenTree),
 }
 
 impl Parse for Input {
@@ -27,21 +25,37 @@ impl Parse for Input {
             let content;
             syn::bracketed!(content in input);
             let results = content.parse_terminated(TokenTree::parse, Token![,])?;
-            let items = results.iter().map(|result| {
-                let span = expression_span(result);
-                quote_spanned!(span=>
-                    <_ as #er_path::er_internal::ErAggregateItem<_, _>>::item(0, #result)
-                        .map(::core::mem::drop)
-                )
-            });
-            if input.is_empty() {
-                return Ok(Self::Array(quote!([#(#items),*])));
+            if input.peek(Token![;]) {
+                input.parse::<Token![;]>()?;
+                let top: TokenTree = input.parse()?;
+                if results.len() == 1 {
+                    let only = &results[0];
+                    let root = quote!(#er_path::__er_add_root!(#top));
+                    // The parentheses carry the child's span through track_caller.
+                    return Ok(Self::Add(quote_spanned! {expression_span(only)=>
+                        (#er_path::er_internal::aggregate::add_one)(#root, 0, #only)
+                    }));
+                }
+
+                let items = results.iter().map(|result| item(&er_path, result));
+
+                return Ok(Self::Add(quote! {
+                    #er_path::er_internal::aggregate::add_nodes(
+                        #er_path::__er_add_root!(#top),
+                        &mut [#(#items),*],
+                    )
+                }));
             }
 
-            Collected::Items(items.collect())
+            BatchItems::List(
+                results
+                    .iter()
+                    .map(|result| item(&er_path, result))
+                    .collect(),
+            )
         } else {
             let expr: TokenTree = input.parse()?;
-            Collected::Gather(quote!(#expr))
+            BatchItems::Gathered(expr)
         };
 
         input.parse::<Token![,]>()?;
@@ -53,9 +67,16 @@ impl Parse for Input {
     }
 }
 
+fn item(er_path: &Path, result: &TokenTree) -> TokenStream {
+    quote_spanned!(expression_span(result)=>
+        <_ as #er_path::er_internal::ErAggregateItem<_, _>>::item(0, #result)
+            .map(::core::mem::drop)
+    )
+}
+
 pub fn expand(input: Input) -> TokenStream {
     let (er_path, collected, top) = match input {
-        Input::Array(array) => return array,
+        Input::Add(tree) => return tree,
         Input::Batch {
             er_path,
             collected,
@@ -65,9 +86,8 @@ pub fn expand(input: Input) -> TokenStream {
     let top = quote!(#er_path::er_internal::aggregate::ErBatchTop::into_batch_top(#top));
 
     match collected {
-        // Each item gets its own local and success only checks their tags. Building an array of them first, even
-        // just to check it, cost every successful call 56 bytes of copying per item.
-        Collected::Items(items) => {
+        // Building the array here would copy every item even when they all succeeded.
+        BatchItems::List(items) => {
             let reserved = identifiers(quote!(#top #(#items)*));
             let names: Vec<_> = (0..items.len())
                 .map(|index| binding(&reserved, &format!("__er_item_{index}")))
@@ -81,12 +101,15 @@ pub fn expand(input: Input) -> TokenStream {
                     ::core::result::Result::Ok(())
                 } else {
                     ::core::result::Result::Err(
-                        #er_path::er_internal::aggregate::gather_parts(&mut [#(#names),*]).into_tree(#top),
+                        #er_path::er_internal::aggregate::tree_from_nodes(
+                            #er_path::er_internal::aggregate::gather_nodes(&mut [#(#names),*]),
+                            #top,
+                        ),
                     )
                 }
             }}
         }
-        Collected::Gather(collected) => {
+        BatchItems::Gathered(collected) => {
             let errors = binding(&identifiers(quote!(#top #collected)), "__er_batch");
             let shield = shield_bindings([&errors]);
 
@@ -96,7 +119,7 @@ pub fn expand(input: Input) -> TokenStream {
                 if #errors.is_empty() {
                     ::core::result::Result::Ok(())
                 } else {
-                    ::core::result::Result::Err(#errors.into_tree(#top))
+                    ::core::result::Result::Err(#er_path::er_internal::aggregate::tree_from_nodes(#errors, #top))
                 }
             }}
         }

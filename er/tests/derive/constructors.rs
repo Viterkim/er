@@ -323,3 +323,98 @@ pub mod constants {
         Ok(())
     }
 }
+
+#[derive(Er)]
+#[non_exhaustive]
+pub struct NonExhaustiveErr {
+    pub code: u8,
+}
+impl NonExhaustiveErr {
+    pub(crate) fn new(code: u8) -> Self {
+        Self { code }
+    }
+}
+
+mod private_field {
+    use er::*;
+
+    #[derive(Debug)]
+    struct Secret;
+
+    #[derive(Er)]
+    pub struct PrivateFieldErr {
+        pub code: u8,
+        secret: Secret,
+        #[er(src_location)]
+        location: &'static core::panic::Location<'static>,
+    }
+
+    #[test]
+    fn private_new_tracks_caller() {
+        let line = line!() + 1;
+        let error = PrivateFieldErr::new(2, Secret);
+        assert_eq!(error.location.line(), line);
+    }
+}
+
+#[forbid(dead_code, unused_imports)]
+mod forbid_dead_code {
+    use er::*;
+
+    #[derive(Er)]
+    pub struct UsedErr(pub u8);
+
+    #[derive(Er)]
+    pub struct UnusedPrivateFieldErr {
+        pub code: u8,
+        secret: u8,
+    }
+
+    #[test]
+    fn constructors() {
+        let _ = UsedErr::new(1);
+        let _ = UnusedPrivateFieldErr { code: 4, secret: 9 };
+    }
+}
+
+mod crate_tuple {
+    use er::*;
+
+    #[derive(Er)]
+    pub(crate) struct Ticket(String);
+}
+
+#[derive(Er)]
+pub enum MixedExhaustiveErr {
+    Normal(u8),
+    #[non_exhaustive]
+    Locked {
+        code: u8,
+    },
+}
+impl MixedExhaustiveErr {
+    pub(crate) fn locked(code: u8) -> Self {
+        Self::Locked { code }
+    }
+}
+
+mod scoped_vis {
+    use er::*;
+
+    #[derive(Debug)]
+    pub(super) struct InnerData;
+
+    #[derive(Er)]
+    pub struct ScopedErr {
+        pub(super) data: InnerData,
+    }
+}
+
+#[test]
+pub fn visibility_and_non_exhaustive() {
+    let _ = NonExhaustiveErr::new(1);
+    let _ = MixedExhaustiveErr::normal(3);
+    let _ = MixedExhaustiveErr::locked(4);
+    let _ = crate_tuple::Ticket::new("busy");
+    let _ = scoped_vis::ScopedErr::new(scoped_vis::InnerData);
+}

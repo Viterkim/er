@@ -2,6 +2,7 @@ use er::*;
 use std::io::Error;
 #[cfg(feature = "macros")]
 use std::io::ErrorKind;
+use std::task::Poll;
 
 pub fn read_port(input: &str) -> ErResult<u16, Error> {
     input.parse().er(|| Error::other("port"))
@@ -14,8 +15,10 @@ pub fn without_derives() {
     read_port("85").er_expect("bad port");
 
     let results = [Err::<(), _>(Error::other("mode"))];
-    let error: ErTree<Error> =
-        er_internal::aggregate::collect(|| Error::other("config"), results).unwrap_err();
+    let error = results
+        .into_iter()
+        .er_collect_all::<(), Error>(|| Error::other("config"))
+        .unwrap_err();
     assert_eq!(error.nodes.len(), 1);
 
     #[cfg(feature = "macros")]
@@ -60,6 +63,25 @@ pub fn er_expect() {
 }
 
 #[test]
+pub fn poll_result() {
+    let input: Poll<Result<(), _>> = Poll::Ready(Err(std::fmt::Error));
+    let Poll::Ready(Err(tree)) = input.er(|| Error::other("write")) else {
+        panic!("expected a write error");
+    };
+
+    assert!(tree.er_find::<std::fmt::Error>().is_some());
+    #[cfg(feature = "src_locations")]
+    assert_eq!(tree.src_location.unwrap().file(), file!());
+}
+
+#[test]
+pub fn stream_end() {
+    let polled: Poll<Option<Result<u8, Error>>> = Poll::Ready(None);
+    let result = polled.er(|| -> Error { panic!("stream ended cleanly") });
+    assert!(matches!(result, Poll::Ready(None)));
+}
+
+#[test]
 pub fn collections() {
     let input = || {
         ["1", "bad", "2", "also bad"]
@@ -97,8 +119,7 @@ pub fn manual_wrap() {
         top: text.as_str(),
         nodes: Vec::new(),
         saved: ErSavedList::default(),
-        #[cfg(feature = "src_locations")]
-        src_location: std::panic::Location::caller(),
+        src_location: None,
     };
 
     let result: Result<(), ManualWrap<_>> = Err(ManualWrap(tree));

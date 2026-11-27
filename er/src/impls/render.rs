@@ -17,11 +17,24 @@ impl<'a, 'p, W: fmt::Write + ?Sized> LineWriter<'a, 'p, W> {
         self.pending_cr = false;
     }
 
+    #[inline]
     pub fn flush_break(&mut self) -> fmt::Result {
         if self.pending_breaks == 0 {
             return Ok(());
         }
 
+        self.write_breaks()
+    }
+
+    #[inline]
+    pub(crate) fn write_fragment(&mut self, text: &str) -> fmt::Result {
+        self.pending_cr = false;
+        self.flush_break()?;
+        self.inner.write_str(text)
+    }
+
+    #[cold]
+    fn write_breaks(&mut self) -> fmt::Result {
         if self.pending_breaks > 1 {
             let prefix = self.prefix.trim_end();
             for _ in 1..self.pending_breaks {
@@ -69,19 +82,15 @@ impl<'a, 'p, W: fmt::Write + ?Sized> LineWriter<'a, 'p, W> {
 
         Ok(())
     }
-}
-impl<W: fmt::Write + ?Sized> fmt::Write for LineWriter<'_, '_, W> {
-    fn write_str(&mut self, text: &str) -> fmt::Result {
-        let mut rest = text;
 
-        // Most long messages use LF. Search those in bulk once we've ruled out CR.
-        let check_cr = if text.len() < 64 {
-            true
-        } else if self.prefix.is_empty() {
+    #[inline(never)]
+    fn write_lines(&mut self, text: &str) -> fmt::Result {
+        if text.len() >= 64 && self.prefix.is_empty() {
             return self.write_unindented(text);
-        } else {
-            text.as_bytes().contains(&b'\r')
-        };
+        }
+
+        let mut rest = text;
+        let check_cr = text.len() < 24 || text.as_bytes().contains(&b'\r');
         loop {
             let next = if check_cr {
                 rest.as_bytes()
@@ -92,22 +101,37 @@ impl<W: fmt::Write + ?Sized> fmt::Write for LineWriter<'_, '_, W> {
             };
             let Some(index) = next else { break };
             if index > 0 {
-                self.pending_cr = false;
-                self.flush_break()?;
-                self.inner.write_str(&rest[..index])?;
+                self.write_fragment(&rest[..index])?;
             }
 
-            self.write_char(char::from(rest.as_bytes()[index]))?;
-            rest = &rest[index + 1..];
+            let tail = &rest[index..];
+            if let Some(after) = tail.strip_prefix("\r\n") {
+                self.pending_cr = false;
+                self.pending_breaks += 1;
+                rest = after;
+            } else {
+                self.write_char(char::from(tail.as_bytes()[0]))?;
+                rest = &tail[1..];
+            }
         }
 
         if !rest.is_empty() {
-            self.pending_cr = false;
-            self.flush_break()?;
-            self.inner.write_str(rest)?;
+            self.write_fragment(rest)?;
         }
 
         Ok(())
+    }
+}
+impl<W: fmt::Write + ?Sized> fmt::Write for LineWriter<'_, '_, W> {
+    fn write_str(&mut self, text: &str) -> fmt::Result {
+        if text.is_empty() {
+            return Ok(());
+        }
+        if text.len() < 24 && text.bytes().all(|byte| byte >= b' ') {
+            return self.write_fragment(text);
+        }
+
+        self.write_lines(text)
     }
 
     fn write_char(&mut self, character: char) -> fmt::Result {
@@ -136,7 +160,6 @@ impl<W: fmt::Write + ?Sized> fmt::Write for LineWriter<'_, '_, W> {
 
 impl<'a> From<ErEntry<'a>> for ReportEntry<'a> {
     fn from(entry: ErEntry<'a>) -> Self {
-        #[cfg(feature = "src_locations")]
         let src_location = entry
             .src_location
             .map(|location| (location.file(), location.line(), location.column()));
@@ -147,26 +170,32 @@ impl<'a> From<ErEntry<'a>> for ReportEntry<'a> {
             depth: entry.depth,
             is_last: entry.is_last,
             source_truncated: entry.source_truncated,
-            #[cfg(feature = "src_locations")]
             src_location,
         }
     }
 }
 impl<'a> From<&'a ErSnapshotEntry> for ReportEntry<'a> {
     fn from(entry: &'a ErSnapshotEntry) -> Self {
-        #[cfg(feature = "src_locations")]
-        let src_location = entry
+        entry.row_with_message(&entry.message)
+    }
+}
+impl ErSnapshotEntry {
+    pub(crate) fn report_entry(&self) -> ReportEntry<'_, str> {
+        self.row_with_message(&self.message)
+    }
+
+    fn row_with_message<'a, M: ?Sized>(&'a self, message: &'a M) -> ReportEntry<'a, M> {
+        let src_location = self
             .src_location
             .as_ref()
             .map(|location| (location.file.as_ref(), location.line, location.column));
 
-        Self {
-            message: &entry.message,
-            index: entry.index,
-            depth: entry.depth,
-            is_last: entry.is_last,
-            source_truncated: entry.source_truncated,
-            #[cfg(feature = "src_locations")]
+        ReportEntry {
+            message,
+            index: self.index,
+            depth: self.depth,
+            is_last: self.is_last,
+            source_truncated: self.source_truncated,
             src_location,
         }
     }

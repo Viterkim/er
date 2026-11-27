@@ -126,14 +126,14 @@ checksum = "00d174d5400e5e8fd687ad1049e2f578285fa914201b1af7e8b112a4546bd826"
 
 [[package]]
 name = "er"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "er-macros",
 ]
 
 [[package]]
 name = "er-macros"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -142,7 +142,7 @@ dependencies = [
 
 [[package]]
 name = "er-unsync"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "er-macros",
 ]

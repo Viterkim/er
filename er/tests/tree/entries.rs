@@ -45,8 +45,8 @@ pub fn walk() {
     let tree = ErTree::new(
         Native(Leaf(0)),
         [
-            ErTree::new(Native(Leaf(1)), [ErTree::from(Leaf(2))]).into_er_part(),
-            ErTree::from(Leaf(3)).into_er_part(),
+            ErTree::new(Native(Leaf(1)), [ErTree::from(Leaf(2))]).into_er_node(),
+            ErTree::from(Leaf(3)).into_er_node(),
         ],
     );
     let report = tree;
@@ -186,53 +186,55 @@ pub fn find_all_is_unpin() {
 }
 
 #[test]
-#[cfg(feature = "src_locations")]
 pub fn src_locations() {
     let line = line!() + 1;
     let direct = ErTree::from(Leaf(0));
-    let src: ErSrcLocation = direct.src_location;
+    let src = direct.src_location;
 
-    assert_eq!((src.file(), src.line()), (file!(), line));
+    assert_eq!(
+        src.map(|src| (src.file(), src.line())),
+        cfg!(feature = "src_locations").then_some((file!(), line))
+    );
 
-    let plain = Leaf(1);
-    let existing = direct;
-    let line = line!() + 4;
     let tree: ErTree<Leaf> = er_all!(
         |_| 2,
         [
-            plain,
+            Leaf(1),
             "bad".parse::<u16>().unwrap_err(),
-            "not a valid boolean option value".parse::<bool>(),
-            existing,
+            "bad".parse::<bool>(),
+            direct,
         ]
     )
     .unwrap_err();
 
-    assert_eq!(tree.nodes[0].src_location.line(), line);
-    assert_eq!(tree.nodes[2].src_location.line(), line + 2);
+    for node in &tree.nodes[..3] {
+        assert_eq!(node.src_location, None);
+    }
     assert_eq!(tree.nodes[3].src_location, src);
+
+    let tree = er_add!(tree, [Leaf(6), "bad".parse::<u16>()]);
+
+    for node in &tree.nodes[4..] {
+        assert_eq!(node.src_location, None);
+    }
 
     let missing: Option<()> = None;
     let line = line!() + 1;
     let tree = missing.er::<Leaf>(|_| 3).unwrap_err();
 
-    assert_eq!(tree.src_location.line(), line);
-
-    let line = line!() + 1;
-    let tree = ErTree::new(Leaf(5), [Leaf(6)]);
-
-    assert_eq!(tree.nodes[0].src_location.line(), line);
+    assert_eq!(
+        tree.src_location.map(|src| src.line()),
+        cfg!(feature = "src_locations").then_some(line)
+    );
 
     let boxed: Box<dyn Error + Send + Sync> = Box::new(Leaf(7));
     let result: Result<(), ErBoxError> = Err(boxed);
     let line = line!() + 1;
     let tree = result.er::<Leaf>(|_| 8).unwrap_err();
 
-    assert_eq!(tree.nodes[0].src_location.line(), line);
-
-    let boxed: ErBoxError = Box::new(Leaf(9));
-    let line = line!() + 1;
-    let node = boxed.into_er_part();
-
-    assert_eq!(node.node.src_location.line(), line);
+    assert_eq!(
+        tree.src_location.map(|src| src.line()),
+        cfg!(feature = "src_locations").then_some(line)
+    );
+    assert_eq!(tree.nodes[0].src_location, None);
 }

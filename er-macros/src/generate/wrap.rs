@@ -4,7 +4,7 @@ use crate::names::{binding, identifiers, shield_bindings};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::HashSet;
-use syn::fold::Fold as _;
+use syn::visit_mut::VisitMut as _;
 use syn::{DeriveInput, Generics, Ident, Path, Type, parse_quote};
 
 pub fn expand(
@@ -33,7 +33,8 @@ pub fn expand(
     let (_, type_generics, _) = input.generics.split_for_impl();
     let stored: Type = parse_quote!(#error #type_generics);
     let mut replace_self = ReplaceSelf { original: &stored };
-    let declaration = replace_self.fold_generics(input.generics.clone());
+    let mut declaration = input.generics.clone();
+    replace_self.visit_generics_mut(&mut declaration);
     let (impl_generics, type_generics, where_clause) = declaration.split_for_impl();
     let inner = quote!(#er_path::ErTree<#stored>);
 
@@ -58,7 +59,6 @@ pub fn expand(
     let alloc = binding(&node_names, "__er_alloc");
     let mut node_generics = declaration.clone();
     node_generics.params.push(parse_quote!(#node_root));
-    // The runtime decides which errors can become stored nodes.
     let predicates = &mut node_generics.make_where_clause().predicates;
     predicates.push(parse_quote!(
         #wrap #type_generics: #er_path::IntoErTree<Error = #node_root>
@@ -73,34 +73,42 @@ pub fn expand(
     let (context_impl, _, context_where) = context_generics.split_for_impl();
 
     let conversion = if options.std_error {
+        let item_kind = binding(&node_names, "__ErItemKind");
         quote! {
             impl #root_impl ::core::error::Error for #wrap #type_generics #root_where {}
+
+            impl #impl_generics #wrap #type_generics #where_clause {
+                /// Add children to the wrapped tree.
+                #[track_caller]
+                pub fn er_add<#mode, #item_kind>(self, #value: impl #er_path::er_internal::aggregate::ErAggregateItems<#item_kind, Item: #er_path::er_internal::ErAllItem<#mode>>) -> #inner {
+                    self.tree.er_add(#value)
+                }
+            }
         }
     } else {
         quote! {
             impl #impl_generics #er_path::er_internal::impls::saved::ErSavedError<#er_path::er_internal::ErSavedTree> for #wrap #type_generics #where_clause {
                 type Error = #stored;
+                type Root = #inner;
 
-                fn into_saved_tree(self, mut #saved: #er_path::ErSavedList) -> #inner {
-                    let mut #tree = self.tree;
-                    #tree.saved.append(&mut #saved);
-                    #tree
+                fn with_saved(self, #saved: #er_path::ErSavedList) -> #inner {
+                    #er_path::er_internal::impls::saved::ErSavedError::with_saved(self.tree, #saved)
                 }
             }
-            impl #node_impl #er_path::IntoErPart for #wrap #type_generics #node_where {
+            impl #node_impl #er_path::IntoErNode for #wrap #type_generics #node_where {
                 type Error = #stored;
 
                 fn er_error(&self) -> &#stored {
                     &self.tree.top
                 }
 
-                fn into_er_part(self) -> #er_path::ErPart {
+                fn into_er_node(self) -> #er_path::ErNode {
                     let #tree: #er_path::ErTree<#node_root> =
                         #er_path::IntoErTree::into_er_tree(self);
-                    #er_path::IntoErPart::into_er_part(#tree)
+                    #er_path::IntoErNode::into_er_node(#tree)
                 }
             }
-            impl #node_impl #er_path::IntoErPart for #alloc::boxed::Box<#wrap #type_generics> #node_where {
+            impl #node_impl #er_path::IntoErNode for #alloc::boxed::Box<#wrap #type_generics> #node_where {
                 type Error = #stored;
 
                 fn er_error(&self) -> &#stored {
@@ -108,8 +116,8 @@ pub fn expand(
                 }
 
                 #[track_caller]
-                fn into_er_part(self) -> #er_path::ErPart {
-                    #er_path::IntoErPart::into_er_part(*self)
+                fn into_er_node(self) -> #er_path::ErNode {
+                    #er_path::IntoErNode::into_er_node(*self)
                 }
             }
             impl #context_impl #er_path::ErErrorContextExt<#mode> for #wrap #type_generics #context_where {}
@@ -205,6 +213,12 @@ pub fn expand(
             impl #impl_generics ::core::convert::From<#inner> for #wrap #type_generics #where_clause {
                 fn from(#tree: #inner) -> Self {
                     Self { tree: #tree }
+                }
+            }
+            impl #impl_generics ::core::convert::From<#er_path::ErBranch<#stored>> for #wrap #type_generics #where_clause {
+                #[track_caller]
+                fn from(#value: #er_path::ErBranch<#stored>) -> Self {
+                    Self { tree: #er_path::IntoErTree::into_er_tree(#value) }
                 }
             }
             impl #impl_generics ::core::convert::From<#wrap #type_generics> for #inner #where_clause {

@@ -25,9 +25,9 @@ pub enum FormatBody {
     Function(ExprPath),
 }
 
-pub struct Tried<'a> {
-    pub formats: Vec<&'a FormatBody>,
-    pub default: bool,
+pub struct FormatFallbacks<'a> {
+    pub formats: [Option<&'a FormatBody>; 3],
+    pub use_default: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]

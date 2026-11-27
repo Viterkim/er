@@ -27,7 +27,7 @@ small_path_src = []
 macros = ["dep:er-macros"]
 
 [dependencies]
-er-macros = { version = "=0.9.0", path = "../er-macros", optional = true }
+er-macros = { version = "=0.10.0", path = "../er-macros", optional = true }
 
 [lints]
 workspace = true

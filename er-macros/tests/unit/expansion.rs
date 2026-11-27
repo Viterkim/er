@@ -84,22 +84,23 @@ pub fn no_constructors_options() -> syn::Result<()> {
         "#[er(no_constructors, no_constructors)] struct Data;",
         "#[er(no_constructors = true)] struct Data;",
         "#[er(no_constructors())] struct Data;",
+        "enum Data { #[er(no_constructors = true)] Value }",
     ] {
         let item = syn::parse_str(source)?;
         assert!(crate::generate::expand(&item).is_err(), "{source}");
     }
-    for source in [
-        "struct Data { #[er(no_constructors)] value: u8 }",
-        "enum Data { #[er(no_constructors)] Value }",
-    ] {
-        let item = syn::parse_str(source)?;
-        let error = crate::generate::expand(&item).unwrap_err();
-        assert_eq!(
-            error.to_string(),
-            "`no_constructors` goes on the struct or enum itself",
-            "{source}"
-        );
-    }
+
+    let field = syn::parse_quote!(
+        struct Data {
+            #[er(no_constructors)]
+            value: u8,
+        }
+    );
+    let error = crate::generate::expand(&field).unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "`no_constructors` goes on the type or an enum variant"
+    );
     Ok(())
 }
 

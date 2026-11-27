@@ -18,7 +18,6 @@ pub fn expand(tokens: TokenStream) -> syn::Result<TokenStream> {
 
         Ok(quote! {{
             #shield
-            #[allow(unused_imports)]
             use #path::er_internal::ErNewPass as _;
 
             let #tree = #path::er_internal::ErNew(#root)

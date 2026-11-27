@@ -87,7 +87,6 @@ impl<T: ?Sized> Borrow<T> for ErShared<T> {
         self
     }
 }
-// Compare and hash the value like Arc does, so a type holding one can derive these.
 impl<T: PartialEq + ?Sized> PartialEq for ErShared<T> {
     fn eq(&self, other: &Self) -> bool {
         **self == **other

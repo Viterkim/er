@@ -5,7 +5,6 @@ use crate::{
         bounds::{
             FormatBounds, bound_key,
             impls::{is_qualified_self, is_self_path},
-            lifetime_name,
         },
     },
     names::{binding, plain},
@@ -41,15 +40,6 @@ pub fn implementation(
     let source_ref = binding(&input.names, "__ErSourceRef");
     let as_dyn = quote!(#er_path::er_internal::impls::source::ErAsDynError);
 
-    let mut parameters = input.type_names.clone();
-    parameters.extend(input.const_names.iter().cloned());
-    parameters.extend(
-        input
-            .item
-            .generics
-            .lifetimes()
-            .map(|param| lifetime_name(&param.lifetime)),
-    );
     let mut generics = formatting.clone();
     let mut arms = Vec::new();
     let mut bounded = HashSet::new();
@@ -103,7 +93,7 @@ pub fn implementation(
             // `source()` hands out a `'static` error, so a trait object naming a lifetime or a parameter has to live
             // that long too.
             let mut types = Vec::new();
-            let mut bounds = FormatBounds::new(&type_name, &parameters, &mut types, true);
+            let mut bounds = FormatBounds::new(&type_name, &input.parameters, &mut types, true);
             bounds.visit_type(&ty);
             bounds.uses_parameters.then(|| quote!('static))
         } else if matches!(&ty, Type::Path(path) if path.qself.is_none()
@@ -112,7 +102,7 @@ pub fn implementation(
             Some(quote!('static))
         } else {
             let mut types = Vec::new();
-            let mut bounds = FormatBounds::new(&type_name, &parameters, &mut types, false);
+            let mut bounds = FormatBounds::new(&type_name, &input.parameters, &mut types, false);
             bounds.visit_type(&ty);
             bounds.uses_parameters.then(|| quote!(#as_dyn + 'static))
         };

@@ -7,12 +7,13 @@ use crate::internal::{
     ErAllItem, ErInput, ErReportError, ErTreeContext, ErValFields, ErWithFields, er_make_cold,
 };
 use crate::{
-    ErErrorWithSaved, ErFindAll, ErPart, ErResult, ErSavedList, ErSnapshot, ErTree,
+    ErBranch, ErErrorWithSaved, ErFindAll, ErNode, ErResult, ErSavedList, ErSnapshot, ErTree,
     impls::tree::with_source,
 };
 use crate::{ErMake, ErSaveInput, ErSaveRef, ErTest};
 use alloc::string::String;
 use core::error::Error;
+use core::task::Poll;
 
 /// Add a new top error above an error or a tree.
 pub trait ErErrorContextExt<Mode, Input = ()>: ErInput<Input> + Sized {
@@ -22,7 +23,6 @@ pub trait ErErrorContextExt<Mode, Input = ()>: ErInput<Input> + Sized {
     where
         A: Error + 'static,
     {
-        // The same split as `.er()` on a Result, this usually sits in a branch of a function that succeeds.
         if er_make_cold(&error) {
             context(error, self)
         } else {
@@ -32,7 +32,7 @@ pub trait ErErrorContextExt<Mode, Input = ()>: ErInput<Input> + Sized {
 }
 
 /// Build context using the old error.
-pub trait ErErrorExt<Input = ()>: IntoErPart<Input> + Sized {
+pub trait ErErrorExt<Input = ()>: IntoErNode<Input> + Sized {
     /// Build the new top from this error. For an `(Error, String)` pair, the closure gets the error and the report is kept.
     ///
     /// `er_bail!(device.er_with(|err| err.code));`
@@ -51,6 +51,18 @@ pub trait ErErrorExt<Input = ()>: IntoErPart<Input> + Sized {
 
 /// Print, save or share a plain error and its native sources.
 pub trait ErErrorPresentationExt<Input = ()> {
+    /// Put children under this error without recording a Rust location.
+    #[track_caller]
+    fn er_add<Mode, Kind>(
+        self,
+        items: impl ErAggregateItems<Kind, Item: ErAllItem<Mode>>,
+    ) -> ErBranch<Self>
+    where
+        Self: Sized,
+    {
+        ErBranch::from_error(self).er_add(items)
+    }
+
     /// Share this error as an `ErSharedTree` so multiple places can keep it.
     #[cfg(any(er_unsync, target_has_atomic = "ptr"))]
     #[track_caller]
@@ -100,6 +112,24 @@ pub trait ErContextExt<Mode, Input = ()> {
         A: Error + 'static;
 }
 
+/// Add context to the error from a poll method or a fallible stream.
+pub trait ErPollExt<Mode, Input = ()> {
+    /// An `ErResult` for a single operation, or an `Option<ErResult<..>>` for a stream.
+    type Ready<A>;
+
+    /// Like [`Result::er`](ErContextExt::er). `Pending` passes through, and
+    /// `Ready(None)` still means the stream has ended.
+    ///
+    /// ```rust,ignore
+    /// socket.poll_write(cx, buf).er(peer)
+    /// packets.poll_next(cx).er(peer)
+    /// ```
+    #[track_caller]
+    fn er<A>(self, error: impl ErMake<A, Mode>) -> Poll<Self::Ready<A>>
+    where
+        A: Error + 'static;
+}
+
 /// Other ways to work with a Result's error.
 pub trait ErResultExt<Input = ()> {
     type Ok;
@@ -120,7 +150,6 @@ pub trait ErResultExt<Input = ()> {
     {
         match self.er_result_input() {
             Ok(value) => Ok(value),
-            // Same split as `.er()`. Building a String here made every successful call twice as slow.
             Err(source) if !core::mem::needs_drop::<A>() => {
                 let error = fields.er_with_fields(source.er_input_error());
                 Err(with_source(error, source))
@@ -463,8 +492,8 @@ pub trait ErTestExt<Input = ()> {
     fn er_test(self) -> ErTest<Self::Ok>;
 }
 
-/// Turns an error or tree into a node and its metadata.
-pub trait IntoErPart<Input = ()> {
+/// Turns an error or tree into a child node.
+pub trait IntoErNode<Input = ()> {
     type Error: ?Sized;
 
     /// Borrow the error, or the top if this is a tree.
@@ -472,7 +501,7 @@ pub trait IntoErPart<Input = ()> {
 
     /// Move the error and its saved reports into a subtree.
     #[track_caller]
-    fn into_er_part(self) -> ErPart;
+    fn into_er_node(self) -> ErNode;
 }
 
 /// Get the tree out of a tree or a Wrap.
@@ -480,6 +509,7 @@ pub trait IntoErTree {
     type Error;
 
     /// Take the tree out, keeping its errors and saved reports.
+    #[track_caller]
     fn into_er_tree(self) -> ErTree<Self::Error>;
 
     /// Build the new top from fields taken from the old top.
@@ -553,6 +583,7 @@ pub trait IntoErTree {
 /// A single field still goes in a tuple, `.er(|_| (path,).er_save(..))`.
 pub trait ErSaveExt<Mode = ()>: Sized {
     type Value;
+    type Nodes;
 
     /// `er_bail!(SyncErr::server(code).er_save("server", report))`
     ///
@@ -561,7 +592,7 @@ pub trait ErSaveExt<Mode = ()>: Sized {
         self,
         title: impl Into<String>,
         saved: impl ErSaveInput,
-    ) -> ErErrorWithSaved<Self::Value>;
+    ) -> ErErrorWithSaved<Self::Value, Self::Nodes>;
 }
 
 /// Save a report borrowed from a failed Result.

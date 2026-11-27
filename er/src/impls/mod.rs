@@ -1,4 +1,5 @@
 pub mod boxed;
+pub mod branch;
 pub mod construct;
 pub mod error;
 #[cfg(feature = "macros")]

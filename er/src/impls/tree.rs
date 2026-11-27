@@ -1,17 +1,13 @@
 use crate::aggregate::ErAggregateItems;
 use crate::impls::node::find_below;
-use crate::impls::saved::snapshot_saved;
+use crate::internal::caller_location;
 use crate::{
     ErAllItem, ErBoxError, ErBoxedInput, ErBoxedTreeExt, ErEntries, ErErrorContextExt,
-    ErErrorWithSaved, ErFindAll, ErInput, ErNode, ErNodes, ErPart, ErReportError, ErSaveInput,
+    ErErrorWithSaved, ErFindAll, ErInput, ErNode, ErNodes, ErReportError, ErSaveInput, ErSaved,
     ErSavedList, ErSnapshot, ErSources, ErTree, ErTreeContext, ErWithFields, InternalReport,
-    IntoErPart, IntoErTree, IntoErTreeRef,
+    IntoErNode, IntoErTree, IntoErTreeRef,
 };
-#[cfg(er_unsync)]
-use alloc::boxed::Box;
-use alloc::{string::String, vec::Vec};
-#[cfg(feature = "src_locations")]
-use core::panic::Location;
+use alloc::{boxed::Box, string::String, vec::Vec};
 use core::{error::Error, fmt, ops::Deref};
 
 impl<E: Error + 'static> ErTree<E> {
@@ -25,11 +21,11 @@ impl<E: Error + 'static> ErTree<E> {
     }
 
     /// Erase the top, keeping its sub errors and saved reports.
-    pub fn into_er_part(self) -> ErPart
+    pub fn into_er_node(self) -> ErNode
     where
         E: Into<ErBoxError>,
     {
-        self.into_part(Into::into)
+        self.into_node(Into::into)
     }
 
     /// Returns the FIRST match.
@@ -69,24 +65,30 @@ impl<'a> InternalReport<'a> {
             .or_else(|| find_below(self.nodes))
     }
 }
-impl<E, Mode, Input> ErErrorContextExt<Mode, Input> for ErTree<E> where Self: IntoErPart<Input> {}
+impl<E, Mode, Input> ErErrorContextExt<Mode, Input> for ErTree<E> where Self: IntoErNode<Input> {}
 impl<E: Error + Into<ErBoxError> + 'static, Fields> ErTreeContext<(Fields, ())> for ErTree<E> {
     type Fields = Fields;
 
     #[track_caller]
-    fn with_top<A: Error + 'static>(self, error: ErErrorWithSaved<A>) -> ErTree<A> {
+    fn with_top<A: Error + 'static>(
+        self,
+        error: ErErrorWithSaved<A, impl Into<Vec<ErNode>>>,
+    ) -> ErTree<A> {
         with_source(error, self)
     }
 }
 #[diagnostic::do_not_recommend]
 impl<E, Fields> ErTreeContext<(Fields, ErBoxedInput)> for ErTree<E>
 where
-    Self: IntoErPart<ErBoxedInput>,
+    Self: IntoErNode<ErBoxedInput>,
 {
     type Fields = Fields;
 
     #[track_caller]
-    fn with_top<A: Error + 'static>(self, error: ErErrorWithSaved<A>) -> ErTree<A> {
+    fn with_top<A: Error + 'static>(
+        self,
+        error: ErErrorWithSaved<A, impl Into<Vec<ErNode>>>,
+    ) -> ErTree<A> {
         with_source(error, self)
     }
 }
@@ -121,15 +123,12 @@ impl<E> ErTree<E> {
         self.with_top(error)
     }
 
-    fn into_part(self, box_top: impl FnOnce(E) -> ErBoxError) -> ErPart {
-        ErPart {
-            node: ErNode {
-                error: box_top(self.top),
-                nodes: self.nodes,
-                #[cfg(feature = "src_locations")]
-                src_location: self.src_location,
-            },
+    fn into_node(self, box_top: impl FnOnce(E) -> ErBoxError) -> ErNode {
+        ErNode {
+            error: box_top(self.top),
             saved: self.saved,
+            nodes: self.nodes,
+            src_location: self.src_location,
         }
     }
 
@@ -139,8 +138,7 @@ impl<E> ErTree<E> {
             top,
             nodes: Vec::new(),
             saved: ErSavedList::default(),
-            #[cfg(feature = "src_locations")]
-            src_location: Location::caller(),
+            src_location: caller_location(),
         }
     }
 
@@ -185,7 +183,12 @@ impl<E> ErTree<E> {
         E: ErReportError<Input>,
     {
         let report = self.internal_report();
-        ErEntries::new(report.top, report.nodes, report.src_location)
+        ErEntries::with_saved(report.top, report.nodes, report.src_location, report.saved)
+    }
+
+    /// Every attachment in tree order, starting with the top error's.
+    pub fn er_saved(&self) -> impl Iterator<Item = &ErSaved> {
+        self.saved.iter().chain(self.er_descendants().saved())
     }
 
     /// Follows the root's `source()` chain.
@@ -202,9 +205,8 @@ impl<E> ErTree<E> {
     where
         E: ErReportError<Input>,
     {
-        let mut snapshot: ErSnapshot = self.er_entries().into();
-        snapshot.saved = snapshot_saved(&self.saved);
-        snapshot
+        let report = self.internal_report();
+        ErSnapshot::capture(report.top, report.nodes, report.saved, report.src_location)
     }
 
     pub(crate) fn internal_report<Input>(&self) -> InternalReport<'_>
@@ -224,11 +226,11 @@ impl<E> ErTree<E> {
     }
 
     /// Write the report straight to a buffer. The writer can return `fmt::Error` to stop early.
-    pub fn er_write_report<Input>(&self, writer: &mut (impl fmt::Write + ?Sized)) -> fmt::Result
+    pub fn er_write_report<Input>(&self, mut writer: &mut (impl fmt::Write + ?Sized)) -> fmt::Result
     where
         E: ErReportError<Input>,
     {
-        writer.write_fmt(format_args!("{}", self.internal_report()))
+        self.internal_report().write_to(&mut writer)
     }
 
     /// Save another report on this tree.
@@ -238,31 +240,16 @@ impl<E> ErTree<E> {
     }
 
     /// Add an error, tree or Result below the current top. Successful Results are skipped.
+    /// An existing tree keeps its location. A plain error has no location of its own.
     /// Pass a collection or iterator to add several. Use `er_add!(tree, [first, second])` for different types.
     #[track_caller]
     #[inline]
     pub fn er_add<Mode, Kind>(
-        self,
+        mut self,
         items: impl ErAggregateItems<Kind, Item: ErAllItem<Mode>>,
     ) -> Self {
-        // Bind in reverse field order so a panicking iterator still drops the top first.
-        let Self {
-            #[cfg(feature = "src_locations")]
-            src_location,
-            mut saved,
-            mut nodes,
-            top,
-        } = self;
-
-        crate::aggregate::append(&mut nodes, &mut saved, items);
-
-        Self {
-            top,
-            nodes,
-            saved,
-            #[cfg(feature = "src_locations")]
-            src_location,
-        }
+        crate::aggregate::append(&mut self.nodes, items);
+        self
     }
 
     /// The stored sub errors, no root or native sources.
@@ -347,7 +334,7 @@ impl<E: Error + 'static> From<E> for ErTree<E> {
         Self::from_top(error)
     }
 }
-impl<E: Error + Into<ErBoxError> + 'static> IntoErPart for ErTree<E> {
+impl<E: Error + Into<ErBoxError> + 'static> IntoErNode for ErTree<E> {
     type Error = E;
 
     fn er_error(&self) -> &E {
@@ -355,14 +342,14 @@ impl<E: Error + Into<ErBoxError> + 'static> IntoErPart for ErTree<E> {
     }
 
     #[inline]
-    fn into_er_part(self) -> ErPart {
-        ErTree::into_er_part(self)
+    fn into_er_node(self) -> ErNode {
+        ErTree::into_er_node(self)
     }
 }
 
 macro_rules! boxed_top {
     ($top:ty) => {
-        impl IntoErPart<ErBoxedInput> for ErTree<$top> {
+        impl IntoErNode<ErBoxedInput> for ErTree<$top> {
             type Error = $top;
 
             fn er_error(&self) -> &Self::Error {
@@ -370,8 +357,8 @@ macro_rules! boxed_top {
             }
 
             #[inline]
-            fn into_er_part(self) -> ErPart {
-                self.into_part(|top| top)
+            fn into_er_node(self) -> ErNode {
+                self.into_node(|top| top)
             }
         }
     };
@@ -389,7 +376,10 @@ boxed_top!(Box<dyn Error + Sync>);
 // calls then run 40% slower, and up to 5 times slower when small functions get too big to inline.
 #[cold]
 #[track_caller]
-pub fn with_source<E, Input>(error: ErErrorWithSaved<E>, source: impl ErInput<Input>) -> ErTree<E>
+pub fn with_source<E, Input>(
+    error: ErErrorWithSaved<E, impl Into<Vec<ErNode>>>,
+    source: impl ErInput<Input>,
+) -> ErTree<E>
 where
     E: Error + 'static,
 {
@@ -399,26 +389,40 @@ where
 /// The body of `with_source`, for a cold function that builds the error too and shouldn't pay for a second call.
 #[inline(always)]
 #[track_caller]
-pub fn build_tree<E, Input>(error: ErErrorWithSaved<E>, source: impl ErInput<Input>) -> ErTree<E>
+pub fn build_tree<E, Input>(
+    error: ErErrorWithSaved<E, impl Into<Vec<ErNode>>>,
+    source: impl ErInput<Input>,
+) -> ErTree<E>
 where
     E: Error + 'static,
 {
-    // Allocate first so the node can go straight into its slot.
-    let mut nodes = Vec::with_capacity(1);
-    let ErPart { node, mut saved } = source.into_er_input();
-    nodes.push(node);
-
     let ErErrorWithSaved {
         value: top,
-        saved: mut extra,
+        saved,
+        nodes,
     } = error;
-    saved.append(&mut extra);
+    let mut nodes = nodes.into();
+    let nodes = if nodes.capacity() == 0 {
+        drop(nodes);
+        boxed_child(source).into_vec()
+    } else {
+        nodes.insert(0, source.into_er_input());
+        nodes
+    };
 
     ErTree {
         top,
         nodes,
         saved,
-        #[cfg(feature = "src_locations")]
-        src_location: Location::caller(),
+        src_location: caller_location(),
     }
+}
+
+// Keeping this out of line shares the allocation code across parents with the same source type.
+#[cold]
+#[inline(never)]
+#[track_caller]
+fn boxed_child<Input>(source: impl ErInput<Input>) -> Box<[ErNode]> {
+    let node = source.into_er_input();
+    Box::new([node])
 }

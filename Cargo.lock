@@ -4,14 +4,14 @@ version = 4
 
 [[package]]
 name = "er"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "er-macros",
 ]
 
 [[package]]
 name = "er-macros"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "er",
  "proc-macro2",
@@ -21,7 +21,7 @@ dependencies = [
 
 [[package]]
 name = "er-unsync"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "er-macros",
 ]

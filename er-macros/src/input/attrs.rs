@@ -87,27 +87,33 @@ pub fn require_list(attribute: &Attribute, expected: &str) -> Result<()> {
     }
 }
 
+fn no_constructors(meta: &syn::meta::ParseNestedMeta<'_>, set: &mut bool) -> Result<()> {
+    if *set {
+        return Err(meta.error("you already set `no_constructors`, drop the duplicate"));
+    }
+    if !meta.input.is_empty() && !meta.input.peek(syn::token::Comma) {
+        return Err(meta
+            .error("`no_constructors` doesn't take a value, just write `#[er(no_constructors)]`"));
+    }
+
+    *set = true;
+    Ok(())
+}
+
 pub fn container(attributes: &[Attribute]) -> Result<ContainerOptions> {
     const EXPECTED: &str = "the type takes `format`, `display`, `display_alt`, `debug`, `crate = ...`, `wrap` or `no_constructors`";
 
     let mut er_path = None;
     let mut wrap_options = None;
     let mut formats = FormatOptions::default();
-    let mut no_constructors = false;
+    let mut skip_constructors = false;
 
     for attribute in er_attributes(attributes) {
         require_list(attribute, EXPECTED)?;
 
         attribute.parse_nested_meta(|meta| {
             if meta.path.is_ident("no_constructors") {
-                if no_constructors {
-                    return Err(meta.error("you already set `no_constructors`, drop the duplicate"));
-                }
-                if !meta.input.is_empty() && !meta.input.peek(syn::token::Comma) {
-                    return Err(meta.error("`no_constructors` doesn't take a value, just write `#[er(no_constructors)]`"));
-                }
-                no_constructors = true;
-                return Ok(());
+                return no_constructors(&meta, &mut skip_constructors);
             }
 
             if meta.path.is_ident("format")
@@ -159,11 +165,17 @@ pub fn container(attributes: &[Attribute]) -> Result<ContainerOptions> {
         })?;
     }
 
+    let er_path = er_path.unwrap_or_else(|| {
+        let mut path = Path::from(Ident::new("er", proc_macro2::Span::call_site()));
+        path.leading_colon = Some(Default::default());
+        path
+    });
+
     Ok(ContainerOptions {
-        er_path: er_path.unwrap_or_else(|| syn::parse_quote!(::er)),
+        er_path,
         wrap: wrap_options,
         format: formats,
-        no_constructors,
+        no_constructors: skip_constructors,
     })
 }
 
@@ -265,25 +277,32 @@ pub fn format_value(input: syn::parse::ParseStream<'_>) -> Result<FormatValue> {
     }
 }
 
-pub fn variant(attributes: &[Attribute]) -> Result<FormatOptions> {
+pub fn variant(attributes: &[Attribute]) -> Result<(FormatOptions, bool)> {
+    const EXPECTED: &str =
+        "a variant takes `format`, `display`, `display_alt`, `debug` or `no_constructors`";
     let mut formats = FormatOptions::default();
+    let mut skip_constructors = false;
     for attribute in er_attributes(attributes) {
-        require_list(attribute, "a variant takes `#[er(format = \"...\")]`")?;
+        require_list(attribute, EXPECTED)?;
         attribute.parse_nested_meta(|meta| {
             if meta.path.is_ident("no_constructors") {
-                return Err(meta.error("`no_constructors` goes on the struct or enum itself"));
+                return no_constructors(&meta, &mut skip_constructors);
             }
-            if !meta.path.is_ident("format") && !meta.path.is_ident("display") && !meta.path.is_ident("display_alt") && !meta.path.is_ident("debug") {
-                return Err(meta.error(
-                    "a variant takes `format`, `display`, `display_alt` or `debug`, field options go on a field and `wrap` or `crate` on the enum",
-                ));
+            if !meta.path.is_ident("format")
+                && !meta.path.is_ident("display")
+                && !meta.path.is_ident("display_alt")
+                && !meta.path.is_ident("debug")
+            {
+                return Err(meta.error(format!(
+                    "{EXPECTED}, field options go on a field and `wrap` or `crate` on the enum"
+                )));
             }
             format(&meta, &mut formats)?;
             Ok(())
         })?;
     }
 
-    Ok(formats)
+    Ok((formats, skip_constructors))
 }
 
 pub fn field(attributes: &[Attribute]) -> Result<FieldOptions> {
@@ -406,7 +425,7 @@ pub fn field(attributes: &[Attribute]) -> Result<FieldOptions> {
                     meta.error("`display` and `debug` don't go on a field, put them on the struct, enum or variant")
                 );
             } else if meta.path.is_ident("no_constructors") {
-                return Err(meta.error("`no_constructors` goes on the struct or enum itself"));
+                return Err(meta.error("`no_constructors` goes on the type or an enum variant"));
             } else if meta.path.is_ident("wrap") || meta.path.is_ident("crate") {
                 return Err(meta.error(
                     "`wrap` and `crate` are type options; put them on the struct or enum, \

@@ -1,6 +1,6 @@
 pub mod body;
 
-use crate::generate::{construct, warnings::warnings};
+use crate::generate::{construct, impl_scope, warnings::warnings};
 use crate::input::{Input, attrs::FieldMode, bounds::format_generics};
 use crate::names::{binding, shield_bindings};
 use proc_macro2::TokenStream;
@@ -27,36 +27,21 @@ pub fn expand(item: &DeriveInput) -> Result<TokenStream> {
     let generics = format_generics(&input);
     let formatter = binding(&input.names, "__er_f");
     let mut bindings = Vec::new();
-    let mut field_names = Vec::new();
     let formatting = implementations(&input, &generics, &formatter, &mut bindings);
-    let (shielded, constructors) = construct::methods_in_scope(&input, &mut field_names)?;
 
     let needs_fields = input
         .cases
         .iter()
         .flat_map(|case| &case.fields)
         .any(|field| field.options.default.is_some() || field.options.src_location);
-    let (defaults, fields) = if needs_fields {
-        construct::from_fields(&input, &input.options.er_path, &mut bindings)
-    } else {
-        (TokenStream::new(), TokenStream::new())
-    };
-
+    let (constructor_impls, constructors) =
+        construct::implementations(&input, needs_fields, &mut bindings)?;
     let shields = shield_bindings(&bindings);
-    let by_field_name = construct::scoped(&input, &field_names, quote!(#shielded #fields));
     let warnings = warnings(&input);
 
-    Ok(quote! {
-        const _: () = {
-            #shields
-
-            #formatting
-            #defaults
-            #by_field_name
-            #warnings
-        };
-        #constructors
-    })
+    let mut output = impl_scope([shields, formatting, constructor_impls, warnings]);
+    output.extend(constructors);
+    Ok(output)
 }
 
 pub fn implementations(
@@ -85,9 +70,7 @@ pub fn implementations(
         }
 
         for (index, field) in case.fields.iter().enumerate() {
-            if field.options.mode == FieldMode::Normal
-                && (!field.formats.is_empty() || field.used_in_format)
-            {
+            if field.options.mode == FieldMode::Normal && field.used_in_format {
                 bindings.push(binding(&input.names, &format!("__er_{index}")));
             }
         }

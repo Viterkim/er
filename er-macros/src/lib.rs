@@ -57,16 +57,14 @@ pub fn __er_bail_nodes(input: TokenStream) -> TokenStream {
 /// `default`, `src_location`, `no_constructors`, `wrap` and `crate`. Use `source` to expose a cause.
 /// Add `show_in_parent` if the parent's own message should print it too.
 ///
-/// Use `.er()` on a Result, Option, error or tree to add context.
 /// [`wrap`](https://github.com/Viterkim/er/blob/main/er/docs/macros.md#wrap) gives you a type
 /// you own to implement a foreign trait on while keeping the tree. You usually don't need it.
 pub fn derive_er(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
-    match generate::expand(&input) {
-        Ok(tokens) => tokens.into(),
-        Err(error) => error.to_compile_error().into(),
-    }
+    generate::expand(&input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
 }
 
 /// Generates Display, Debug and constructors for data inside an error. Leaves out the Error impl.
@@ -77,8 +75,7 @@ pub fn derive_er(input: TokenStream) -> TokenStream {
 pub fn derive_er_format(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
-    match format::expand(&input) {
-        Ok(tokens) => tokens.into(),
-        Err(error) => error.to_compile_error().into(),
-    }
+    format::expand(&input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
 }

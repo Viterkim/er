@@ -42,9 +42,9 @@ if let Err(t) = read_device() {
 read_device().er_with(|err| err.code)
 ```
 
-This is #1 mistake from other report style error handling libs, you will one day accidentally nuke the tree, avoid map_err.
+This is the #1 mistake from other report style error handling libs, you will one day accidentally nuke the tree, avoid map_err.
 
-`er_new!` is for starting a brand new error. If a call already gave you an error, ALWAYS add onto it with `.er()` or `.er_with()` so you don't lose what happened underneath.
+`er_new!` is for starting a brand new error. If a call already gave you an error, ALWAYS add onto it with `.er()` or `.er_with()` so you keep the original error, its location and everything below it. When you're collecting failures into one report, `.er_add()` keeps the locations they came with. Put `.er(..)` at the call whose line you want to see.
 
 ## Carry a shared case/logical flow data up
 
@@ -148,7 +148,7 @@ save(path).er_share()
 
 ## Overusing er_find
 
-You can argue that a flaw with error reporting libs is that they at max only have the top error typed, and that is true, so a way thats easy to get around it is with searching/finding. The issue is that thats a runtime check and now your compiler can't help you if stuff changes.
+You can argue that a flaw with error reporting libs is that they at max only have the top error typed, and that is true, so a way that's easy to get around it is with searching/finding. The issue is that that's a runtime check and now your compiler can't help you if stuff changes.
 
 ```rust
 // Bad, somewhere way up
@@ -166,7 +166,7 @@ publish(bytes).er_with(|err| match err {
 ## Add what you know, don't pass it down
 
 ```rust
-// Bad, parse_port doesn't touch path (dont pass it down)
+// Bad, parse_port doesn't touch path (don't pass it down)
 pub fn load_config(path: &Path) -> ErResult<u16, LoadConfigErr> {
     let text = fs::read_to_string(path).er(path)?;
     parse_port(&text, path).er(path)

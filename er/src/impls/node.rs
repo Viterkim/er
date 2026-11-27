@@ -2,14 +2,10 @@
 use crate::ErBoxedInput;
 #[cfg(any(er_unsync, target_has_atomic = "ptr"))]
 use crate::impls::shared_tree::ErSharedNode;
-use crate::{
-    ErBoxError, ErFindAll, ErInput, ErNode, ErNodes, ErPart, ErSavedList, ErSources, IntoErPart,
-};
+use crate::{ErBoxError, ErFindAll, ErInput, ErNode, ErNodes, ErSavedList, ErSources, IntoErNode};
 #[cfg(er_unsync)]
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-#[cfg(feature = "src_locations")]
-use core::panic::Location;
 use core::{error::Error, mem::take, ops::Deref};
 
 pub(crate) type StoredError = <ErBoxError as Deref>::Target;
@@ -18,21 +14,21 @@ impl ErNode {
     /// This node's error and sub errors. Use it when you walk nodes yourself, it also looks inside shared trees.
     #[inline]
     pub fn er_view(&self) -> (&(dyn Error + 'static), &[ErNode]) {
-        let (error, nodes) = self.stored_view();
+        let (error, nodes, _) = self.stored_view();
         (error, nodes)
     }
 
     #[inline]
-    fn stored_view(&self) -> (&StoredError, &[ErNode]) {
+    pub(crate) fn stored_view(&self) -> (&StoredError, &[ErNode], Option<&ErSavedList>) {
         #[cfg(any(er_unsync, target_has_atomic = "ptr"))]
         if self.nodes.is_empty()
             && let Some(shared) = self.error.downcast_ref::<ErSharedNode>()
             && let Some(view) = shared.view()
         {
-            return view;
+            return (view.0, view.1, Some(view.2));
         }
 
-        (&*self.error, &self.nodes)
+        (&*self.error, &self.nodes, None)
     }
 
     /// This error's native `source()` chain.
@@ -142,33 +138,19 @@ pub(crate) fn append_nodes(pending: &mut Vec<ErNode>, nodes: &mut Vec<ErNode>) {
     }
 }
 
-impl IntoErPart for ErNode {
+impl IntoErNode for ErNode {
     type Error = <ErBoxError as Deref>::Target;
 
     fn er_error(&self) -> &Self::Error {
         self.stored_view().0
     }
 
-    fn into_er_part(self) -> ErPart {
-        ErPart {
-            node: self,
-            saved: ErSavedList::default(),
-        }
-    }
-}
-impl IntoErPart for ErPart {
-    type Error = <ErBoxError as Deref>::Target;
-
-    fn er_error(&self) -> &Self::Error {
-        self.node.er_error()
-    }
-
-    fn into_er_part(self) -> Self {
+    fn into_er_node(self) -> Self {
         self
     }
 }
 
-impl<E: IntoErPart<Input>, Input> ErInput<Input> for E {
+impl<E: IntoErNode<Input>, Input> ErInput<Input> for E {
     type Error = E::Error;
 
     fn er_input_error(&self) -> &Self::Error {
@@ -176,8 +158,8 @@ impl<E: IntoErPart<Input>, Input> ErInput<Input> for E {
     }
 
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn into_er_input(self) -> ErPart {
-        self.into_er_part()
+    fn into_er_input(self) -> ErNode {
+        self.into_er_node()
     }
 }
 
@@ -185,7 +167,7 @@ impl<E: IntoErPart<Input>, Input> ErInput<Input> for E {
 #[cfg(er_unsync)]
 macro_rules! boxed_input {
     ($($bounds:tt)*) => {
-        impl IntoErPart<ErBoxedInput> for Box<dyn Error $($bounds)*> {
+        impl IntoErNode<ErBoxedInput> for Box<dyn Error $($bounds)*> {
             type Error = Self;
 
             fn er_error(&self) -> &Self {
@@ -193,9 +175,9 @@ macro_rules! boxed_input {
             }
 
             #[cfg_attr(feature = "src_locations", track_caller)]
-            fn into_er_part(self) -> ErPart {
+            fn into_er_node(self) -> ErNode {
                 let error: ErBoxError = self;
-                error.into_er_part()
+                error.into_er_node()
             }
         }
     };
@@ -207,7 +189,7 @@ boxed_input!(+ Send);
 #[cfg(er_unsync)]
 boxed_input!(+ Sync);
 
-impl<E: Into<ErBoxError>> IntoErPart for E {
+impl<E: Into<ErBoxError>> IntoErNode for E {
     type Error = E;
 
     fn er_error(&self) -> &E {
@@ -215,18 +197,15 @@ impl<E: Into<ErBoxError>> IntoErPart for E {
     }
 
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn into_er_part(self) -> ErPart {
+    fn into_er_node(self) -> ErNode {
         let error = self.into();
         let nodes = Vec::new();
 
-        ErPart {
-            node: ErNode {
-                error,
-                nodes,
-                #[cfg(feature = "src_locations")]
-                src_location: Location::caller(),
-            },
+        ErNode {
+            error,
             saved: ErSavedList::default(),
+            nodes,
+            src_location: None,
         }
     }
 }

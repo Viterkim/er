@@ -9,7 +9,7 @@ use crate::{
     input::{Input, bounds::format_generics},
     names::{binding, shield_bindings},
 };
-use proc_macro2::TokenStream;
+use proc_macro2::{Delimiter, Group, TokenStream};
 use quote::quote;
 use syn::DeriveInput;
 
@@ -19,13 +19,11 @@ pub fn expand(item: &DeriveInput) -> syn::Result<TokenStream> {
     let generics = format_generics(&input);
     let formatter = binding(&input.names, "__er_f");
     let mut bindings = Vec::new();
-    let mut field_names = Vec::new();
     let formatting = format::implementations(&input, &generics, &formatter, &mut bindings);
-    let (shielded, constructors) = construct::methods_in_scope(&input, &mut field_names)?;
     let error = source::implementation(&input, &generics, er_path, &mut bindings);
-    let (defaults, fields) = construct::from_fields(&input, er_path, &mut bindings);
+    let (constructor_impls, constructors) =
+        construct::implementations(&input, true, &mut bindings)?;
     let shields = shield_bindings(&bindings);
-    let by_field_name = construct::scoped(&input, &field_names, quote!(#shielded #fields));
     let warnings = warnings::warnings(&input);
 
     let wrap = match &input.options.wrap {
@@ -33,17 +31,13 @@ pub fn expand(item: &DeriveInput) -> syn::Result<TokenStream> {
         None => TokenStream::new(),
     };
 
-    Ok(quote! {
-        const _: () = {
-            #shields
+    let mut output = impl_scope([shields, formatting, error, constructor_impls, warnings]);
+    output.extend(constructors);
+    output.extend(wrap);
+    Ok(output)
+}
 
-            #formatting
-            #error
-            #defaults
-            #by_field_name
-            #warnings
-        };
-        #constructors
-        #wrap
-    })
+pub fn impl_scope(items: impl IntoIterator<Item = TokenStream>) -> TokenStream {
+    let body = Group::new(Delimiter::Brace, items.into_iter().collect());
+    quote!(const _: () = #body;)
 }

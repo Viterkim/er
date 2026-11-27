@@ -4,37 +4,21 @@ This is BASICALLY NOT RELEVANT! This is only if you really really really care, a
 
 These comparisons are also not equal in many ways, most of the crates here don't make a tree/allow many of the functionality er/exn/rootcause/error-stack does, it's still fun to look at.
 
-## Hot loops
-
-```rust
-use er::*;
-
-#[derive(Er)]
-pub struct ItemErr(pub usize);
-
-#[derive(Er)]
-pub struct CheckAllErr;
-
-fn check_all(results: impl Iterator<Item = Result<(), ItemErr>>) -> ErResult<(), CheckAllErr> {
-    er_all!((), results)
-}
-```
-
 ## Adding context
 
-Every call fails and the error has a u32 in it.
+Every call fails and the error has a u32 in it. These times include dropping the error.
 
 ### Just the error
 
 ```text
-thiserror       0.6 ns     0 allocations
 SNAFU           0.6 ns     0 allocations
+thiserror       0.6 ns     0 allocations
 Er              1.8 ns     0 allocations
 Anyhow           13 ns     1 allocation
 Eros             16 ns     1 allocation
-Exn              21 ns     2 allocations
-rootcause        26 ns     3 allocations
-error-stack      40 ns     5 allocations
+Exn              18 ns     2 allocations
+rootcause        25 ns     3 allocations
+error-stack      34 ns     5 allocations
 ```
 
 ### One error around it
@@ -42,27 +26,27 @@ error-stack      40 ns     5 allocations
 ```text
 SNAFU           0.8 ns     0 allocations
 thiserror       0.8 ns     0 allocations
-Eros             22 ns     3 allocations
-Er               23 ns     2 allocations
-Anyhow           24 ns     2 allocations
-Exn              35 ns     5 allocations
-error-stack      43 ns     9 allocations
-rootcause        50 ns     7 allocations
+Eros             21 ns     3 allocations
+Anyhow           23 ns     2 allocations
+Er               30 ns     2 allocations
+Exn              33 ns     5 allocations
+error-stack      42 ns     9 allocations
+rootcause        49 ns     7 allocations
 ```
 
-thiserror and SNAFU keep the source inline, 'er' keeps the old error and moves its tree underneath (box for the error, vec for the sub errors).
+thiserror and SNAFU just put the old error inside the new struct. Er builds a tree you can search later, that's the box and the vec in its allocations.
 
 ## Just creating Er errors
 
 Keeping 128 failed results alive at a time, with dropping outside the timer:
 
 ```text
-One u32 context            19 ns
-Eight u32 contexts        120 ns
-Eight empty contexts      101 ns
+One u32 context            26 ns
+Eight u32 contexts        157 ns
+Eight empty contexts       71 ns
 ```
 
-`.er(code)`, `.er(|_| code)` and `.er(|| MyErr { code })` took about the same time for one context.
+`.er(code)`, `.er(|_| code)` and `.er(|| MyErr::new(code))` took about the same time for one context.
 
 ## Eight layers
 
@@ -71,14 +55,14 @@ Eight functions add their own context above the original error and half the call
 ### Empty structs
 
 ```text
-thiserror       0.6 ns     0 allocations
-SNAFU           0.6 ns     0 allocations
-Eros             41 ns     3 allocations
-Er               62 ns     8 allocations
-Anyhow           65 ns     9 allocations
-Exn              79 ns     17 allocations
-error-stack      81 ns     28 allocations
-rootcause       185 ns     35 allocations
+SNAFU           0.5 ns     0 allocations
+thiserror       0.5 ns     0 allocations
+Eros             42 ns     3 allocations
+Er               55 ns     8 allocations
+Anyhow           60 ns     9 allocations
+Exn              77 ns    17 allocations
+error-stack      81 ns    28 allocations
+rootcause       171 ns    35 allocations
 ```
 
 Er allocates one list of sub errors per layer. The empty errors themselves take up no space in their boxes.
@@ -87,39 +71,39 @@ Er allocates one list of sub errors per layer. The empty errors themselves take 
 
 ```text
 thiserror       1.4 ns     0 allocations
-SNAFU           1.4 ns     0 allocations
-Eros             50 ns     11 allocations
+SNAFU           1.5 ns     0 allocations
+Eros             51 ns    11 allocations
 Anyhow           62 ns     9 allocations
-Er               71 ns     16 allocations
-Exn              94 ns     26 allocations
-error-stack     137 ns     37 allocations
-rootcause       189 ns     35 allocations
+Exn              93 ns    26 allocations
+Er               93 ns    16 allocations
+error-stack     136 ns    37 allocations
+rootcause       171 ns    35 allocations
 ```
 
 ### Static text
 
 ```text
-thiserror       2.6 ns     0 allocations
-SNAFU           2.6 ns     0 allocations
-Eros             39 ns     3 allocations
+SNAFU           2.4 ns     0 allocations
+thiserror       2.4 ns     0 allocations
+Eros             41 ns     3 allocations
 Anyhow           64 ns     9 allocations
-Er               68 ns     16 allocations
-Exn              94 ns     26 allocations
-error-stack     134 ns     37 allocations
-rootcause       177 ns     35 allocations
+Er               92 ns    16 allocations
+Exn              93 ns    26 allocations
+error-stack     133 ns    37 allocations
+rootcause       174 ns    35 allocations
 ```
 
 ### Formatted Strings
 
 ```text
-Eros             91 ns     12 allocations
-SNAFU            94 ns     9 allocations
-thiserror       100 ns     9 allocations
-Anyhow          120 ns     18 allocations
-Exn             153 ns     35 allocations
-Er              174 ns     25 allocations
-error-stack     212 ns     46 allocations
-rootcause       248 ns     44 allocations
+SNAFU            90 ns     9 allocations
+Eros             90 ns    12 allocations
+thiserror        93 ns     9 allocations
+Anyhow          115 ns    18 allocations
+Exn             145 ns    35 allocations
+Er              148 ns    25 allocations
+error-stack     203 ns    46 allocations
+rootcause       239 ns    44 allocations
 ```
 
 ## Hundred empty errors
@@ -127,13 +111,13 @@ rootcause       248 ns     44 allocations
 One `TopErr(pub u32)` with a hundred unit errors underneath. `er_new!` gets an iterator of known failures, `er_all!` gets Results to check. A `Vec<Unit>` is especially cheap here because a unit struct takes up zero bytes.
 
 ```text
-SNAFU Vec       0.8 ns     0 allocations
-thiserror Vec   0.8 ns     0 allocations
-Er, er_new!     220 ns     1 allocation
-Er, er_all!     398 ns     7 allocations
-Exn            1078 ns     108 allocations
-rootcause      4111 ns     304 allocations
-error-stack    4336 ns     411 allocations
+SNAFU Vec        0.8 ns     0 allocations
+thiserror Vec    0.8 ns     0 allocations
+Er, er_new!      207 ns     1 allocation
+Er, er_all!      415 ns     7 allocations
+Exn             1073 ns   108 allocations
+rootcause       4052 ns   304 allocations
+error-stack     4189 ns   411 allocations
 ```
 
 ## Compile time
@@ -142,27 +126,27 @@ Because you want to make many many error types with Er you think "wow compile ti
 
 ```text
 Cold build (deps + 10 errors):
-thiserror    1962 ms
-Er           2072 ms
-SNAFU        3094 ms
+thiserror    1600 ms
+Er           2265 ms
+SNAFU        2316 ms
 
 10 errors (check / build):
-Er             40 ms /   62 ms
-thiserror      45 ms /   58 ms
-SNAFU          63 ms /   74 ms
+thiserror      29 ms /   35 ms
+Er             30 ms /   37 ms
+SNAFU          39 ms /   48 ms
 
 100 errors (check / build):
-Er             98 ms /  146 ms
-thiserror     131 ms /  156 ms
-SNAFU         269 ms /  301 ms
+thiserror      69 ms /   88 ms
+Er             77 ms /  102 ms
+SNAFU         171 ms /  215 ms
 
 500 errors (check / build):
-Er            265 ms /  519 ms
-thiserror     511 ms /  541 ms
-SNAFU        1172 ms / 1144 ms
+thiserror     253 ms /  331 ms
+Er            311 ms /  424 ms
+SNAFU         883 ms / 1096 ms
 ```
 
-This is because Er writes `Debug` and `Display` directly in one derive instead of expanding `format_args!` + a separate `#[derive(Debug)]` on every error like `thiserror` (or generating selector structs like `SNAFU`).
+The cold build includes the dependencies, the other rows only rebuild the crate with the errors. Er pays once to build itself, after that an error costs about what a thiserror one does, because a plain message becomes one `f.write_str("disk full")` and errors without a format share one `Debug` function inside Er.
 
 ## Unsafe
 
@@ -182,4 +166,4 @@ Error-stack only has a few small casts and pinned Future helpers.
 
 ## Versions
 
-Er 0.9.0, thiserror 2.0.21, SNAFU 0.9.2, Anyhow 1.0.105, Exn 0.3.1, Eros 0.8.0, rootcause 0.13.0, error-stack 0.8.0.
+Er 0.10.0, thiserror 2.0.21, SNAFU 0.9.2, Anyhow 1.0.105, Exn 0.3.1, Eros 0.8.0, rootcause 0.13.0, error-stack 0.8.0.

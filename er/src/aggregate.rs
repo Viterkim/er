@@ -1,6 +1,6 @@
-use crate::{
-    ErAllItem, ErErrorWithSaved, ErInput, ErMake, ErNode, ErPart, ErResult, ErSavedList, ErTree,
-};
+#[cfg(feature = "macros")]
+use crate::{ErAggregateAdd, ErMake};
+use crate::{ErAllItem, ErBranch, ErErrorWithSaved, ErInput, ErNode, ErTree, IntoErTree};
 use alloc::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet, BinaryHeap, LinkedList, VecDeque},
@@ -13,12 +13,29 @@ use core::{
     iter::{Once, once},
 };
 
+#[doc(hidden)]
+pub trait ErAddRoot: IntoErTree {
+    fn child_nodes(&mut self) -> &mut Vec<ErNode>;
+}
+impl<E> ErAddRoot for ErBranch<E> {
+    fn child_nodes(&mut self) -> &mut Vec<ErNode> {
+        &mut self.nodes
+    }
+}
+impl<E> ErAddRoot for ErTree<E> {
+    fn child_nodes(&mut self) -> &mut Vec<ErNode> {
+        &mut self.nodes
+    }
+}
+
 // Batch macros evaluate the whole top expression on failure, so even an owned field is lazy.
 #[cfg(feature = "macros")]
 #[doc(hidden)]
 pub trait ErBatchTop<A, Mode> {
+    type Nodes: Into<Vec<ErNode>>;
+
     #[track_caller]
-    fn into_batch_top(self) -> ErErrorWithSaved<A>;
+    fn into_batch_top(self) -> ErErrorWithSaved<A, Self::Nodes>;
 }
 #[cfg(feature = "macros")]
 impl<A, P: core::fmt::Debug, Form: crate::ErForm> ErBatchTop<A, (Form,)> for P
@@ -26,23 +43,31 @@ where
     crate::ErFieldInput<P>: crate::ErFieldsFor<A, Form>,
     A: crate::ErBuildFrom<P, Form>,
 {
-    fn into_batch_top(self) -> ErErrorWithSaved<A> {
+    type Nodes = [ErNode; 0];
+
+    fn into_batch_top(self) -> ErErrorWithSaved<A, Self::Nodes> {
         ErErrorWithSaved::new(A::er_build_from(self))
     }
 }
 #[cfg(feature = "macros")]
-impl<A, P, Form: crate::ErForm> ErBatchTop<A, (crate::ErWithSaves, Form)> for ErErrorWithSaved<P>
+impl<A, P, Nodes, Form: crate::ErForm> ErBatchTop<A, (crate::ErWithSaves, Form)>
+    for ErErrorWithSaved<P, Nodes>
 where
+    Nodes: Into<Vec<ErNode>>,
     crate::ErFieldInput<P>: crate::ErFieldsFor<A, Form>,
     A: crate::ErBuildFrom<P, Form>,
 {
-    fn into_batch_top(self) -> ErErrorWithSaved<A> {
+    type Nodes = Nodes;
+
+    fn into_batch_top(self) -> ErErrorWithSaved<A, Self::Nodes> {
         self.build()
     }
 }
 #[cfg(feature = "macros")]
 impl<A, F: FnOnce() -> P + ErMake<A, Mode>, P, Mode> ErBatchTop<A, (crate::ErReady, Mode)> for F {
-    fn into_batch_top(self) -> ErErrorWithSaved<A> {
+    type Nodes = F::Nodes;
+
+    fn into_batch_top(self) -> ErErrorWithSaved<A, Self::Nodes> {
         self.er_make()
     }
 }
@@ -50,7 +75,9 @@ impl<A, F: FnOnce() -> P + ErMake<A, Mode>, P, Mode> ErBatchTop<A, (crate::ErRea
 impl<A, F: FnOnce(()) -> P + ErMake<A, Mode>, P, Mode> ErBatchTop<A, (crate::ErFields, Mode)>
     for F
 {
-    fn into_batch_top(self) -> ErErrorWithSaved<A> {
+    type Nodes = F::Nodes;
+
+    fn into_batch_top(self) -> ErErrorWithSaved<A, Self::Nodes> {
         self.er_make()
     }
 }
@@ -149,162 +176,81 @@ collections!(@impl ('a, T) &'a [T]);
 collections!(@impl ('a, T) &'a mut [T]);
 
 #[doc(hidden)]
-pub struct CollectedErrors {
-    pub nodes: Vec<ErNode>,
-    pub saved: ErSavedList,
-}
-impl CollectedErrors {
-    pub fn is_empty(&self) -> bool {
-        self.nodes.is_empty()
-    }
-
-    #[track_caller]
-    pub fn into_tree<A: Error + 'static>(mut self, top: ErErrorWithSaved<A>) -> ErTree<A> {
-        let ErErrorWithSaved { value, mut saved } = top;
-        self.saved.append(&mut saved);
-
-        ErTree {
-            nodes: self.nodes,
-            saved: self.saved,
-            ..ErTree::from(value)
-        }
-    }
-
-    #[track_caller]
-    pub fn finish<A, Mode>(self, top: impl ErMake<A, Mode>) -> ErResult<(), A>
-    where
-        A: Error + 'static,
-    {
-        if self.is_empty() {
-            Ok(())
-        } else {
-            Err(self.into_tree(top.er_make()))
-        }
-    }
-}
-
-#[doc(hidden)]
 #[track_caller]
-pub fn gather<E, T, Input, Kind>(
-    results: impl ErAggregateItems<Kind, Item = Result<T, E>>,
-) -> CollectedErrors
-where
-    E: ErInput<Input>,
-{
-    let mut nodes: Vec<ErNode> = Vec::new();
-    let mut saved = ErSavedList::default();
-
-    for result in results.er_items() {
-        match result {
-            Ok(value) => drop(value),
-            Err(error) => {
-                let ErPart {
-                    node,
-                    saved: mut incoming,
-                } = error.into_er_input();
-                saved.append(&mut incoming);
-
-                if nodes.len() == nodes.capacity() {
-                    push_growing(&mut nodes, node);
-                } else {
-                    nodes.push(node);
-                }
-            }
-        }
-    }
-
-    CollectedErrors { nodes, saved }
+pub fn tree_from_nodes<A: Error + 'static>(
+    mut nodes: Vec<ErNode>,
+    top: ErErrorWithSaved<A, impl Into<Vec<ErNode>>>,
+) -> ErTree<A> {
+    let mut top = top.into_branch();
+    crate::impls::node::append_nodes(&mut top.nodes, &mut nodes);
+    top.into()
 }
 
 /// `er_all!` over an iterable. An iterator of bare errors has no Ok to skip, so its size hint is the node count.
 #[cfg(feature = "macros")]
 #[doc(hidden)]
 #[track_caller]
-pub fn gather_items<I, Tag, Mode>(tag: Tag, results: I) -> CollectedErrors
+pub fn gather_items<I, Tag, Mode>(tag: Tag, results: I) -> Vec<ErNode>
 where
     I: Iterator,
     Tag: crate::internal::ErAggregateItem<I::Item, Mode> + Copy,
 {
     let mut nodes: Vec<ErNode> = Vec::new();
-    let mut saved = ErSavedList::default();
 
     if Tag::ALWAYS_ERROR {
         nodes.reserve_exact(results.size_hint().0);
     }
 
     for result in results {
-        match tag.item(result) {
-            Ok(value) => drop(value),
-            Err(ErPart {
-                node,
-                saved: mut incoming,
-            }) => {
-                saved.append(&mut incoming);
-
-                if nodes.len() == nodes.capacity() {
-                    push_growing(&mut nodes, node);
-                } else {
-                    nodes.push(node);
-                }
-            }
+        if let Err(node) = tag.item(result) {
+            push_node(&mut nodes, node);
         }
     }
 
-    CollectedErrors { nodes, saved }
+    nodes
 }
 
-// Moving the node into this call keeps a stack copy out of the loop when there's room.
+// Inlining the capacity check lets rustc write the node straight into its Vec slot.
+#[inline(always)]
+fn push_node(nodes: &mut Vec<ErNode>, node: ErNode) {
+    if nodes.len() == nodes.capacity() {
+        push_growing(nodes, node);
+    } else {
+        nodes.push(node);
+    }
+}
+
 #[cold]
 #[inline(never)]
 fn push_growing(nodes: &mut Vec<ErNode>, node: ErNode) {
     if nodes.is_empty() {
-        nodes.reserve_exact(1);
+        *nodes = alloc::vec![node];
+    } else {
+        nodes.push(node);
     }
-    nodes.push(node);
-}
-
-/// Keep every failure in `results`. Build the top error only if a result failed.
-#[track_caller]
-pub fn collect<A, E, T, Input, Mode, Kind>(
-    top: impl ErMake<A, Mode>,
-    results: impl ErAggregateItems<Kind, Item = Result<T, E>>,
-) -> ErResult<(), A>
-where
-    A: Error + 'static,
-    E: ErInput<Input>,
-{
-    gather(results).finish(top)
 }
 
 #[cfg(feature = "macros")]
 #[doc(hidden)]
-pub fn gather_parts(items: &mut [Result<(), ErPart>]) -> CollectedErrors {
-    let mut errors = CollectedErrors {
-        nodes: Vec::new(),
-        saved: ErSavedList::default(),
-    };
-    append_parts(&mut errors.nodes, &mut errors.saved, items);
-    errors
+pub fn gather_nodes(items: &mut [Result<(), ErNode>]) -> Vec<ErNode> {
+    let mut nodes = Vec::new();
+    take_failures(&mut nodes, items);
+    nodes
 }
 
 #[cfg(feature = "macros")]
 #[inline(never)]
-fn append_parts(
-    nodes: &mut Vec<ErNode>,
-    reports: &mut ErSavedList,
-    items: &mut [Result<(), ErPart>],
-) {
+fn take_failures(nodes: &mut Vec<ErNode>, items: &mut [Result<(), ErNode>]) {
     let mut items = items.iter_mut();
     while let Some(item) = items.find(|item| item.is_err()) {
-        let Err(ErPart { node, mut saved }) = mem::replace(item, Ok(())) else {
+        let Err(node) = mem::replace(item, Ok(())) else {
             continue;
         };
 
         if nodes.len() == nodes.capacity() {
-            reserve_parts(nodes, items.as_slice());
+            reserve_nodes(nodes, items.as_slice());
         }
 
-        reports.append(&mut saved);
         nodes.push(node);
     }
 }
@@ -312,7 +258,7 @@ fn append_parts(
 #[cfg(feature = "macros")]
 #[cold]
 #[inline(never)]
-fn reserve_parts(nodes: &mut Vec<ErNode>, remaining: &[Result<(), ErPart>]) {
+fn reserve_nodes(nodes: &mut Vec<ErNode>, remaining: &[Result<(), ErNode>]) {
     let count = 1 + remaining.iter().filter(|item| item.is_err()).count();
     if nodes.is_empty() {
         nodes.reserve_exact(count);
@@ -323,20 +269,27 @@ fn reserve_parts(nodes: &mut Vec<ErNode>, remaining: &[Result<(), ErPart>]) {
 
 #[cfg(feature = "macros")]
 #[doc(hidden)]
+#[inline]
 #[track_caller]
-pub fn add_parts<T: crate::IntoErTree>(
-    tree: T,
-    items: &mut [Result<(), ErPart>],
-) -> ErTree<T::Error> {
-    let mut tree = tree.into_er_tree();
-    append_parts(&mut tree.nodes, &mut tree.saved, items);
-    tree
+pub fn add_one<R, T, Mode>(mut root: R, tag: impl ErAggregateAdd<Once<T>, Mode>, item: T) -> R
+where
+    R: ErAddRoot,
+{
+    tag.add(root.child_nodes(), once(item));
+    root
+}
+
+#[cfg(feature = "macros")]
+#[doc(hidden)]
+#[inline]
+pub fn add_nodes<R: ErAddRoot>(mut root: R, items: &mut [Result<(), ErNode>]) -> R {
+    take_failures(root.child_nodes(), items);
+    root
 }
 
 #[track_caller]
 pub fn append<R: ErAllItem<Mode>, Mode, Kind>(
     nodes: &mut Vec<ErNode>,
-    saved: &mut ErSavedList,
     results: impl ErAggregateItems<Kind, Item = R>,
 ) {
     let results = results.er_items();
@@ -350,20 +303,8 @@ pub fn append<R: ErAllItem<Mode>, Mode, Kind>(
     }
 
     for result in results {
-        let Err(part) = result.er_all_item() else {
-            continue;
-        };
-
-        // Borrowing part.saved here made rustc copy the whole node again before pushing it.
-        let ErPart {
-            node,
-            saved: mut incoming,
-        } = part;
-        saved.append(&mut incoming);
-        if nodes.len() == nodes.capacity() {
-            push_growing(nodes, node);
-        } else {
-            nodes.push(node);
+        if let Err(node) = result.er_all_item() {
+            push_node(nodes, node);
         }
     }
 }
@@ -371,14 +312,10 @@ pub fn append<R: ErAllItem<Mode>, Mode, Kind>(
 #[cfg(feature = "macros")]
 #[doc(hidden)]
 #[track_caller]
-#[allow(clippy::result_large_err)]
-pub fn try_all_1<A>(result: Result<A, ErPart>) -> Result<(A,), CollectedErrors> {
+pub fn try_all_1<A>(result: Result<A, ErNode>) -> Result<(A,), Vec<ErNode>> {
     match result {
         Ok(value) => Ok((value,)),
-        Err(part) => Err(CollectedErrors {
-            nodes: alloc::vec![part.node],
-            saved: part.saved,
-        }),
+        Err(node) => Err(alloc::vec![node]),
     }
 }
 
@@ -387,13 +324,14 @@ macro_rules! try_all {
         #[cfg(feature = "macros")]
         #[doc(hidden)]
         #[track_caller]
-        #[allow(clippy::result_large_err, clippy::too_many_arguments)]
+        #[inline]
+        #[allow(clippy::too_many_arguments)]
         pub fn $name<$($value),+>(
-            $($result: Result<$value, ErPart>),+
-        ) -> Result<($($value,)+), CollectedErrors> {
+            $($result: Result<$value, ErNode>),+
+        ) -> Result<($($value,)+), Vec<ErNode>> {
             match ($($result,)+) {
                 ($(Ok($result),)+) => Ok(($($result,)+)),
-                ($($result,)+) => Err(gather_parts(&mut [$($result.map(drop)),+])),
+                ($($result,)+) => Err(gather_nodes(&mut [$($result.map(drop)),+])),
             }
         }
     )+};

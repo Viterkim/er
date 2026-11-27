@@ -3,7 +3,7 @@ pub mod impls;
 use super::{
     Input,
     attrs::FieldMode,
-    format::{FormatBody, FormatTrait, Output},
+    format::{FormatBody, FormatTrait},
 };
 use crate::fields::option_inner;
 use crate::names::plain;
@@ -32,28 +32,14 @@ pub fn bound_key(ty: &Type) -> Option<String> {
     (!syntax.opaque).then(|| ty.to_token_stream().to_string())
 }
 
-/// Lifetimes keep their `'` in the parameter names. Without it `'io` matched the module in `io::Error`, and a
-/// concrete field got bounds like it was generic.
+// Keep `'io` distinct from the module in `io::Error`.
 pub fn lifetime_name(lifetime: &syn::Lifetime) -> String {
     format!("'{}", plain(&lifetime.ident))
 }
 
 pub fn format_generics(input: &Input<'_>) -> Generics {
-    let mut parameters: HashSet<_> = input
-        .type_names
-        .union(&input.const_names)
-        .cloned()
-        .collect();
-    parameters.extend(
-        input
-            .item
-            .generics
-            .lifetimes()
-            .map(|param| lifetime_name(&param.lifetime)),
-    );
-
     let mut generics = input.item.generics.clone();
-    if parameters.is_empty() {
+    if input.parameters.is_empty() {
         return generics;
     }
 
@@ -63,14 +49,10 @@ pub fn format_generics(input: &Input<'_>) -> Generics {
 
     for case in &input.cases {
         let mut requirements = Vec::new();
-        for output in [Output::Display, Output::DisplayAlt, Output::Debug] {
-            if matches!(output, Output::DisplayAlt) && case.formats.display_alt.is_none() {
-                continue;
-            }
-
-            let tried = case.formats.tried(output);
-
-            for body in &tried.formats {
+        let mut used_default = false;
+        for &output in case.formats.outputs() {
+            let fallbacks = case.formats.fallbacks(output);
+            for body in fallbacks.formats.into_iter().flatten() {
                 let FormatBody::Template(format) = body else {
                     continue;
                 };
@@ -88,7 +70,8 @@ pub fn format_generics(input: &Input<'_>) -> Generics {
                 }
             }
 
-            if tried.default {
+            if fallbacks.use_default && !used_default {
+                used_default = true;
                 requirements.extend(
                     case.fields
                         .iter()
@@ -108,15 +91,11 @@ pub fn format_generics(input: &Input<'_>) -> Generics {
             }
 
             let mut types = Vec::new();
-            let mut bounds = FormatBounds::new(&name, &parameters, &mut types, false);
+            let mut bounds = FormatBounds::new(&name, &input.parameters, &mut types, false);
             bounds.visit_type(ty);
 
             for ty in types {
-                let key = bound_key(ty);
-                if key
-                    .as_ref()
-                    .is_none_or(|key| seen.insert((key.clone(), format)))
-                {
+                if bound_key(ty).is_none_or(|key| seen.insert((key, format))) {
                     let format = format.ident();
                     let predicate = parse_quote!(#ty: ::core::fmt::#format);
                     generics.make_where_clause().predicates.push(predicate);

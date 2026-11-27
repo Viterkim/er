@@ -40,13 +40,13 @@ error: the type takes `format`, `display`, `display_alt`, `debug`, `crate = ...`
 34 | #[er(wrapp)]
    |      ^^^^^
 
-error: a variant takes `format`, `display`, `display_alt` or `debug`, field options go on a field and `wrap` or `crate` on the enum
+error: a variant takes `format`, `display`, `display_alt`, `debug` or `no_constructors`, field options go on a field and `wrap` or `crate` on the enum
   --> tests/fail/attribute_options.rs:40:10
    |
 40 |     #[er(censor)]
    |          ^^^^^^
 
-error: a variant takes `format`, `display`, `display_alt` or `debug`, field options go on a field and `wrap` or `crate` on the enum
+error: a variant takes `format`, `display`, `display_alt`, `debug` or `no_constructors`, field options go on a field and `wrap` or `crate` on the enum
   --> tests/fail/attribute_options.rs:47:10
    |
 47 |     #[er(bogus)]

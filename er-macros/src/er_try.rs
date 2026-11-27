@@ -62,17 +62,16 @@ pub fn expand(
         let shields = shield_bindings(&values);
         let types = values
             .iter()
-            .map(|_| quote!(::core::result::Result<_, #er_path::ErPart>));
+            .map(|_| quote!(::core::result::Result<_, #er_path::ErNode>));
 
         quote! {
             ({
                 #shields
-                #[allow(clippy::result_large_err)]
                 |(#(#values,)*): (#(#types,)*)| match (#(#values,)*) {
                     (#(::core::result::Result::Ok(#values),)*) =>
                         ::core::result::Result::Ok((#(#values,)*)),
                     (#(#values,)*) => ::core::result::Result::Err(
-                        #er_path::er_internal::aggregate::gather_parts(
+                        #er_path::er_internal::aggregate::gather_nodes(
                             &mut [#(#values.map(::core::mem::drop)),*],
                         ),
                     ),
@@ -82,13 +81,12 @@ pub fn expand(
     };
 
     quote! {{
-        #[allow(unused_imports)]
         use #er_path::er_internal::ErWrappedFallback as _;
 
         match #gathered {
             ::core::result::Result::Ok(#ok) => ::core::result::Result::Ok(#ok),
             ::core::result::Result::Err(#errors) => ::core::result::Result::Err(
-                #er_path::er_internal::aggregate::CollectedErrors::into_tree(
+                #er_path::er_internal::aggregate::tree_from_nodes(
                     #errors,
                     #er_path::er_internal::aggregate::ErBatchTop::into_batch_top(#top),
                 ),

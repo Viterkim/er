@@ -130,7 +130,7 @@ fn helpers() {
         assert_eq!(err.top.location.file(), file!());
 
         #[cfg(feature = "src_locations")]
-        assert_eq!(err.src_location.line(), line.get());
+        assert_eq!(err.src_location.unwrap().line(), line.get());
     }
 
     #[derive(Er)]

@@ -1,0 +1,19 @@
+error[E0283]: type annotations needed for `Result<(), _>`
+ --> tests/fail/bail_output.rs:4:13
+  |
+4 |     let _ = || -> Result<(), _> { er_bail!(std::fmt::Error) };
+  |             ^^^^^^^^^^^^^^^^^^^   -------------------------
+  |                                   |
+  |                                   type must be known at this point
+  |                                   required by a bound introduced by this call
+  |
+  = note: multiple `impl`s satisfying `(i32, er::er_internal::ErReady): er::er_internal::ErBailValue<std::fmt::Error, _, _>` found in the `er` crate:
+          - impl<E> er::er_internal::ErBailValue<E, (E, String), er::er_internal::ErReady> for (i32, er::er_internal::ErReady)
+            where E: std::error::Error, E: 'static;
+          - impl<E> er::er_internal::ErBailValue<E, ErTree<E>, er::er_internal::ErReady> for (i32, er::er_internal::ErReady)
+            where E: std::error::Error, E: 'static;
+help: try giving this closure an explicit return type
+  |
+4 -     let _ = || -> Result<(), _> { er_bail!(std::fmt::Error) };
+4 +     let _ = || -> Result<_, _> { er_bail!(std::fmt::Error) };
+  |

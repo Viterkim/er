@@ -1,4 +1,5 @@
 use er::*;
+use std::process::ExitCode;
 
 #[derive(Er)]
 pub struct ReadPortErr;
@@ -21,8 +22,16 @@ pub fn main() -> ErMain {
 }
 
 // With your own error, its trees go through plain `?`.
-pub fn app_main() -> ErMain<ReadPortErr> {
+pub fn app_main() -> ErMain<ReadPortErr, ExitCode> {
     read_port("85")?;
 
-    Ok(())
+    Ok(ExitCode::SUCCESS)
+}
+
+pub async fn port(input: &str) {
+    let _result = async {
+        let value = input.parse::<u16>().er(|| ReadPortErr)?;
+        ErOk(value)
+    }
+    .await;
 }

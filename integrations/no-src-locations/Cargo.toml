@@ -9,6 +9,3 @@ publish = false
 
 [dependencies]
 er = { path = "../../er", default-features = false, features = ["macros"] }
-
-[dev-dependencies]
-trybuild = "1.0"

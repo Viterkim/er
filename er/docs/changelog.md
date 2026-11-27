@@ -1,8 +1,36 @@
+# 0.10.0
+
+`ErOk(value)` finishes a closure or async block with an `ErResult`. `ErMain<MyErr, ExitCode>` lets `main` return its own exit status.
+
+`.er()` now works on `Poll<Result<T, E>>` and `Poll<Option<Result<T, E>>>` for fallible streams.
+
+Empty reports in `(MyErr, String)` or `(MyErr, Option<String>)` no longer hide the error, falling back to the error and its causes instead.
+
+Saved reports appear under the error that saved them with `[saved]` on the title. Use `tree.er_saved()` for all attachments in tree order or `tree.saved` for just the top error's. In a snapshot, each `entry.saved` holds the attachments to show on that row.
+
+`IntoErPart::into_er_part()` is now `IntoErNode::into_er_node()`. It gives you the child node directly, including its saved reports.
+
+Adding a child keeps the location it already has. In `er_add!(root, [read(a), read(b)])`, plain errors no longer get the line where you collected them. `src_location` is now an `Option` on trees, nodes and entries, and snapshots can store and print locations even with capture off.
+
+On a plain error, `.er_add()` and `.er_save()` build an `ErBranch<E>`. Print it directly or add it under another error. Returning it as a failure with `?` or `er_bail!` records that line on top.
+
+Cargo deps paths in `src_locations` print more cleanly like `somecrate-0.1.0/src/lib.rs`.
+
+Generated constructors match the type's visibility. On a `pub struct`, restricted fields also restrict `new` and turn off the tuple form of `.er(...)`. Er skips constructors on `#[non_exhaustive]` structs and variants. You can now use `#[er(no_constructors)]` on a single enum variant too.
+
+Supplying a field marked `#[er(default)]` works even if its type has no `Default` impl and you leave out the next field.
+
+Fixed `er_bail!` collisions with own `From<MyErr> for (MyErr, String)`.
+
+`.er_write_report()` now returns the writer's error even if a `Display` impl ignores it.
+
+Docs fixes.
+
 # 0.9.0
 
 Public boundaries now use `.er_split()` for `(MyErr, String)` (or `.er_split_with(...)`), replacing `.er_into()` and the `into_*` attributes. The good old `.er()` on `(MyErr, String)` keeps both.
 
-`.er_report()` is `.er_report_string()`.
+Renamed `.er_report_string()` to `.er_report()`.
 
 Removed `ErReport`, `ErTop` + their views, `.er_top()` and `.er_top_string()` (you can/could always `.top` on a tree and `.top()` on a snapshot).
 

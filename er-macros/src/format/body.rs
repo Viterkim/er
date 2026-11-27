@@ -137,14 +137,14 @@ pub fn case_body(
     output: Output,
     formatter: &Ident,
 ) -> TokenStream {
-    let tried = case.formats.tried(output);
-    let mut body = if tried.default {
+    let fallbacks = case.formats.fallbacks(output);
+    let mut body = if fallbacks.use_default {
         default_body(input, case, formatter)
     } else {
         TokenStream::new()
     };
 
-    for format in tried.formats.into_iter().rev() {
+    for format in fallbacks.formats.into_iter().rev().flatten() {
         body = match format {
             FormatBody::Template(format) => template_body(input, case, format, formatter, body),
             FormatBody::Function(path) => quote!(#path(self, #formatter)),
@@ -157,8 +157,7 @@ pub fn case_body(
 fn variant_pattern(input: &Input<'_>, case: &Case<'_>) -> TokenStream {
     let mut patterns = Vec::new();
     for (index, field) in case.fields.iter().enumerate() {
-        let used = !field.formats.is_empty() || field.used_in_format;
-        let pattern = if used && field.options.mode == FieldMode::Normal {
+        let pattern = if field.used_in_format && field.options.mode == FieldMode::Normal {
             let local = binding(&input.names, &format!("__er_{index}"));
             quote!(#local)
         } else {

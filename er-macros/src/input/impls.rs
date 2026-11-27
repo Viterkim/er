@@ -1,12 +1,13 @@
 use super::{
-    Case, Field, IdentifierNames, Input, ValueNames, attrs,
+    Case, Constructors, Field, IdentifierNames, Input, ValueNames, attrs,
     attrs::FieldMode,
-    format::{FormatBody, FormatTrait, Formats, Output},
+    bounds::lifetime_name,
+    format::{FormatBody, Formats},
 };
-use crate::names::{identifiers, plain};
+use crate::names::{collect_identifiers, plain};
 use proc_macro2::TokenStream;
 use std::collections::HashSet;
-use syn::{Data, DeriveInput, Ident, Type, visit::Visit as _};
+use syn::{Data, DeriveInput, Fields, Ident, Type, Variant, Visibility, visit::Visit as _};
 
 impl Field<'_> {
     pub fn printed_by_default(&self) -> bool {
@@ -20,27 +21,112 @@ impl Field<'_> {
     }
 }
 
+impl<'a> Constructors<'a> {
+    fn for_public_struct(shape: &'a Fields) -> Self {
+        let mut restrictions = shape
+            .iter()
+            .map(|field| &field.vis)
+            .filter(|vis| !matches!(vis, Visibility::Public(_)));
+        let Some(mut narrowest) = restrictions.next() else {
+            return Self::TypeVisibility;
+        };
+
+        for other in restrictions {
+            let (Visibility::Restricted(a), Visibility::Restricted(b)) = (narrowest, other) else {
+                return Self::Restricted(&Visibility::Inherited);
+            };
+            let a_path = &a.path.segments;
+            let b_path = &b.path.segments;
+            let take_other = if a.path.is_ident("crate") {
+                true
+            } else if b.path.is_ident("crate") {
+                false
+            } else if a_path[0].ident == "crate" && b_path[0].ident == "crate" {
+                a_path.len() < b_path.len()
+            } else if a_path
+                .iter()
+                .chain(b_path)
+                .all(|part| part.ident == "super")
+            {
+                a_path.len() > b_path.len()
+            } else if a_path
+                .iter()
+                .map(|s| &s.ident)
+                .eq(b_path.iter().map(|s| &s.ident))
+            {
+                false
+            } else {
+                // The derive doesn't know which module a relative path starts in.
+                return Self::Restricted(&Visibility::Inherited);
+            };
+            if take_other {
+                narrowest = other;
+            }
+        }
+
+        Self::Restricted(narrowest)
+    }
+
+    fn check_field(self, field: &syn::Field, options: &attrs::FieldOptions) -> syn::Result<()> {
+        let option = if options.default.is_some() {
+            "default"
+        } else if options.src_location {
+            "src_location"
+        } else {
+            return Ok(());
+        };
+
+        let reason = match self {
+            Self::TypeVisibility => return Ok(()),
+            Self::Restricted(_) if options.default.is_none() => return Ok(()),
+            Self::Restricted(_) => {
+                return Err(syn::Error::new_spanned(
+                    field,
+                    "`#[er(default)]` needs the tuple form of `.er(...)`, which a public struct with a private field can't expose",
+                ));
+            }
+            Self::Disabled => "`#[er(no_constructors)]` turns off the constructor",
+            Self::NonExhaustive => "er skips the constructor on this `#[non_exhaustive]` item",
+        };
+        Err(syn::Error::new_spanned(
+            field,
+            format!("`#[er({option})]` needs a generated constructor, but {reason}"),
+        ))
+    }
+}
+
 impl<'a> Case<'a> {
-    pub fn parse(
-        variant: Option<&'a Ident>,
-        attrs: &'a [syn::Attribute],
-        shape: &'a syn::Fields,
+    fn parse(
+        item: &'a DeriveInput,
+        variant: Option<&'a Variant>,
+        shape: &'a Fields,
         format: &attrs::FormatOptions,
         type_names: &HashSet<String>,
         no_constructors: bool,
     ) -> syn::Result<Self> {
+        let (variant, attrs) = match variant {
+            Some(variant) => (Some(&variant.ident), variant.attrs.as_slice()),
+            None => (None, item.attrs.as_slice()),
+        };
+        let constructors = if no_constructors {
+            Constructors::Disabled
+        } else if attrs
+            .iter()
+            .any(|attr| attr.path().is_ident("non_exhaustive"))
+        {
+            Constructors::NonExhaustive
+        } else if variant.is_none() && matches!(item.vis, Visibility::Public(_)) {
+            Constructors::for_public_struct(shape)
+        } else {
+            Constructors::TypeVisibility
+        };
+
         let mut fields = Vec::with_capacity(shape.len());
         for item in shape {
             let mut options = attrs::field(&item.attrs)?;
-            // Both get filled in by the constructors. Without them the field just never gets that value, and
-            // nothing would say so. A leftover `exact` changes nothing either way.
-            if no_constructors && (options.default.is_some() || options.src_location) {
-                return Err(syn::Error::new_spanned(
-                    item,
-                    "`default` and `src_location` need the constructors that `no_constructors` turned off, drop one or the other",
-                ));
-            }
+            constructors.check_field(item, &options)?;
             options.exact |= exact_type(&item.ty, type_names);
+
             if options.source.is_some() && options.mode == FieldMode::Censor {
                 return Err(syn::Error::new_spanned(
                     item,
@@ -60,7 +146,6 @@ impl<'a> Case<'a> {
             fields.push(Field {
                 item,
                 options,
-                formats: Vec::new(),
                 used_in_format: false,
             });
         }
@@ -88,33 +173,23 @@ impl<'a> Case<'a> {
         }
 
         let formats = Formats::parse(format, &fields)?;
-        for output in [Output::Display, Output::DisplayAlt, Output::Debug] {
-            if matches!(output, Output::DisplayAlt) && formats.display_alt.is_none() {
-                continue;
-            }
-            let tried = formats.tried(output);
-
-            for body in &tried.formats {
-                let FormatBody::Template(format) = body else {
-                    continue;
-                };
-
-                for (argument, requirement) in &format.requirements {
-                    let index = argument.field;
-                    if !fields[index].formats.contains(requirement) {
-                        fields[index].formats.push(*requirement);
+        if variant.is_some() {
+            let mut use_default = false;
+            for &output in formats.outputs() {
+                let fallbacks = formats.fallbacks(output);
+                use_default |= fallbacks.use_default;
+                for body in fallbacks.formats.into_iter().flatten() {
+                    if let FormatBody::Template(format) = body {
+                        for argument in &format.arguments {
+                            fields[argument.field].used_in_format = true;
+                        }
                     }
                 }
-                for argument in &format.arguments {
-                    fields[argument.field].used_in_format = true;
-                }
             }
 
-            if tried.default {
+            if use_default {
                 for field in &mut fields {
-                    if field.printed_by_default() && !field.formats.contains(&FormatTrait::Debug) {
-                        field.formats.push(FormatTrait::Debug);
-                    }
+                    field.used_in_format |= field.printed_by_default();
                 }
             }
         }
@@ -125,6 +200,7 @@ impl<'a> Case<'a> {
             shape,
             fields,
             formats,
+            constructors,
         })
     }
 }
@@ -150,8 +226,8 @@ impl<'a> Input<'a> {
 
         let cases = match &item.data {
             Data::Struct(data) => vec![Case::parse(
+                item,
                 None,
-                &[],
                 &data.fields,
                 &options.format,
                 &type_names,
@@ -167,7 +243,7 @@ impl<'a> Input<'a> {
 
                 let mut cases = Vec::with_capacity(data.variants.len());
                 for variant in &data.variants {
-                    let mut format = attrs::variant(&variant.attrs)?;
+                    let (mut format, skip_constructors) = attrs::variant(&variant.attrs)?;
                     if format.shared.is_none() {
                         format.display = format.display.or_else(|| options.format.display.clone());
                         format.debug = format.debug.or_else(|| options.format.debug.clone());
@@ -176,13 +252,14 @@ impl<'a> Input<'a> {
                     format.display_alt = format
                         .display_alt
                         .or_else(|| options.format.display_alt.clone());
+
                     let case = Case::parse(
-                        Some(&variant.ident),
-                        &variant.attrs,
+                        item,
+                        Some(variant),
                         &variant.fields,
                         &format,
                         &type_names,
-                        options.no_constructors,
+                        options.no_constructors || skip_constructors,
                     )?;
                     cases.push(case);
                 }
@@ -197,11 +274,18 @@ impl<'a> Input<'a> {
             }
         };
 
-        let const_names = item
-            .generics
-            .const_params()
-            .map(|param| plain(&param.ident))
-            .collect();
+        let mut parameters = type_names;
+        parameters.extend(
+            item.generics
+                .const_params()
+                .map(|param| plain(&param.ident)),
+        );
+        parameters.extend(
+            item.generics
+                .lifetimes()
+                .map(|param| lifetime_name(&param.lifetime)),
+        );
+
         if let Some(wrap) = &options.wrap {
             let name = match &wrap.name {
                 Some(name) => plain(name),
@@ -249,8 +333,7 @@ impl<'a> Input<'a> {
             item,
             options,
             cases,
-            const_names,
-            type_names,
+            parameters,
             names: names.names,
             scope_names: scope_names.names,
         })
@@ -263,7 +346,7 @@ impl<'a> syn::visit::Visit<'a> for IdentifierNames {
     }
 
     fn visit_token_stream(&mut self, tokens: &'a TokenStream) {
-        self.names.extend(identifiers(tokens.clone()));
+        collect_identifiers(tokens.clone(), &mut self.names);
     }
 }
 
@@ -294,55 +377,42 @@ impl<'a> syn::visit::Visit<'a> for ValueNames {
 
     // We can't see what a macro expands to, so every name in it counts.
     fn visit_token_stream(&mut self, tokens: &'a TokenStream) {
-        self.names.extend(identifiers(tokens.clone()));
+        collect_identifiers(tokens.clone(), &mut self.names);
     }
 }
 
 pub fn exact_type(ty: &Type, type_names: &HashSet<String>) -> bool {
-    match ty {
+    let path = match ty {
         Type::Paren(ty) => return exact_type(&ty.elem, type_names),
         Type::Group(ty) => return exact_type(&ty.elem, type_names),
-        _ => (),
-    }
-
-    if matches!(
-        ty,
         Type::FnPtr(_)
-            | Type::Reference(_)
-            | Type::Ptr(_)
-            | Type::Tuple(_)
-            | Type::Array(_)
-            | Type::Slice(_)
-    ) {
-        return true;
-    }
-
-    let Type::Path(path) = ty else {
-        return false;
+        | Type::Reference(_)
+        | Type::Ptr(_)
+        | Type::Tuple(_)
+        | Type::Array(_)
+        | Type::Slice(_) => return true,
+        Type::Path(path) if path.qself.is_none() => &path.path,
+        _ => return false,
     };
-    if path.qself.is_some() {
-        return false;
-    }
-    if let Some(ident) = path.path.get_ident()
-        && type_names.contains(&plain(ident))
-    {
-        return true;
-    }
 
-    let segments = &path.path.segments;
-    let ordinary = segments.len() == 1;
+    let segments = &path.segments;
     let primitive_path = segments.len() == 3
         && matches!(plain(&segments[0].ident).as_str(), "core" | "std")
         && plain(&segments[1].ident) == "primitive";
-    if !ordinary && !primitive_path {
+    if segments.len() != 1 && !primitive_path {
         return false;
     }
+
     let Some(segment) = segments.last() else {
         return false;
     };
+    let name = plain(&segment.ident);
+    if path.get_ident().is_some() && type_names.contains(&name) {
+        return true;
+    }
 
     matches!(
-        plain(&segment.ident).as_str(),
+        name.as_str(),
         "bool"
             | "char"
             | "i8"

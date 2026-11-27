@@ -2,21 +2,24 @@
 use crate::ErBoxedInput;
 use crate::impls::tree::{build_tree, with_source};
 use crate::internal::{ErWithFields, er_make_cold};
-use crate::{ErAllItem, ErAllOption, ErAllResult, ErPart};
+use crate::{ErAllItem, ErAllOption, ErAllResult, ErNode};
 #[cfg(feature = "macros")]
 use crate::{
-    ErBail, ErBailFields, ErBailTarget, ErBuildFrom, ErErrorWithSaved, ErForm, ErFromFields,
-    ErIntoPair, ErReady, ErValueForm, ErWithSaves,
+    ErBail, ErBailFields, ErBailTarget, ErBuildFrom, ErErrorWithSaved, ErFieldInput, ErFieldsFor,
+    ErForm, ErFromFields, ErReady, ErValueForm, ErWithSaves,
 };
 use crate::{
     ErBorrowedPresentationExt, ErBoxError, ErContextExt, ErErrorContextExt, ErErrorExt, ErInput,
-    ErMake, ErPresentationExt, ErReportError, ErResult, ErResultExt, ErSnapshot,
+    ErMake, ErPollExt, ErPresentationExt, ErReportError, ErResult, ErResultExt, ErSnapshot,
     ErSnapshotPresentationExt, ErTree, ErValueExt, IntoErSnapshot, IntoErTree, IntoErTreeRef,
 };
 #[cfg(er_unsync)]
 use alloc::boxed::Box;
 use alloc::string::String;
+#[cfg(feature = "macros")]
+use alloc::vec::Vec;
 use core::error::Error;
+use core::task::Poll;
 
 impl<T: Into<ErBoxError>, Mode> ErErrorContextExt<Mode> for T {}
 impl<T: Into<ErBoxError>> ErErrorExt for T {}
@@ -52,7 +55,6 @@ impl<T, E: ErInput<Input>, Mode, Input> ErContextExt<Mode, Input> for Result<T, 
         }
     }
 }
-/// Builds the error and its tree in one cold call, see `.er()` on a Result.
 #[cold]
 #[inline(never)]
 #[track_caller]
@@ -66,7 +68,6 @@ where
     build_tree(error.er_make(), source)
 }
 
-/// `.er_with()` building the error and its tree in one cold call.
 #[cold]
 #[inline(never)]
 #[track_caller]
@@ -81,7 +82,6 @@ where
     build_tree(error, source)
 }
 
-/// `.er_with_tree()` building the error and its tree in one cold call.
 #[cold]
 #[inline(never)]
 #[track_caller]
@@ -104,6 +104,39 @@ where
     A: Error + 'static,
 {
     error.er_make().into_tree()
+}
+
+impl<T, E: ErInput<Input>, Mode, Input> ErPollExt<Mode, Input> for Poll<Result<T, E>> {
+    type Ready<A> = ErResult<T, A>;
+
+    #[track_caller]
+    fn er<A>(self, error: impl ErMake<A, Mode>) -> Poll<ErResult<T, A>>
+    where
+        A: Error + 'static,
+    {
+        match self {
+            Poll::Pending => Poll::Pending,
+            // Returning Ok here saves a copy of the whole ErResult.
+            Poll::Ready(Ok(value)) => Poll::Ready(Ok(value)),
+            Poll::Ready(err @ Err(_)) => Poll::Ready(err.er(error)),
+        }
+    }
+}
+impl<T, E: ErInput<Input>, Mode, Input> ErPollExt<Mode, Input> for Poll<Option<Result<T, E>>> {
+    type Ready<A> = Option<ErResult<T, A>>;
+
+    #[track_caller]
+    fn er<A>(self, error: impl ErMake<A, Mode>) -> Poll<Option<ErResult<T, A>>>
+    where
+        A: Error + 'static,
+    {
+        match self {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Ready(Some(Ok(value))) => Poll::Ready(Some(Ok(value))),
+            Poll::Ready(Some(err @ Err(_))) => Poll::Ready(Some(err.er(error))),
+        }
+    }
 }
 
 impl<T, E: ErInput<Input>, Input> ErResultExt<Input> for Result<T, E> {
@@ -194,7 +227,6 @@ impl<T, Mode> ErContextExt<Mode> for Option<T> {
     {
         match self {
             Some(value) => Ok(value),
-            // Same split as on a Result.
             None if !er_make_cold(&error) => Err(error.er_make().into_tree()),
             None => Err(missing(error)),
         }
@@ -213,20 +245,6 @@ impl<T, F: FnOnce() -> E, E: Into<T>> ErBail<T, (ErReady,)> for F {
     #[track_caller]
     fn er_bail(self) -> T {
         self().into()
-    }
-}
-#[cfg(feature = "macros")]
-impl<E: Error + 'static> ErBail<(E, String), ErIntoPair> for E {
-    #[track_caller]
-    fn er_bail(self) -> (E, String) {
-        ErTree::from(self).into()
-    }
-}
-#[cfg(feature = "macros")]
-impl<F: FnOnce() -> E, E: Error + 'static> ErBail<(E, String), (ErIntoPair,)> for F {
-    #[track_caller]
-    fn er_bail(self) -> (E, String) {
-        ErTree::from(self()).into()
     }
 }
 #[cfg(feature = "macros")]
@@ -258,6 +276,7 @@ where
 #[cfg(feature = "macros")]
 impl<T, P, Form: ErForm> ErBailFields<T, Form> for P
 where
+    ErFieldInput<P>: ErFieldsFor<T::Error, Form>,
     T: ErBailTarget + From<ErTree<T::Error>>,
     T::Error: Error + ErBuildFrom<P, Form> + 'static,
 {
@@ -269,8 +288,9 @@ where
 }
 
 #[cfg(feature = "macros")]
-impl<T, P, Form: ErForm> ErBail<T, (ErWithSaves, Form)> for ErErrorWithSaved<P>
+impl<T, P, Nodes, Form: ErForm> ErBail<T, (ErWithSaves, Form)> for ErErrorWithSaved<P, Nodes>
 where
+    Nodes: Into<Vec<ErNode>>,
     T: ErBailTarget + From<ErTree<T::Error>>,
     T::Error: Error + ErBuildFrom<P, Form> + 'static,
 {
@@ -282,8 +302,10 @@ where
     }
 }
 #[cfg(feature = "macros")]
-impl<T, P, Form: ErForm> ErBailFields<T, (ErWithSaves, Form)> for ErErrorWithSaved<P>
+impl<T, P, Nodes, Form: ErForm> ErBailFields<T, (ErWithSaves, Form)> for ErErrorWithSaved<P, Nodes>
 where
+    ErFieldInput<P>: ErFieldsFor<T::Error, Form>,
+    Nodes: Into<Vec<ErNode>>,
     T: ErBailTarget + From<ErTree<T::Error>>,
     T::Error: Error + ErBuildFrom<P, Form> + 'static,
 {
@@ -299,7 +321,7 @@ impl<T, E: ErInput<Input>, Input> ErAllItem<(ErAllResult, Input)> for Result<T, 
     type Ok = T;
 
     #[track_caller]
-    fn er_all_item(self) -> Result<T, ErPart> {
+    fn er_all_item(self) -> Result<T, ErNode> {
         match self {
             Ok(value) => Ok(value),
             Err(error) => Err(error.into_er_input()),
@@ -314,7 +336,7 @@ where
     type Ok = &'a T;
 
     #[track_caller]
-    fn er_all_item(self) -> Result<Self::Ok, ErPart> {
+    fn er_all_item(self) -> Result<Self::Ok, ErNode> {
         self.as_ref().er_all_item()
     }
 }
@@ -325,7 +347,7 @@ where
     type Ok = &'a T;
 
     #[track_caller]
-    fn er_all_item(self) -> Result<Self::Ok, ErPart> {
+    fn er_all_item(self) -> Result<Self::Ok, ErNode> {
         (&*self).er_all_item()
     }
 }
@@ -333,7 +355,7 @@ impl<T: ErAllItem<Mode>, Mode> ErAllItem<(ErAllOption, Mode)> for Option<T> {
     type Ok = Option<T::Ok>;
 
     #[track_caller]
-    fn er_all_item(self) -> Result<Self::Ok, ErPart> {
+    fn er_all_item(self) -> Result<Self::Ok, ErNode> {
         match self {
             Some(item) => item.er_all_item().map(Some),
             None => Ok(None),
@@ -347,7 +369,7 @@ where
     type Ok = Option<<&'a T as ErAllItem<Mode>>::Ok>;
 
     #[track_caller]
-    fn er_all_item(self) -> Result<Self::Ok, ErPart> {
+    fn er_all_item(self) -> Result<Self::Ok, ErNode> {
         self.as_ref().er_all_item()
     }
 }
@@ -358,7 +380,7 @@ where
     type Ok = Option<<&'a T as ErAllItem<Mode>>::Ok>;
 
     #[track_caller]
-    fn er_all_item(self) -> Result<Self::Ok, ErPart> {
+    fn er_all_item(self) -> Result<Self::Ok, ErNode> {
         (&*self).er_all_item()
     }
 }
@@ -367,7 +389,7 @@ impl<E: ErInput<Input>, Input> ErAllItem<Input> for E {
     const ALWAYS_ERROR: bool = true;
 
     #[track_caller]
-    fn er_all_item(self) -> Result<(), ErPart> {
+    fn er_all_item(self) -> Result<(), ErNode> {
         Err(self.into_er_input())
     }
 }

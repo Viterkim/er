@@ -1,10 +1,10 @@
-use super::LineWriter;
 pub use super::ReportEntry;
-use crate::impls::saved::write_saved_parts;
-use crate::{ErEntries, ErNode, ErSaved, ErSrcLocation};
-#[cfg(feature = "src_locations")]
+
+use super::location::Locations;
+use super::{Gutter, LineWriter};
+use crate::impls::saved::for_distinct_parts;
+use crate::{ErEntries, ErEntryKind, ErNode, ErSaved, ErSrcLocation};
 use alloc::vec::Vec;
-use alloc::{borrow::Cow, string::String};
 use core::{error::Error, fmt};
 use fmt::Write as _;
 
@@ -12,30 +12,18 @@ pub fn write_entry<W: fmt::Write + ?Sized>(
     entry: ReportEntry<'_>,
     writer: &mut LineWriter<'_, '_, W>,
 ) -> fmt::Result {
-    let mut message = Tracked {
-        writer: &mut *writer,
-        failed: false,
-    };
-    if write!(message, "{}", entry.message).is_err() {
-        if message.failed {
-            return Err(fmt::Error);
-        }
+    write_entry_cached(entry, writer, &mut Locations::default())
+}
 
-        // That error came from the message's own Display. One broken error somewhere below shouldn't cost the
-        // whole report, saved reports and all. Mark the message and keep going. Whatever it wrote before failing
-        // stays, the writer can't take it back.
-        writer.write_str("ER_FMT_FAILED")?;
-    }
+fn write_entry_cached<'a, W: fmt::Write + ?Sized, M: Message + ?Sized>(
+    entry: ReportEntry<'a, M>,
+    writer: &mut LineWriter<'_, '_, W>,
+    locations: &mut Locations<'a>,
+) -> fmt::Result {
+    entry.message.write_message(writer)?;
 
-    #[cfg(feature = "src_locations")]
     if let Some((file, line, column)) = entry.src_location {
-        #[cfg(feature = "small_path_src")]
-        let file = small_path(file);
-        writer.forget_pending_break();
-        writer.inner.write_str(" @ ")?;
-        writer.write_str(file)?;
-        writer.write_char(':')?;
-        write!(writer.inner, "{line}:{column}")?;
+        locations.write(writer, file, line, column)?;
     }
 
     if entry.source_truncated {
@@ -46,45 +34,50 @@ pub fn write_entry<W: fmt::Write + ?Sized>(
     Ok(())
 }
 
-/// Tells a failing destination apart from a failing Display, both come out as the same `fmt::Error`.
-struct Tracked<'w, 'a, 'p, W: fmt::Write + ?Sized> {
-    writer: &'w mut LineWriter<'a, 'p, W>,
+pub(crate) trait Message {
+    fn write_message<W: fmt::Write + ?Sized>(&self, writer: &mut W) -> fmt::Result;
+}
+impl Message for str {
+    fn write_message<W: fmt::Write + ?Sized>(&self, writer: &mut W) -> fmt::Result {
+        writer.write_str(self)
+    }
+}
+impl Message for dyn fmt::Display + '_ {
+    fn write_message<W: fmt::Write + ?Sized>(&self, writer: &mut W) -> fmt::Result {
+        let mut message = CheckedWriter {
+            writer: &mut *writer,
+            failed: false,
+        };
+        let formatted = write!(message, "{self}");
+        if message.failed {
+            return Err(fmt::Error);
+        }
+
+        if formatted.is_err() {
+            // A broken Display can leave half a message. Keep printing the rest of the tree.
+            writer.write_str("ER_FMT_FAILED")?;
+        }
+
+        Ok(())
+    }
+}
+
+// Display can swallow a write error and return Ok.
+struct CheckedWriter<'a, W: ?Sized> {
+    writer: &'a mut W,
     failed: bool,
 }
-impl<W: fmt::Write + ?Sized> fmt::Write for Tracked<'_, '_, '_, W> {
+impl<W: fmt::Write + ?Sized> fmt::Write for CheckedWriter<'_, W> {
     fn write_str(&mut self, text: &str) -> fmt::Result {
+        if self.failed {
+            return Err(fmt::Error);
+        }
+
         let result = self.writer.write_str(text);
-        self.failed |= result.is_err();
+        self.failed = result.is_err();
 
         result
     }
-}
-
-// Last src directory, plus its parent. This is display-only, not crate-root detection.
-#[cfg(all(feature = "src_locations", feature = "small_path_src"))]
-fn small_path(file: &str) -> &str {
-    let mut offset = 0;
-    let mut parent = None;
-    let mut shortened = file;
-
-    for part in file.split_inclusive(['/', '\\']) {
-        let name = part.trim_end_matches(['/', '\\']);
-        if name == "src" && name.len() < part.len() {
-            shortened = match parent {
-                Some(start) => &file[start..],
-                None => &file[offset..],
-            };
-        }
-
-        if name.len() == 2 && name.as_bytes()[0].is_ascii_alphabetic() && name.ends_with(':') {
-            parent = None; // A Windows drive isn't a parent directory.
-        } else if !name.is_empty() {
-            parent = Some(offset);
-        }
-        offset += part.len();
-    }
-
-    shortened
 }
 
 #[inline(never)]
@@ -96,9 +89,29 @@ pub fn write_report<W: fmt::Write + ?Sized>(
     extra: &[ErSaved],
     src_location: Option<ErSrcLocation>,
 ) -> fmt::Result {
-    let entries = ErEntries::new(error, nodes, src_location);
-    write_report_entries::<false, _>(writer, entries)?;
-    write_saved_parts(writer, saved, extra)
+    let mut entries = ErEntries::new(error, nodes, src_location);
+    if nodes.is_empty() && saved.is_empty() && extra.is_empty() {
+        if let Some(root) = entries.next() {
+            write_entry(root.into(), &mut LineWriter::indent(writer, ""))?;
+        }
+
+        if entries.next_error.is_none() {
+            return Ok(());
+        }
+    }
+
+    write_entries_with_saved(writer, entries, |entry| {
+        let (first, second) = if entry.kind == ErEntryKind::Root {
+            (saved, extra)
+        } else if entry.saved.is_none() && entry.shared_saved.is_none() {
+            return (entry.into(), None);
+        } else {
+            entry.saved_slices()
+        };
+        let attachments = !first.is_empty() || !second.is_empty();
+
+        (entry.into(), attachments.then_some((first, second)))
+    })
 }
 
 pub fn valid_depth(previous: Option<usize>, depth: usize) -> bool {
@@ -108,106 +121,120 @@ pub fn valid_depth(previous: Option<usize>, depth: usize) -> bool {
     }
 }
 
-#[cfg(feature = "src_locations")]
-#[derive(Clone, Copy, PartialEq, Eq)]
-struct EntryLocation<'a> {
-    file: &'a str,
-    line: u32,
-    column: u32,
-}
-
-#[cfg(feature = "src_locations")]
-fn hide_repeated_location<'a>(
-    entry: &mut ReportEntry<'a>,
-    ancestors: &mut Vec<Option<EntryLocation<'a>>>,
-    root: &mut Option<EntryLocation<'a>>,
-    previous: &mut Option<EntryLocation<'a>>,
-) {
-    let location = entry
-        .src_location
-        .map(|(file, line, column)| EntryLocation { file, line, column });
-
-    // The root stays outside the stack so the first level needs no allocation here.
-    if let Some(depth) = entry.depth.checked_sub(1) {
-        if ancestors.len() < depth {
-            ancestors.push(*previous);
-        } else {
-            ancestors.truncate(depth);
-        }
-
-        if location.is_some() && ancestors.last().copied().unwrap_or(*root) == location {
-            entry.src_location = None;
-        }
-    } else {
-        *root = location;
-    }
-    *previous = location;
-}
-
 pub fn write_entries<'a, W: fmt::Write + ?Sized>(
     writer: &mut W,
     entries: impl IntoIterator<Item = impl Into<ReportEntry<'a>>>,
 ) -> fmt::Result {
-    write_report_entries::<true, _>(writer, entries)
-}
-
-pub(crate) fn write_report_entries<'a, const CHECK_DEPTH: bool, W: fmt::Write + ?Sized>(
-    writer: &mut W,
-    entries: impl IntoIterator<Item = impl Into<ReportEntry<'a>>>,
-) -> fmt::Result {
-    let mut prefix = Cow::Borrowed("");
+    let mut rows = ReportRows::new(writer);
     let mut previous_depth = None;
-    #[cfg(feature = "src_locations")]
-    let (mut ancestors, mut root_location, mut previous_location) = (Vec::new(), None, None);
-
     for entry in entries {
         let entry = entry.into();
-        if CHECK_DEPTH && !valid_depth(previous_depth, entry.depth) {
+        if !valid_depth(previous_depth, entry.depth) {
             return Err(fmt::Error);
         }
         previous_depth = Some(entry.depth);
-        #[cfg(feature = "src_locations")]
-        let mut entry = entry;
-        #[cfg(feature = "src_locations")]
-        hide_repeated_location(
-            &mut entry,
-            &mut ancestors,
-            &mut root_location,
-            &mut previous_location,
-        );
-        if entry.depth > 0 {
-            let parent_width = (entry.depth - 1) * 3;
-            let (branch, continuation) = if entry.is_last {
-                ("\n`- ", "   ")
-            } else {
-                ("\n|- ", "|  ")
-            };
 
-            if parent_width == 0 {
-                writer.write_str(branch)?;
-            } else {
-                writer.write_char('\n')?;
-                writer.write_str(&prefix[..parent_width])?;
-                writer.write_str(&branch[1..])?;
-            }
-            match &mut prefix {
-                Cow::Borrowed(previous) if parent_width == 0 => *previous = continuation,
-                Cow::Borrowed(previous) => {
-                    let mut nested = String::with_capacity(16);
-                    nested.push_str(&previous[..parent_width]);
-                    nested.push_str(continuation);
-                    prefix = Cow::Owned(nested);
-                }
-                Cow::Owned(prefix) => {
-                    prefix.truncate(parent_width);
-                    prefix.push_str(continuation);
-                }
-            }
-        }
-
-        let mut line = LineWriter::indent(writer, &prefix);
-        write_entry(entry, &mut line)?;
+        rows.entry(entry)?;
     }
 
     Ok(())
+}
+
+pub(crate) fn write_entries_with_saved<'a, W: fmt::Write + ?Sized, T, M: Message + ?Sized + 'a>(
+    writer: &mut W,
+    entries: impl IntoIterator<Item = T>,
+    into_entry: impl FnMut(T) -> (ReportEntry<'a, M>, Option<(&'a [ErSaved], &'a [ErSaved])>),
+) -> fmt::Result {
+    let mut rows = ReportRows::new(writer);
+    let mut entries = entries.into_iter().map(into_entry);
+    let first = loop {
+        let Some((entry, attachments)) = entries.next() else {
+            return Ok(());
+        };
+        let depth = entry.depth;
+        rows.entry(entry)?;
+
+        if let Some(attachments) = attachments {
+            break (depth, attachments);
+        }
+    };
+
+    let mut current = Some(first);
+    let mut parents = Vec::new();
+    for (mut entry, attachments) in entries {
+        while let Some((depth, attachments)) = current {
+            if depth < entry.depth {
+                if depth + 1 == entry.depth {
+                    entry.is_last = false;
+                }
+                break;
+            }
+
+            rows.attachments(depth + 1, attachments)?;
+            current = parents.pop();
+        }
+
+        let depth = entry.depth;
+        rows.entry(entry)?;
+        if let Some(attachments) = attachments
+            && let Some(parent) = current.replace((depth, attachments))
+        {
+            parents.push(parent);
+        }
+    }
+
+    while let Some((depth, attachments)) = current {
+        rows.attachments(depth + 1, attachments)?;
+        current = parents.pop();
+    }
+
+    Ok(())
+}
+
+struct ReportRows<'a, W: ?Sized> {
+    writer: &'a mut W,
+    gutter: Gutter,
+    locations: Locations<'a>,
+}
+impl<'a, W: fmt::Write + ?Sized> ReportRows<'a, W> {
+    fn new(writer: &'a mut W) -> Self {
+        Self {
+            writer,
+            gutter: Gutter::default(),
+            locations: Locations::default(),
+        }
+    }
+
+    #[inline]
+    fn entry<M: Message + ?Sized>(&mut self, mut entry: ReportEntry<'a, M>) -> fmt::Result {
+        self.locations.hide_repeated(&mut entry);
+
+        let gutter = self
+            .gutter
+            .branch(self.writer, entry.depth, entry.is_last)?;
+        let mut line = LineWriter::indent(self.writer, &gutter[..entry.depth * 3]);
+        write_entry_cached(entry, &mut line, &mut self.locations)
+    }
+
+    fn attachment(&mut self, depth: usize, saved: &ErSaved, is_last: bool) -> fmt::Result {
+        let gutter = self.gutter.branch(self.writer, depth, is_last)?;
+        let mut line = LineWriter::indent(self.writer, &gutter[..depth * 3]);
+        line.write_str(&saved.title)?;
+        line.forget_pending_break();
+        line.write_str(" [saved]")?;
+
+        let mut body = LineWriter::indent(self.writer, gutter);
+        body.write_char('\n')?;
+        write!(body, "{}", saved.kind)
+    }
+
+    fn attachments(
+        &mut self,
+        depth: usize,
+        (first, second): (&[ErSaved], &[ErSaved]),
+    ) -> fmt::Result {
+        for_distinct_parts(first, second, |saved, is_last| {
+            self.attachment(depth, saved, is_last)
+        })
+    }
 }

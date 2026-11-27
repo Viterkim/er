@@ -1,6 +1,6 @@
 use super::{
-    ArgumentUse, Format, FormatArgument, FormatBody, FormatParser, FormatTrait, Formats, Output,
-    Tried,
+    ArgumentUse, Format, FormatArgument, FormatBody, FormatFallbacks, FormatParser, FormatTrait,
+    Formats, Output,
 };
 use crate::fields::option_inner;
 use crate::input::attrs::{FormatOptions, FormatValue};
@@ -20,32 +20,41 @@ impl Formats {
         })
     }
 
-    pub fn tried(&self, output: Output) -> Tried<'_> {
-        let order = match output {
-            Output::Display => [&None, &self.display, &self.shared],
-            Output::DisplayAlt => [&self.display_alt, &self.display, &self.shared],
-            Output::Debug => [&None, &self.debug, &self.shared],
+    pub fn fallbacks(&self, output: Output) -> FormatFallbacks<'_> {
+        let mut formats = match output {
+            Output::Display => [None, self.display.as_ref(), self.shared.as_ref()],
+            Output::DisplayAlt => [
+                self.display_alt.as_ref(),
+                self.display.as_ref(),
+                self.shared.as_ref(),
+            ],
+            Output::Debug => [None, self.debug.as_ref(), self.shared.as_ref()],
         };
-        let mut formats = Vec::new();
 
-        for body in order.into_iter().flatten() {
-            formats.push(body);
-
-            let always = match body {
-                FormatBody::Template(format) => !format.optional(),
-                FormatBody::Function(_) => true,
-            };
-            if always {
-                return Tried {
-                    formats,
-                    default: false,
+        let mut use_default = true;
+        for slot in &mut formats {
+            if use_default {
+                use_default = match slot {
+                    Some(FormatBody::Template(format)) => format.optional(),
+                    Some(FormatBody::Function(_)) => false,
+                    None => true,
                 };
+            } else {
+                *slot = None;
             }
         }
 
-        Tried {
+        FormatFallbacks {
             formats,
-            default: true,
+            use_default,
+        }
+    }
+
+    pub fn outputs(&self) -> &'static [Output] {
+        if self.display_alt.is_some() {
+            &[Output::Display, Output::DisplayAlt, Output::Debug]
+        } else {
+            &[Output::Display, Output::Debug]
         }
     }
 

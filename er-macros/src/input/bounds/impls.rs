@@ -49,7 +49,6 @@ impl<'a> syn::visit::Visit<'a> for FormatBounds<'a, '_> {
             || matches!(ty, Type::FnPtr(_) | Type::Ptr(_) | Type::TraitObject(_))
             || matches!(ty, Type::Path(path) if path.qself.is_some());
 
-        // Each type gets its own flags, but shares the collected bounds.
         let mut nested = FormatBounds::new(
             self.name,
             self.parameters,

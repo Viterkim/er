@@ -3,15 +3,17 @@ use crate::ErSharedTree;
 use crate::aggregate::ErAggregateItems;
 use crate::internal::ErWithFields;
 #[cfg(feature = "macros")]
-use crate::internal::{ErBail, ErBailFields, ErBailTestTop, ErFields, ErReady};
-#[cfg(feature = "macros")]
-use crate::{ErAllItem, ErTestFailure};
-use crate::{
-    ErBoxError, ErContextExt, ErErrorContextExt, ErErrorWithSaved, ErIteratorExt, ErMake, ErPart,
-    ErPresentationExt, ErResult, ErResultExt, ErSaveInput, ErSaveRef, ErSavedList, ErSnapshot,
-    ErTest, ErTestExt, ErTree, IntoErTree, IntoErTreeRef,
+use crate::internal::{
+    ErBail, ErBailFields, ErBailTestTop, ErFields, ErPrepared, ErReady, ErWithSaves,
 };
-use alloc::string::String;
+#[cfg(feature = "macros")]
+use crate::{ErAllItem, ErTestError, ErTestFailure};
+use crate::{
+    ErBoxError, ErBranch, ErContextExt, ErErrorContextExt, ErErrorWithSaved, ErIteratorExt, ErMake,
+    ErNode, ErPresentationExt, ErResult, ErResultExt, ErSaveInput, ErSaveRef, ErSavedList,
+    ErSnapshot, ErTest, ErTestExt, ErTree, IntoErTree, IntoErTreeRef,
+};
+use alloc::{string::String, vec::Vec};
 use core::error::Error;
 
 /// Add context to an owned Wrap with `std_error`.
@@ -217,6 +219,16 @@ impl<E> ErTree<E> {
         self.er_add(items.er_items().map(ErWrappedItem::er_wrapped_item))
     }
 }
+impl<E> ErBranch<E> {
+    /// Add the wrapped trees to this branch, keeping their children and locations.
+    #[track_caller]
+    pub fn er_add_wrap<Kind>(
+        self,
+        items: impl ErAggregateItems<Kind, Item: ErWrappedItem>,
+    ) -> Self {
+        self.er_add(items.er_items().map(ErWrappedItem::er_wrapped_item))
+    }
+}
 
 /// An error that owns a tree but also implements `Error`, or a Result that may hold one.
 #[doc(hidden)]
@@ -224,7 +236,7 @@ pub trait ErWrappedItem {
     type Ok;
 
     #[track_caller]
-    fn er_wrapped_item(self) -> Result<Self::Ok, ErPart>;
+    fn er_wrapped_item(self) -> Result<Self::Ok, ErNode>;
 }
 
 // The macros pass an unsuffixed 0. Rust infers u8 for ordinary inputs and defaults to
@@ -235,7 +247,7 @@ pub trait ErAggregateItem<T, Mode> {
     const ALWAYS_ERROR: bool;
 
     #[track_caller]
-    fn item(self, input: T) -> Result<Self::Ok, ErPart>;
+    fn item(self, input: T) -> Result<Self::Ok, ErNode>;
 }
 
 #[cfg(feature = "macros")]
@@ -248,7 +260,7 @@ impl<T: ErAllItem<Mode>, Mode> ErMacroItem<T, Mode> {
     pub fn item<Kind>(
         self,
         tag: impl ErAggregateItem<T, Kind, Ok = T::Ok>,
-    ) -> Result<T::Ok, ErPart> {
+    ) -> Result<T::Ok, ErNode> {
         tag.item(self.0)
     }
 }
@@ -258,7 +270,7 @@ pub trait ErWrappedFallback {
     type Ok;
 
     #[track_caller]
-    fn item(self, tag: i32) -> Result<Self::Ok, ErPart>;
+    fn item(self, tag: i32) -> Result<Self::Ok, ErNode>;
 }
 
 #[cfg(feature = "macros")]
@@ -266,7 +278,7 @@ impl<T: ErWrappedItem> ErWrappedFallback for ErMacroItem<T, ()> {
     type Ok = T::Ok;
 
     #[track_caller]
-    fn item(self, _: i32) -> Result<T::Ok, ErPart> {
+    fn item(self, _: i32) -> Result<T::Ok, ErNode> {
         self.0.er_wrapped_item()
     }
 }
@@ -274,7 +286,7 @@ impl<T: ErWrappedItem> ErWrappedFallback for ErMacroItem<T, ()> {
 #[cfg(feature = "macros")]
 pub trait ErAggregateAdd<I, Mode> {
     #[track_caller]
-    fn add<T: IntoErTree>(self, tree: T, items: I) -> ErTree<T::Error>;
+    fn add(self, nodes: &mut Vec<ErNode>, items: I);
 }
 
 #[cfg(feature = "macros")]
@@ -301,13 +313,18 @@ impl<E: Error + IntoErTree> WrappedTree for E {
         self.into_er_tree()
     }
 }
-impl<E: WrappedTree> WrappedTree for ErErrorWithSaved<E> {
+impl<E: WrappedTree, Nodes: Into<Vec<ErNode>>> WrappedTree for ErErrorWithSaved<E, Nodes> {
     type Error = E::Error;
 
     fn into_wrapped_tree(self) -> ErTree<Self::Error> {
-        let Self { value, mut saved } = self;
+        let Self {
+            value,
+            mut saved,
+            nodes,
+        } = self;
         let mut tree = value.into_wrapped_tree();
         tree.saved.append(&mut saved);
+        crate::impls::node::append_nodes(&mut tree.nodes, &mut nodes.into());
         tree
     }
 }
@@ -319,8 +336,8 @@ where
     type Ok = ();
 
     #[track_caller]
-    fn er_wrapped_item(self) -> Result<(), ErPart> {
-        Err(self.into_wrapped_tree().into_er_part())
+    fn er_wrapped_item(self) -> Result<(), ErNode> {
+        Err(self.into_wrapped_tree().into_er_node())
     }
 }
 impl<T, E: WrappedTree> ErWrappedItem for Result<T, E>
@@ -330,10 +347,10 @@ where
     type Ok = T;
 
     #[track_caller]
-    fn er_wrapped_item(self) -> Result<T, ErPart> {
+    fn er_wrapped_item(self) -> Result<T, ErNode> {
         match self {
             Ok(value) => Ok(value),
-            Err(error) => Err(error.into_wrapped_tree().into_er_part()),
+            Err(error) => Err(error.into_wrapped_tree().into_er_node()),
         }
     }
 }
@@ -341,7 +358,7 @@ impl<T: ErWrappedItem> ErWrappedItem for Option<T> {
     type Ok = Option<T::Ok>;
 
     #[track_caller]
-    fn er_wrapped_item(self) -> Result<Self::Ok, ErPart> {
+    fn er_wrapped_item(self) -> Result<Self::Ok, ErNode> {
         match self {
             Some(item) => item.er_wrapped_item().map(Some),
             None => Ok(None),
@@ -362,8 +379,8 @@ where
     P::Error: Error + Into<ErBoxError> + 'static,
 {
     #[track_caller]
-    fn into_test_part(self, _: i32) -> ErPart {
-        self.into_wrapped_tree().into_er_part()
+    fn into_test_node(self, _: i32) -> ErNode {
+        self.into_wrapped_tree().into_er_node()
     }
 }
 
@@ -372,8 +389,8 @@ impl<F: FnOnce() -> P, P: ErBailTestTop<Mode, i32>, Mode> ErBailTestTop<(ErReady
     for F
 {
     #[track_caller]
-    fn into_test_part(self, tag: i32) -> ErPart {
-        self().into_test_part(tag)
+    fn into_test_node(self, tag: i32) -> ErNode {
+        self().into_test_node(tag)
     }
 }
 
@@ -381,7 +398,66 @@ impl<F: FnOnce() -> P, P: ErBailTestTop<Mode, i32>, Mode> ErBailTestTop<(ErReady
 impl<P: ErBailTestTop<Mode, i32>, Kind, Mode> ErBailValue<P, ErTestFailure, Mode> for (i32, Kind) {
     #[track_caller]
     fn bail(self, input: P) -> ErTestFailure {
-        ErTestFailure::new(input.into_test_part(0))
+        ErTestFailure::new(input.into_test_node(0))
+    }
+}
+
+// Both outputs need the same priority. Preferring the pair would silently render the tree
+// when a closure's return type is still unknown.
+#[cfg(feature = "macros")]
+macro_rules! bail_top {
+    ($output:ty) => {
+        impl<E: Error + 'static> ErBailValue<E, $output, ErReady> for (i32, ErReady) {
+            #[track_caller]
+            fn bail(self, input: E) -> $output {
+                ErTree::from(input).into()
+            }
+        }
+
+        impl<F: FnOnce() -> E, E: Error + 'static> ErBailValue<F, $output, (ErReady,)>
+            for (i32, ErReady)
+        {
+            #[track_caller]
+            fn bail(self, input: F) -> $output {
+                ErTree::from(input()).into()
+            }
+        }
+    };
+}
+#[cfg(feature = "macros")]
+bail_top!(ErTree<E>);
+#[cfg(feature = "macros")]
+bail_top!((E, String));
+
+#[cfg(feature = "macros")]
+impl<E> ErBailValue<ErPrepared<ErBranch<E>>, ErTree<E>, ErReady> for (i32, ErReady) {
+    #[track_caller]
+    fn bail(self, input: ErPrepared<ErBranch<E>>) -> ErTree<E> {
+        input.0.into()
+    }
+}
+#[cfg(feature = "macros")]
+impl<E, T> ErBail<T, ErWithSaves> for ErPrepared<ErBranch<E>>
+where
+    ErTree<E>: Into<T>,
+{
+    #[track_caller]
+    fn er_bail(self) -> T {
+        ErTree::from(self.0).into()
+    }
+}
+#[cfg(feature = "macros")]
+impl<E> ErBailValue<ErBranch<E>, ErTree<E>, ErReady> for (i32, ErFields) {
+    #[track_caller]
+    fn bail(self, input: ErBranch<E>) -> ErTree<E> {
+        input.into()
+    }
+}
+#[cfg(feature = "macros")]
+impl ErBailValue<ErBranch<ErTestError>, ErTestFailure, ErReady> for (i32, ErFields) {
+    #[track_caller]
+    fn bail(self, input: ErBranch<ErTestError>) -> ErTestFailure {
+        input.into_tree().into()
     }
 }
 
@@ -435,7 +511,7 @@ impl<T: ErWrappedItem> ErAggregateItem<T, ()> for i32 {
     const ALWAYS_ERROR: bool = false;
 
     #[track_caller]
-    fn item(self, input: T) -> Result<Self::Ok, ErPart> {
+    fn item(self, input: T) -> Result<Self::Ok, ErNode> {
         input.er_wrapped_item()
     }
 }
@@ -446,7 +522,7 @@ impl<T: ErAllItem<Mode>, Mode> ErAggregateItem<T, Mode> for u8 {
     const ALWAYS_ERROR: bool = T::ALWAYS_ERROR;
 
     #[track_caller]
-    fn item(self, input: T) -> Result<Self::Ok, ErPart> {
+    fn item(self, input: T) -> Result<Self::Ok, ErNode> {
         input.er_all_item()
     }
 }
@@ -457,8 +533,8 @@ where
     I::Item: ErWrappedItem,
 {
     #[track_caller]
-    fn add<T: IntoErTree>(self, tree: T, items: I) -> ErTree<T::Error> {
-        tree.into_er_tree().er_add_wrap(items)
+    fn add(self, nodes: &mut Vec<ErNode>, items: I) {
+        crate::aggregate::append(nodes, items.map(ErWrappedItem::er_wrapped_item));
     }
 }
 
@@ -467,8 +543,9 @@ impl<I: Iterator, Mode> ErAggregateAdd<I, Mode> for u8
 where
     I::Item: ErAllItem<Mode>,
 {
+    #[inline]
     #[track_caller]
-    fn add<T: IntoErTree>(self, tree: T, items: I) -> ErTree<T::Error> {
-        tree.into_er_tree().er_add(items)
+    fn add(self, nodes: &mut Vec<ErNode>, items: I) {
+        crate::aggregate::append(nodes, items);
     }
 }

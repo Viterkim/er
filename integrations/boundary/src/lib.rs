@@ -13,6 +13,6 @@ mod tests {
 
         let input: ErResult<u8, ReadErr> = boundary_provider::read().er(());
         let report = input.unwrap_err().er_report();
-        assert!(report.contains("---- Saved: boundary_provider::ReadErr ----"));
+        assert!(report.contains("boundary_provider::ReadErr [saved]"));
     }
 }

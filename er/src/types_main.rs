@@ -1,7 +1,8 @@
 use crate::ErTree;
 
 /// Return this from `main` to print the whole report when it fails. Use `.er(..)?` like in any other function.
-pub type ErMain<E = ErMainError> = Result<(), ErMainFailure<E>>;
+/// With `ErMain<MyErr, ExitCode>` your program can pick its own exit status on success.
+pub type ErMain<E = ErMainError, T = ()> = Result<T, ErMainFailure<E>>;
 
 /// A failed `main`. Prints the whole report on exit.
 pub struct ErMainFailure<E = ErMainError> {

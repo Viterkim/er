@@ -6,7 +6,7 @@ Design typed errors around what your caller cares about, not what errors you get
 
 ```toml
 [dependencies]
-er = "0.9"
+er = "0.10"
 ```
 
 [Full examples / usage patterns](er/docs/examples.md)
@@ -205,8 +205,8 @@ ConfigErr { port: "nope", enabled: "nah" } @ src/main.rs:46:5
 |- ReadConfigFileErr @ src/main.rs:19:21
 |  `- FileErr { path: "/file/path/missing.txt" } @ src/main.rs:11:26
 |     `- No such file or directory (os error 2)
-|- invalid digit found in string @ src/main.rs:48:9
-`- provided string was not `true` or `false` @ src/main.rs:49:9
+|- invalid digit found in string
+`- provided string was not `true` or `false`
 ```
 
 ## Using 'er'
@@ -219,7 +219,7 @@ Structs: `.er(())` for empty, `.er(path)` for 1 field, and `.er((port, enabled))
 
 Enums: specify variant like: `.er(|| ModeErr::variant_name(arg1))`.
 
-Copy values/references (like `&Path`) you can just write without a closure because they only get converted when the call fails.
+Copy + Debug values/references (like `&Path`) you can just write without a closure because they only get converted when the call fails.
 
 For owned values, or a lookup like `user.name()` you should use a closure so they only run on failure: `.er(|_| (path, user.name()))`.
 
@@ -310,10 +310,10 @@ It's not the user's fault when mistakes happen. There should be convenience and 
 
 ## Unsync / Single threaded platform
 
-If you've got a platform that uses Rc/RefCell(single threaded embassy etc) you can use `er-unsync` (you have to use the name `er`).
+If you've got a platform that uses Rc/RefCell (single threaded embassy etc) you can use `er-unsync` (name it `er` so the derives can find it).
 
 ```toml
-er = { package = "er-unsync", version = "0.9" }
+er = { package = "er-unsync", version = "0.10" }
 ```
 
 ## Docs
@@ -336,7 +336,7 @@ er = { package = "er-unsync", version = "0.9" }
 
 ### External links
 
-[Docs.rs](https://docs.rs/er/0.9.0/er/)
+[Docs.rs](https://docs.rs/er/0.10.0/er/)
 
 [Crates.io for the lib](https://crates.io/crates/er)
 

@@ -1,24 +1,24 @@
-use crate::{ErPart, ErTree, IntoErPart, IntoErTree, IntoErTreeRef};
+use crate::{ErNode, ErTree, IntoErNode, IntoErTree, IntoErTreeRef};
 use crate::{ErTestError, ErTestFailure};
 use alloc::boxed::Box;
 
-impl<E, Input> IntoErPart<Input> for Box<ErTree<E>>
+impl<E, Input> IntoErNode<Input> for Box<ErTree<E>>
 where
-    ErTree<E>: IntoErPart<Input>,
+    ErTree<E>: IntoErNode<Input>,
 {
-    type Error = <ErTree<E> as IntoErPart<Input>>::Error;
+    type Error = <ErTree<E> as IntoErNode<Input>>::Error;
 
     fn er_error(&self) -> &Self::Error {
-        <ErTree<E> as IntoErPart<Input>>::er_error(self)
+        <ErTree<E> as IntoErNode<Input>>::er_error(self)
     }
 
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn into_er_part(self) -> ErPart {
-        <ErTree<E> as IntoErPart<Input>>::into_er_part(*self)
+    fn into_er_node(self) -> ErNode {
+        <ErTree<E> as IntoErNode<Input>>::into_er_node(*self)
     }
 }
 
-impl IntoErPart for Box<ErTestFailure> {
+impl IntoErNode for Box<ErTestFailure> {
     type Error = ErTestError;
 
     fn er_error(&self) -> &ErTestError {
@@ -26,8 +26,8 @@ impl IntoErPart for Box<ErTestFailure> {
     }
 
     #[cfg_attr(feature = "src_locations", track_caller)]
-    fn into_er_part(self) -> ErPart {
-        self.tree.into_er_part()
+    fn into_er_node(self) -> ErNode {
+        self.tree.into_er_node()
     }
 }
 

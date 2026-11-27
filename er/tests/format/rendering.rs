@@ -1,3 +1,4 @@
+use super::lines::IgnoresWriter;
 use core::{error::Error, fmt};
 use er::*;
 use fmt::Write as _;
@@ -22,7 +23,8 @@ pub fn causal_chain() {
     #[cfg(feature = "src_locations")]
     let expected = format!(
         "LoadConfigErr @ {}\n`- ParsePortErr(\"aint_even_a_number_cmon_man\") @ {}\n   `- invalid digit found in string",
-        error.src_location, error.nodes[0].src_location,
+        error.src_location.unwrap(),
+        error.nodes[0].src_location.unwrap(),
     );
 
     #[cfg(not(feature = "src_locations"))]
@@ -70,7 +72,7 @@ pub fn multiline() {
         let tree = ErTree::new(WrapErr, [Message(message)]);
 
         #[cfg(feature = "src_locations")]
-        let expected = format!("WrapErr @ {}\n`- {expected}", tree.src_location,);
+        let expected = format!("WrapErr @ {}\n`- {expected}", tree.src_location.unwrap());
 
         #[cfg(not(feature = "src_locations"))]
         let expected = format!("WrapErr\n`- {expected}");
@@ -86,7 +88,8 @@ pub fn multiline() {
     #[cfg(feature = "src_locations")]
     let expected = format!(
         "root one\nroot two @ {}\n`- sub @ {}",
-        tree.src_location, tree.nodes[0].src_location,
+        tree.src_location.unwrap(),
+        tree.nodes[0].src_location.unwrap(),
     );
 
     #[cfg(not(feature = "src_locations"))]
@@ -103,21 +106,38 @@ pub fn branches() {
     let tree = ErTree::new(
         WrapErr,
         [
-            branch.into_er_part(),
-            ErTree::from(Message("gamma")).into_er_part(),
+            branch.into_er_node(),
+            ErTree::from(Message("gamma")).into_er_node(),
         ],
     );
 
     #[cfg(feature = "src_locations")]
     let expected = format!(
         "WrapErr @ {}\n|- MidErr @ {}\n|  `- alpha\n|     beta\n`- gamma @ {}",
-        tree.src_location, tree.nodes[0].src_location, tree.nodes[1].src_location,
+        tree.src_location.unwrap(),
+        tree.nodes[0].src_location.unwrap(),
+        tree.nodes[1].src_location.unwrap(),
     );
 
     #[cfg(not(feature = "src_locations"))]
     let expected = "WrapErr\n|- MidErr\n|  `- alpha\n|     beta\n`- gamma";
 
     assert_eq!(tree.er_report().to_string(), expected);
+}
+
+#[test]
+#[cfg(feature = "src_locations")]
+pub fn added_locations() {
+    let report = er_new!(WrapErr);
+    let cleanup = er_new!(MidErr);
+    let origin = cleanup.src_location.unwrap();
+    let report = report.er_add(Message("storage").er_save("report", "disk full @ store.rs:88"));
+    let report = er_add!(report, [Message("encoder"), cleanup]);
+    let text = report.er_report();
+
+    assert_eq!(text.matches(" @ ").count(), 3);
+    assert!(text.contains(&format!("MidErr @ {origin}")));
+    assert_eq!(report.er_snapshot().er_report(), text);
 }
 
 #[test]
@@ -132,7 +152,7 @@ pub fn message_text() {
         let tree = ErTree::new(Message(message), [Message(message)]);
 
         #[cfg(feature = "src_locations")]
-        let expected = format!("{message} @ {}\n`- {indented}", tree.src_location,);
+        let expected = format!("{message} @ {}\n`- {indented}", tree.src_location.unwrap());
 
         #[cfg(not(feature = "src_locations"))]
         let expected = format!("{message}\n`- {indented}");
@@ -167,7 +187,7 @@ pub fn chunks() {
         let tree = ErTree::from(Chunked(chunks));
 
         #[cfg(feature = "src_locations")]
-        let expected = format!("alpha\nbeta @ {}", tree.src_location);
+        let expected = format!("alpha\nbeta @ {}", tree.src_location.unwrap());
 
         #[cfg(not(feature = "src_locations"))]
         let expected = "alpha\nbeta";
@@ -284,4 +304,14 @@ pub fn writer_failure() {
 
     assert!(tree.er_write_report(&mut sink).is_err());
     assert_eq!(sink.written, "kept");
+}
+
+#[test]
+pub fn ignored_writer_failure() {
+    let mut sink = Budget {
+        remaining: 0,
+        written: String::new(),
+    };
+
+    assert!(IgnoresWriter.er_write_report(&mut sink).is_err());
 }

@@ -20,7 +20,7 @@ impl fmt::Write for ReportBuffer<'_> {
 }
 
 impl InternalReport<'_> {
-    fn write_to(&self, writer: &mut dyn fmt::Write) -> fmt::Result {
+    pub(crate) fn write_to(&self, writer: &mut dyn fmt::Write) -> fmt::Result {
         write_report(
             writer,
             self.top,
@@ -33,14 +33,22 @@ impl InternalReport<'_> {
 
     #[inline(never)]
     pub(crate) fn render_string(&self) -> String {
-        let mut text = String::new();
+        let mut text;
         let result = if self.nodes.is_empty() && self.saved.is_empty() && self.extra.is_empty() {
+            text = String::new();
             self.write_to(&mut ReportBuffer {
                 text: &mut text,
                 location_bytes: self.src_location.map_or(16, |loc| loc.file().len() + 32),
             })
         } else {
-            text.reserve(REPORT_CAPACITY);
+            // Every direct child prints at least a newline and a branch.
+            let branch_bytes = 4 * self.nodes.len();
+            let capacity = if branch_bytes <= REPORT_CAPACITY {
+                REPORT_CAPACITY
+            } else {
+                branch_bytes.next_power_of_two()
+            };
+            text = String::with_capacity(capacity);
             self.write_to(&mut text)
         };
         if result.is_err() {

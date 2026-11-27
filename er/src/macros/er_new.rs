@@ -28,7 +28,6 @@ macro_rules! er_new {
         $crate::er_new!($crate::er_internal::ready_factory(|| $top), $($results)+)
     };
     ($top:expr $(,)?) => {{
-        #[allow(unused_imports)]
         use $crate::er_internal::{ErNewFields as _, ErNewPass as _};
 
         // An existing Wrap carries its own tree, including when a factory hands it back.
